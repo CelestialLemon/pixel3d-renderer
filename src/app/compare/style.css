@@ -1,0 +1,93 @@
+:root { --ink: #493c32; --cream: #fff9e9; --muted: #857762; --line: #493c3230; --accent: #ad542f; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #8db84f; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); user-select: none; }
+button, select { font: inherit; cursor: pointer; color: var(--ink); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+a { color: var(--accent); }
+
+/* ---- stage and panes ----
+   Single pass and wipe: every pane fills the window, stacked (earlier passes on top, clipped at their boundary).
+   Side by side: the stage is a grid whose tracks are set by main.ts; each pane spans two half-columns. */
+#stage { position: absolute; inset: 0; }
+.pane { position: absolute; inset: 0; overflow: hidden; visibility: hidden; }
+.pane.shown { visibility: visible; }
+.pane canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); image-rendering: pixelated; touch-action: none; cursor: grab; }
+.pane canvas:active { cursor: grabbing; }
+body[data-mode=compare][data-layout=wipe] .pane { clip-path: inset(0 var(--clip, 0%) 0 0); }
+body[data-mode=compare][data-layout=grid] #stage { display: grid; gap: 10px; inset: 120px 290px 20px 20px; }
+body[data-mode=compare][data-layout=grid] .pane { position: relative; inset: auto; grid-column-end: span 2; border: 1px solid #fff9e980; }
+body.clean[data-mode=compare][data-layout=grid] #stage { inset: 0; gap: 0; }
+
+.pass-label { position: absolute; top: 135px; left: calc(var(--label-left, 0%) + 24px); padding: 8px 12px; background: var(--cream); border: 1px solid var(--line); pointer-events: none; display: flex; gap: 10px; font-size: 11px; }
+.pass-label span { color: var(--muted); }
+body[data-mode=compare][data-layout=grid] .pass-label { top: 10px; left: 10px; }
+
+/* ---- chrome ---- */
+#loading { position: fixed; inset: 0; display: grid; place-items: center; background: #f1e3c4; font-size: 18px; letter-spacing: .1em; z-index: 9; }
+#loading.done { display: none; }
+#title, #modes, #panel, #hint, #comparison-control { position: fixed; z-index: 5; background: var(--cream); border: 1px solid var(--line); box-shadow: 0 3px 0 #493c3220; }
+#title { left: 20px; top: 20px; padding: 12px 20px; display: flex; flex-direction: column; gap: 2px; }
+#title b { color: var(--accent); font: bold 27px/1.15 Georgia, serif; }
+#title > span:last-child { font-size: 10px; color: #7b6d56; }
+.eyebrow { font-size: 8px; letter-spacing: .16em; margin-bottom: 4px; }
+#modes { top: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 3px; padding: 5px; }
+#modes button { border: none; background: transparent; padding: 9px 14px; font-size: 11px; white-space: nowrap; }
+#modes button[aria-pressed=true] { background: var(--ink); color: var(--cream); }
+
+#panel { right: 20px; bottom: 20px; width: 250px; max-height: calc(100dvh - 140px); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; font-size: 11px; }
+.panel-heading { font: bold 16px Georgia, serif; padding-bottom: 9px; border-bottom: 1px solid #493c3220; display: flex; justify-content: space-between; }
+.panel-heading span { color: var(--accent); }
+#panel label, #comparison-control > label { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; }
+#panel label:has(input[type=checkbox]) { justify-content: flex-start; }
+#panel input[type=checkbox] { margin: 0 2px 0 0; accent-color: var(--accent); width: 13px; height: 13px; }
+#panel small { color: var(--muted); font-size: 9px; }
+#panel input[type=range] { width: 100px; accent-color: var(--accent); }
+#panel select, #panel button, #comparison-control select { background: #f3ead7; border: 1px solid var(--line); padding: 4px 8px; }
+#panel button:hover { background: #e9dbbd; }
+.toggles { display: flex; flex-direction: column; gap: 7px; }
+fieldset { border: 1px solid #493c3220; margin: 0; padding: 8px 9px; display: flex; flex-direction: column; gap: 7px; }
+legend { color: var(--accent); font-size: 10px; padding: 0 4px; }
+#panel .range-label { display: grid; grid-template-columns: 1fr auto; gap: 2px 5px; font-size: 10px; }
+#panel .range-label input { grid-column: 1 / -1; width: 100%; margin: 0; }
+.row, .preset-row { display: flex; gap: 6px; }
+.row button, .preset-row button { flex: 1; }
+.row button:last-child { flex: 3; }
+.preset-row.wrap { flex-wrap: wrap; }
+.preset-row.wrap button { flex: 1 1 auto; padding: 3px 5px; font-size: 10px; }
+#stats { font-size: 9px; color: var(--muted); border-top: 1px solid #493c3220; padding-top: 8px; }
+#hint { left: 50%; bottom: 20px; transform: translateX(-50%); padding: 8px 12px; font-size: 9px; white-space: nowrap; }
+body[data-mode=compare][data-layout=grid] #hint { display: none; }
+
+body:not([data-mode=compare]) .compare-only { display: none !important; }
+/* Wipe only: one slider per boundary (the dividers can also be dragged). */
+#comparison-control { display: none; bottom: 20px; left: 20px; width: 260px; padding: 4px 16px 12px; font-size: 10px; }
+body[data-mode=compare][data-layout=wipe] #comparison-control { display: block; }
+#wipe-controls label { display: block; margin-top: 9px; font-size: 9px; }
+#wipe-controls input { display: block; width: 100%; margin: 2px 0; accent-color: var(--accent); }
+#comparison-control > span { display: block; font-size: 8px; color: var(--muted); margin-top: 8px; }
+
+.divider { position: fixed; top: 0; bottom: 0; z-index: 4; transform: translateX(-50%); width: 26px; border: none; padding: 0; background: transparent; cursor: ew-resize; display: none; touch-action: none; }
+.divider::before { content: ''; position: absolute; left: 12px; top: 0; bottom: 0; width: 2px; background: var(--cream); box-shadow: 1px 0 0 #493c3240; }
+.divider span { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--cream); border: 1px solid var(--line); width: 38px; height: 38px; display: grid; place-items: center; font-size: 16px; }
+body[data-mode=compare][data-layout=wipe] .divider { display: block; }
+
+body.clean #title, body.clean #panel, body.clean #hint, body.clean #modes, body.clean .pass-label, body.clean #comparison-control, body.clean .divider { display: none !important; }
+
+@media (max-width: 1000px) {
+  #title { left: 12px; top: 12px; padding: 8px 12px; } #title b { font-size: 22px; } #title > span:last-child, .eyebrow { display: none; }
+  #modes { top: 12px; left: auto; right: 12px; transform: none; } #modes button { padding: 7px 8px; font-size: 10px; }
+  #panel { right: 10px; bottom: 10px; width: 200px; max-height: 42dvh; padding: 10px; gap: 8px; font-size: 10px; }
+  #hint { display: none; }
+  #comparison-control { bottom: 10px; left: 10px; width: 180px; padding: 10px; }
+  .pass-label { top: 70px; left: calc(var(--label-left, 0%) + 10px); padding: 5px 7px; font-size: 9px; } .pass-label span { display: none; }
+  body[data-mode=compare][data-layout=grid] #stage { inset: 64px 10px calc(42dvh + 20px); gap: 5px; }
+  body[data-mode=compare][data-layout=grid] #panel { left: 10px; width: auto; }
+  body[data-mode=compare][data-layout=grid] .pass-label { top: 6px; left: 6px; }
+}
+@media (max-width: 700px) {
+  /* Phones: the mode bar replaces the title. */
+  #title { display: none; }
+  #modes { left: 10px; right: 10px; justify-content: space-between; }
+  #modes button { flex: 1; padding: 7px 4px; }
+}
+[hidden] { display: none !important; }

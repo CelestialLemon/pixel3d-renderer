@@ -1,0 +1,144 @@
+import * as THREE from 'three';
+import { hourLabel, lookAt, nearestPreset, PixelRenderer, PRESETS, type Look, type RenderSettings } from '../../renderer';
+import { buildWorld } from '../../reference/world';
+import { SCENES, sceneById } from '../../scenes';
+import { Orbit } from '../orbit';
+import { $, num, params, settingsFromParams } from '../params';
+import { PASSES, type PassView } from '../passes';
+
+// The current renderer on its own, full window, with time-of-day controls. `?scene=<id>` picks the scene.
+// For scenes the reference passes also draw, it can wipe against Pass 1.
+
+const scene = sceneById(params.get('scene'));
+const settings: RenderSettings & { pixel: number; animate: boolean } = {
+  ...settingsFromParams(), pixel: THREE.MathUtils.clamp(num('px', 3), 1, 8), animate: params.get('anim') !== '0',
+};
+const orbit = new Orbit(scene.view);
+let hour = num('hour', 17.5), cycle = params.get('cycle') === '1', dirty = true;
+let compare = params.get('compare') === '1' && scene.hasReference, split = num('split', 50);
+if (params.has('clean-ui')) document.body.classList.add('clean');
+
+async function main() {
+  const pixelScene = await scene.build(params.has('k') ? num('k', 56) : undefined);
+  const p3 = new PixelRenderer($<HTMLCanvasElement>('p3-view'), pixelScene);
+  let p1: PassView | null = null;
+  let look: Look = lookAt(hour);
+  // Pass 1 has no dusk grade, so it keeps the sun at least 12 degrees up.
+  const pass1Look = (): Look => ({ ...look, sunEl: Math.max(look.sunEl, 12) });
+  const applyLook = () => {
+    look = lookAt(hour);
+    p3.setLook(look); p1?.setLook(pass1Look());
+    $<HTMLOutputElement>('clock').value = hourLabel(hour);
+    $('clock-title').textContent = `${nearestPreset(hour)} · ${hourLabel(hour)}`;
+    $<HTMLInputElement>('hour').value = String(hour);
+    dirty = true;
+  };
+
+  const ensureP1 = async () => {
+    if (p1) return;
+    const reference = await buildWorld('/cookie_factory.glb', 44);
+    p1 = PASSES.find((p) => p.id === 'pass1')!.create($<HTMLCanvasElement>('p1-view'), { reference, scene: pixelScene });
+    p1.setLook(pass1Look());
+    fit();
+  };
+  const fit = () => {
+    const w = Math.max(1, Math.ceil(innerWidth / settings.pixel)), h = Math.max(1, Math.ceil(innerHeight / settings.pixel));
+    for (const [pipe, el] of [[p3, 'p3-view'], [p1, 'p1-view']] as const) {
+      if (!pipe) continue;
+      if (pipe.width !== w || pipe.height !== h) pipe.resize(w, h);
+      const c = $<HTMLCanvasElement>(el); c.style.width = `${w * settings.pixel}px`; c.style.height = `${h * settings.pixel}px`;
+    }
+    dirty = true;
+  };
+  addEventListener('resize', fit);
+  fit();
+
+  // ---- UI ----
+  for (const key of ['outlines', 'dither', 'cleanup', 'contacts', 'clouds', 'glow', 'vignette', 'animate'] as const) {
+    const el = $<HTMLInputElement>(key); el.checked = settings[key];
+    el.onchange = () => { settings[key] = el.checked; dirty = true; };
+  }
+  for (const [name, h] of Object.entries(PRESETS)) {
+    const b = document.createElement('button'); b.textContent = name;
+    b.onclick = () => { hour = h; cycle = false; $<HTMLInputElement>('cycle').checked = false; applyLook(); };
+    $('presets').append(b);
+  }
+  $<HTMLInputElement>('hour').oninput = (e) => { hour = +(e.target as HTMLInputElement).value; applyLook(); };
+  const cyc = $<HTMLInputElement>('cycle'); cyc.checked = cycle; cyc.onchange = () => (cycle = cyc.checked);
+  const autoEl = $<HTMLInputElement>('auto'); autoEl.checked = orbit.auto; autoEl.onchange = () => (orbit.auto = autoEl.checked);
+  const px = $<HTMLSelectElement>('pixel');
+  if (![...px.options].some((o) => +o.value === settings.pixel)) px.add(new Option(String(settings.pixel), String(settings.pixel)));
+  px.value = String(settings.pixel); px.onchange = () => { settings.pixel = +px.value; fit(); };
+
+  const sceneSelect = $<HTMLSelectElement>('scene');
+  for (const s of SCENES) sceneSelect.add(new Option(s.title, s.id));
+  sceneSelect.value = scene.id;
+  sceneSelect.closest('label')!.hidden = SCENES.length < 2;
+  sceneSelect.onchange = () => { const q = new URLSearchParams(location.search); q.set('scene', sceneSelect.value); location.search = q.toString(); };
+  $('title-name').textContent = scene.title;
+
+  const setSplit = (v: number) => { split = THREE.MathUtils.clamp(v, 0, 100); document.body.style.setProperty('--split', `${split}%`); $('divider').setAttribute('aria-valuenow', String(Math.round(split))); };
+  const setCompare = async (next: boolean) => {
+    compare = next && scene.hasReference; $<HTMLInputElement>('compare').checked = compare;
+    if (compare) await ensureP1();
+    document.body.classList.toggle('compare', compare); dirty = true;
+  };
+  $<HTMLInputElement>('compare').closest('label')!.hidden = !scene.hasReference;
+  $<HTMLInputElement>('compare').onchange = (e) => setCompare((e.target as HTMLInputElement).checked);
+  const div = $('divider');
+  div.onpointerdown = (e) => { div.setPointerCapture(e.pointerId); setSplit(e.clientX / innerWidth * 100); };
+  div.onpointermove = (e) => { if (div.hasPointerCapture(e.pointerId)) setSplit(e.clientX / innerWidth * 100); };
+  div.onkeydown = (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); setSplit(split + (e.key === 'ArrowLeft' ? -2 : 2)); } };
+  setSplit(split);
+  scene.view.presets.forEach((p, i) => {
+    const b = document.createElement('button'); b.textContent = p.name; b.onclick = () => orbit.preset(i);
+    $('view-presets').append(b);
+  });
+  $('rotL').onclick = () => orbit.turn(-1); $('rotR').onclick = () => orbit.turn(1);
+  const { triangles, paletteColors } = pixelScene.stats;
+  $('stats').textContent = `${(triangles / 1000).toFixed(0)}k tris · ${paletteColors} base colors`;
+
+  // Orbit controls live on the stage, so the divider and both canvases share them.
+  orbit.attach($('stage'), () => p3.viewHeight / innerHeight);
+  orbit.bindKeys(() => document.body.classList.toggle('clean'));
+
+  let last = performance.now(), time = params.has('time') ? num('time', 0) : 0;
+  const focus = new THREE.Vector3();
+  const render = () => {
+    if (dirty || settings.animate) {
+      const viewHeight = orbit.viewHeight(p3.width / p3.height);
+      orbit.focus(focus);
+      p3.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); p3.renderGeometry(time);
+      if (compare && p1) { p1.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); p1.renderGeometry(time); }
+      dirty = false;
+    }
+    p3.renderStyle(settings, time);
+    if (compare && p1) p1.renderStyle(settings, time);
+  };
+  $('shot').onclick = () => {
+    render();
+    const c3 = $<HTMLCanvasElement>('p3-view'), out = document.createElement('canvas');
+    out.width = c3.width; out.height = c3.height;
+    const ctx = out.getContext('2d')!; ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(c3, 0, 0);
+    if (compare && p1) { const w = Math.round(out.width * split / 100); if (w > 0) ctx.drawImage($<HTMLCanvasElement>('p1-view'), 0, 0, w, out.height, 0, 0, w, out.height); }
+    const a = document.createElement('a'); a.download = `${scene.id}-pass3-${hourLabel(hour).replace(':', '')}.png`; a.href = out.toDataURL('image/png'); a.click();
+  };
+  (window as any).app3 = {
+    p3, get p1() { return p1; }, settings, orbit, scene, pixelScene, render, redraw: () => (dirty = true),
+    setHour: (h: number) => { hour = h; applyLook(); }, setCompare, setSplit,
+  };
+
+  applyLook();
+  if (compare) await setCompare(true);
+  const frame = (now: number) => {
+    const dt = Math.min((now - last) / 1000, 0.1); last = now;
+    if (settings.animate && !params.has('time')) time += dt;
+    if (cycle) { hour = (hour + dt * 0.45) % 24; applyLook(); }
+    if (orbit.step(dt, now)) dirty = true;
+    render(); requestAnimationFrame(frame);
+  };
+  render(); requestAnimationFrame(frame);
+  $('loading').classList.add('done'); (window as any).appReady = true;
+}
+main().catch((e) => { console.error(e); $('loading').textContent = 'failed: ' + e.message; });
