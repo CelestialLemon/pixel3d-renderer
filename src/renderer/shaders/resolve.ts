@@ -17,10 +17,12 @@ layout(location = 2) out vec4 oShadow;
 // 3 x 3 sub-samples, nearest the pixel centre first: centre, edges, corners.
 const ivec2 ORD[9] = ivec2[9](ivec2(1,1), ivec2(0,1), ivec2(2,1), ivec2(1,0), ivec2(1,2), ivec2(0,0), ivec2(2,0), ivec2(0,2), ivec2(2,2));
 
-// Depth the plane (n, d) has at an offset o, in art pixels (same as predictDepth in post.ts).
+// Depth the plane (n, d) has at an offset o, in art pixels. Unlike predictDepth in post.ts (a neighbourhood
+// heuristic that clamps the slope), this keeps the true slope: grouping and the emitted depth must stay exact
+// on surfaces seen at a grazing angle.
 float planeDepth(vec3 n, float d, vec2 o){
   float nf = dot(n, uFwd);
-  nf = (nf < 0.0 ? -1.0 : 1.0) * max(abs(nf), 0.25);
+  nf = (nf < 0.0 ? -1.0 : 1.0) * max(abs(nf), 1e-3);
   return d - (dot(n, uRight) * o.x + dot(n, uUp) * o.y) * uTexel / nf;
 }
 // Sub-sample position relative to the art-pixel centre, in art pixels.
@@ -37,8 +39,12 @@ bool sameSurface(int i, int j){
 }
 
 void emit(ivec2 q, int i){
+  // A near edge-on plane would extrapolate far past where the surface ends: cap the move at two silhouette margins
+  // (exact down to |n.fwd| ~ 0.1 for a corner sample at any zoom).
+  float m = 2.0 * margin();
+  float dc = clamp(planeDepth(nd[i].xyz, nd[i].w, -offsetOf(i)), nd[i].w - m, nd[i].w + m);
   oAlbedo = a[i];
-  oNormal = vec4(nd[i].xyz, a[i].a < 0.5 ? nd[i].w : planeDepth(nd[i].xyz, nd[i].w, -offsetOf(i)));
+  oNormal = vec4(nd[i].xyz, a[i].a < 0.5 ? nd[i].w : dc);
   oShadow = vec4(0.0, 0.0, 0.0, texelFetch(tShadow, q, 0).a);
 }
 
