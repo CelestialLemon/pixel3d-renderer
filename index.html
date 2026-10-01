@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cookie Co. — Four rendering passes</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 8 8%27%3E%3Crect width=%278%27 height=%278%27 fill=%27%23c8643c%27/%3E%3Crect x=%272%27 y=%272%27 width=%274%27 height=%274%27 fill=%27%23f3d9a0%27/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="/src/style.css" />
+</head>
+<body data-mode="compare" data-layout="panels" data-cols="2">
+<main id="stage" aria-label="Cookie factory renderer comparison">
+  <section id="pass0-pane" class="pane" aria-label="Pass 0 — Original"><canvas id="pass0-view" aria-label="Pass 0 interactive scene"></canvas><div class="pass-label"><b>Pass 0</b><span>Original</span></div></section>
+  <section id="pass1-pane" class="pane" aria-label="Pass 1 — Refined"><canvas id="pass1-view" aria-label="Pass 1 interactive scene"></canvas><div class="pass-label"><b>Pass 1</b><span>Refined</span></div></section>
+  <section id="pass2-pane" class="pane" aria-label="Pass 2 — Atmosphere"><canvas id="pass2-view" aria-label="Pass 2 interactive scene"></canvas><div class="pass-label"><b>Pass 2</b><span>Atmosphere</span></div></section>
+  <section id="pass3-pane" class="pane" aria-label="Pass 3 — Golden Hour"><canvas id="pass3-view" aria-label="Pass 3 interactive scene"></canvas><div class="pass-label"><b>Pass 3</b><span>Golden Hour</span></div></section>
+</main>
+<div id="loading">baking pixels…</div>
+<header id="title"><span class="eyebrow">A FARM FRENZY EXPERIMENT</span><b>Cookie Co.</b><span>One scene. Four ways to draw it.</span></header>
+<nav id="modes" aria-label="Renderer comparison"><button id="mode-pass0" aria-pressed="false">Pass 0</button><button id="mode-pass1" aria-pressed="false">Pass 1</button><button id="mode-pass2" aria-pressed="false">Pass 2</button><button id="mode-pass3" aria-pressed="false">Pass 3</button><button id="mode-compare" aria-pressed="true">Compare all</button></nav>
+<button id="divider0" class="divider" role="slider" aria-label="Boundary between Pass 0 and Pass 1" aria-valuemin="0" aria-valuemax="100" aria-valuenow="25"><span>↔</span></button>
+<button id="divider1" class="divider" role="slider" aria-label="Boundary between Pass 1 and Pass 2" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span>↔</span></button>
+<button id="divider2" class="divider" role="slider" aria-label="Boundary between Pass 2 and Pass 3" aria-valuemin="0" aria-valuemax="100" aria-valuenow="75"><span>↔</span></button>
+<aside id="panel">
+  <div class="panel-heading">The pixel workshop <span>✦</span></div>
+  <div class="workshop-columns"><div class="shared-section">
+  <div class="preset-row"><button id="close-view">Factory</button><button id="landscape">Landscape</button></div>
+  <label>Pixel size <select id="pixel" aria-label="Pixel size"><option>2</option><option selected>3</option><option>4</option><option>6</option></select></label>
+  <div class="shared-controls">
+    <label><input type="checkbox" id="outlines" checked /> Selective outlines</label>
+    <label><input type="checkbox" id="dither" checked /> Subtle dithering</label>
+    <label><input type="checkbox" id="cleanup" checked /> Pixel clean-up</label>
+    <label><input type="checkbox" id="contacts" checked /> Contact shadows</label>
+    <label><input type="checkbox" id="clouds" checked /> Passing clouds</label>
+    <label><input type="checkbox" id="auto" /> Auto-orbit</label>
+  </div>
+  </div>
+  <fieldset id="atmosphere-controls"><legend>Pass 2 · atmosphere</legend>
+    <label><input type="checkbox" id="fog" checked /> Distance haze</label>
+    <label class="range-label" for="haze">Haze <output id="haze-value">85%</output><input id="haze" type="range" min="0" max="1" step="0.01" value="0.85" /></label>
+    <label class="range-label" for="fog-start">Starts behind focus <output id="fog-start-value">-2</output><input id="fog-start" type="range" min="-10" max="10" step="0.5" value="-2" /></label>
+    <label class="range-label" for="fog-end">Full haze distance <output id="fog-end-value">18</output><input id="fog-end" type="range" min="11" max="40" step="0.5" value="18" /></label>
+    <label class="range-label" for="ink">Outline ink <output id="ink-value">60%</output><input id="ink" type="range" min="0" max="1" step="0.01" value="0.6" /></label>
+    <label>Haze color <input id="fog-color" type="color" value="#c3d9d4" aria-label="Haze color" /></label>
+  </fieldset>
+  <fieldset id="pass3-controls"><legend>Pass 3 · golden hour</legend>
+    <label class="range-label" for="hour">Time of day <output id="hour-value">17:30</output><input id="hour" type="range" min="0" max="24" step="0.05" value="17.5" /></label>
+    <div class="preset-row" id="presets"></div>
+    <label><input type="checkbox" id="cycle" /> Run the day</label>
+    <label><input type="checkbox" id="animate" checked /> Living world</label>
+    <label><input type="checkbox" id="glow" checked /> Lamp light</label>
+    <label><input type="checkbox" id="vignette" checked /> Corner shading</label>
+  </fieldset>
+  <div class="action-section">
+  <p id="cleanup-note"></p>
+  <label>Sun direction <input type="range" id="sun" aria-label="Sun direction" min="-180" max="180" value="-60" /></label>
+  <div class="row"><button id="rotL" aria-label="Rotate 45 degrees left">↶</button><button id="rotR" aria-label="Rotate 45 degrees right">↷</button><button id="shot">Save PNG</button></div>
+  <div id="stats"></div>
+  </div></div>
+</aside>
+<div id="comparison-control">
+  <label>Compare <select id="layout" aria-label="Comparison layout"><option value="grid">2 × 2 grid</option><option value="wipe">Four-way wipe</option><option value="panels">Four columns</option></select></label>
+  <div id="wipe-controls"><label for="split0">Pass 0 / 1<input id="split0" type="range" min="0" max="100" value="25" /></label><label for="split1">Pass 1 / 2<input id="split1" type="range" min="0" max="100" value="50" /></label><label for="split2">Pass 2 / 3<input id="split2" type="range" min="0" max="100" value="75" /></label></div>
+  <span>Same model · camera · sun · pixel size. Pass 3 also adds a pond, leaf-clump trees and motion, and the time of day drives the sun for every pass.</span>
+</div>
+<footer id="hint">Drag to orbit · Scroll to zoom · Shift + drag to pan · H to hide controls</footer>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

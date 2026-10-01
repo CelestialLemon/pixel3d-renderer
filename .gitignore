@@ -1,0 +1,5 @@
+node_modules
+*.blend1
+out
+dist
+.DS_Store
