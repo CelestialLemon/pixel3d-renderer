@@ -15,7 +15,7 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
 1. **Done (2026-10-01): the test-chart scene** (`?scene=test-chart`, `src/scenes/test-chart/`). Six bays on a 1 m checker: thin
    features (poles, rails, ladder, wires, fence, mullions at 0.02–0.16 widths), curves, ink and creases, AO and self-shadowing, palette
    stress, and terraces with a lit room and seven coloured lamps. Each bay is a camera preset (`?view=thin|curves|ink|ao|palette|lamps`),
-   and `tools/golden.mjs` has 12 `chart-*` shots. **What it showed on first run:**
+   and `tools/golden.mjs` has 11 `chart-*` shots. **What it showed on first run:**
    - Rails and poles under ~0.04 render as broken dotted lines (the sub-pixel problem of section 2, now measurable per width).
      **Fixed 2026-10-01** by the thin-feature resolve (section 2).
    - All six near-identical colour pairs collapse to one palette colour each, and the two darkest greys merge.
@@ -28,9 +28,9 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    - Found on the props gallery: contact occlusion (`contactAt` in `shaders/post.ts`) paints a false checker on the faceted, curved
      deck of `stone_arch_bridge`. It disappears with `contacts=0`. Repro: `pass3.html?scene=props&view=stone_arch_bridge&zoom=5&hour=12`.
      **Fixed 2026-10-01** (Sol): taps fade out by world distance (0.43–0.55 m), and taps outside the frame are skipped.
-2. **Modeled props (in progress, with a second agent):** purpose-made Blender props per `docs/ASSET_BRIEF.md`, coordinated on
-   `docs/BOARD.md`. Next on the renderer side: name-prefix loader rules (`decor_`, `water_`, `glass_`, `thin_`, `move_`, `lamp_`)
-   and a `?scene=props` gallery.
+2. **Modeled props (batch 1 done, 2026-10-01):** 13 purpose-made Blender props per `docs/ASSET_BRIEF.md`, viewable in the
+   `?scene=props` gallery. The loader's name-prefix rules (`decor_`, `water_`, `glass_`, `thin_`, `lamp_`) are in place; `move_*` is
+   recognised but has no motion yet (section 3, animation hook).
 3. **CC0 low-poly packs** (Kenney, Quaternius, KayKit) through `collectGltf`. These are the first real-world assets, and they need:
    - **Textures:** today only `material.color` is read, so a textured model renders as one flat colour per material. Sample the base-colour
      texture per vertex or face before quantisation, or add a UV/albedo-texture path to the G-buffer.
@@ -79,8 +79,8 @@ groove set per scene is supported. Passes 0–1 are frozen and still flicker. `n
 - **Asset pipeline.** Blender → glTF export → flags by node name or custom property (`collectGltf` rules handle names today) → merge and
   palette as a build step instead of at page load (Cookie Co. takes seconds to build in the browser).
 - **Package it** (npm workspace or published package) with the demo as a consumer, a smaller public API (`src/renderer/index.ts` is the
-  start), unit tests for palette/geometry, and the golden and browser checks in CI. Golden images would need to be stored or generated in
-  CI rather than only in the git-ignored `out/`.
+  start), unit tests for palette/geometry, and the golden and browser checks in CI. The golden images are already tracked in `golden/`,
+  but CI would render on a different GPU path than the local SwiftShader runs, so expect to regenerate or tolerance-match them there.
 
 ## 4. Performance and fairness
 

@@ -1,7 +1,7 @@
 # Asset brief: models for testing the renderer
 
-Who this is for: the **Modeler**, an LLM agent building 3D models in this workspace. Claude (the renderer agent) maintains this file.
-To change a rule, propose it on `docs/BOARD.md` first, so neither side is surprised.
+Who this is for: whichever agent builds 3D models in this workspace (usually **Sol**). **Opus** (the renderer agent) maintains this
+file. To change a rule, propose it on `docs/BOARD.md` first, so neither side is surprised.
 
 ## Why these models exist
 
@@ -41,7 +41,7 @@ emission**. Everything else is thrown away. So:
 
 ### Object naming → how the renderer treats it
 
-Claude is adding a generic name-based rule to the loader, so these prefixes on **object names** become renderer behaviour automatically
+The loader has a generic name-based rule, so these prefixes on **object names** become renderer behaviour automatically
 (note that three.js turns spaces into underscores, so use underscores):
 
 | Prefix | Meaning |
@@ -58,10 +58,10 @@ Claude is adding a generic name-based rule to the loader, so these prefixes on *
 *flags* (`thin_`, `decor_`, ...) come from its own name. Example: `move_spin_wheel_L` (rim and hub, origin at the axle) with
 `thin_spoke_*` children spins as one piece, and the spokes are still marked thin.
 
-## Batch 1: the prop gallery (start here)
+## Batch 1: the prop gallery (done)
 
-Separate props, one folder each under `assets/props/<name>/`. Each one targets a risk. Claude will place them in a gallery scene
-(`?scene=props`) and announce it on the board when it is viewable. Suggested order (the first ones are the most useful):
+Separate props, one folder each under `assets/props/<name>/`. Each one targets a risk. All 12 (13 with the lamp variant) are built
+and shown in the gallery scene (`?scene=props`); the list stays here as the record of what each prop is for:
 
 1. **street_lamp**: a cast-iron post (about 0.08 m thick) with a lantern head, emissive glass panes and a `lamp_` empty inside (warm colour).
    *Tests:* emissive, a thin vertical pole, a lamp. Make a second variant, **street_lamp_cool**, with a cool blue-white lamp colour (coloured lamp light works since 2026-10-01).
@@ -93,10 +93,13 @@ an alley, a fountain). It will be planned together once the gallery shows what t
 
 ## Ownership (to avoid editing each other's files)
 
-- **Modeler owns:** `assets/props/**`, `assets/<future-scene>/**`, `public/props/**`.
-- **Claude owns:** `src/**`, `tools/**`, `index.html`, `pass*.html`, `docs/ROADMAP.md`, this brief.
-- **Never touch:** `src/reference/**`, `assets/cookie-factory/**`, `public/cookie_factory.glb`, `public/cookie_factory_current.glb`, `golden/**`.
-- **Shared:** `docs/BOARD.md` (append only).
-- **Git:** neither agent commits, branches or stashes. The user handles git. Don't run `git checkout`/`reset`/`clean` either:
-  the other agent's uncommitted work lives in the same tree.
+Ownership is agreed on `docs/BOARD.md` at the start of each piece of work. These are the defaults for modelling work:
+
+- **The modelling agent owns:** `assets/props/**`, `assets/<future-scene>/**`, `public/props/**`.
+- **The renderer agent owns:** `src/**`, `tools/**`, `index.html`, `pass*.html`, `docs/ROADMAP.md`, this brief.
+- **Never touch without agreement:** `src/reference/**`, `assets/cookie-factory/**`, `public/cookie_factory.glb` (frozen),
+  `public/cookie_factory_current.glb`, `golden/**`.
+- **Shared:** `docs/BOARD.md` (append only, never committed with posts in it).
+- **Git:** nobody commits, pushes or branches unless the user says so for that piece of work (see the board's rules). Don't run
+  `git checkout`/`reset`/`clean`/`stash` either: the other agent's uncommitted work lives in the same tree.
 - **Dev server:** `npm run dev` serves on 127.0.0.1:5180. If it's already running, use it. Don't kill it.

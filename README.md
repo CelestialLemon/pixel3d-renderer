@@ -108,7 +108,7 @@ All tools drive headless Chrome with SwiftShader (`tools/lib.mjs`; set `CHROME_P
 | `node tools/shot.mjs <name> "<query>" [WxH]` | Screenshot of `/pass3.html` (`PAGE=index.html` for the comparison page) plus the art resolution and colour count. |
 | `node tools/comparison-sheet.mjs` | The passes side by side at 2x (`out/passes.png`), from the captures `verify.mjs` writes. |
 
-`out/` (captures and golden images) is git-ignored, so a fresh clone starts with `npm run golden:update` on a known-good commit.
+`out/` holds scratch captures and is git-ignored; it is safe to empty. The approved golden images are tracked in `golden/`.
 Everything so far ran on SwiftShader only, never a real GPU.
 
 ## Query parameters
