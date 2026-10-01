@@ -13,7 +13,7 @@ node assets/props/gallery-check.mjs
 
 Cart wheel assemblies export several material primitives below a `move_spin_wheel_*` node. The twenty `thin_spoke_*` children share their wheel's axle origin. Blender wheel axes are local X (also X after Y-up export); future spin motion should rotate about that axis. The fence set is nearly 8 m wide, so its gallery slot needs more width than the other initial props.
 
-Assets deliberately called `thin_*` have sub-pixel features for flicker checks. Read `docs/ASSET_BRIEF.md` for the agreed scene-import naming contract and `docs/BOARD.md` for renderer/modeler handoffs.
+Assets deliberately called `thin_*` have sub-pixel features for flicker checks. Read `docs/ASSET_BRIEF.md` for the agreed scene-import naming contract and `docs/BOARD.md` for how the two agents coordinate.
 
 `build-all.mjs` launches one fresh Blender process per prop; `--verify` checks exported GLBs against their SHA-256 before rebuilding. Set `BLENDER_PATH` to override the executable. `validate.mjs` checks exported triangles through Three's GLTFLoader, including ground/centering, material/UV contract, lamp extras, wheel children, windmill shaft orientation, open bridge arch and hollow well.
 
@@ -41,4 +41,4 @@ The gallery is `http://127.0.0.1:5180/pass3.html?scene=props`. `gallery-check.mj
 
 Total: **31,806 triangles**, excluding the gallery floor. Runtime assets occupy about 1.2 MB combined. `move_*` names and origins author motion for a future renderer mode; these models remain static in the current gallery. Metallic properties are likewise authored but currently ignored by the renderer.
 
-Inspection found distinct awning stripes, visible produce, readable villager heads/hands and separate warm/cool luminous panes. Thin wires expose broken segments at game scale. The night captures also reproduce the renderer's currently warm-only lamp pools and light reaching the shop roof through solid geometry; those are tracked on the peer board.
+Inspection found distinct awning stripes, visible produce, readable villager heads/hands and separate warm/cool luminous panes. Thin wires exposed broken segments at game scale, and the night captures showed warm-only lamp pools and light reaching the shop roof through solid geometry. All three were fixed in the renderer on 2026-10-01 (the thin-feature resolve, per-lamp colour, and occluded lamp light); see `docs/ROADMAP.md` section 1.
