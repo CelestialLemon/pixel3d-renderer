@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { collectGltf, FLAG, GeometryCollector, motion, type Vec3 } from '../../renderer';
 import { BELT } from './layout';
 
-/** Adds the cookie factory model (public/cookie_factory.glb). The cookies on the belt become moving geometry. */
+/** Adds the cookie factory model (public/cookie_factory_current.glb). The cookies on the belt become moving geometry. */
 export function addFactory(root: THREE.Object3D, s: GeometryCollector, d: GeometryCollector) {
   // Find the belt cookies: each one is a few meshes sharing the centre of its "cookie edge" ring.
   const belt = new Set<THREE.Mesh>();

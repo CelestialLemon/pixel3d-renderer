@@ -16,8 +16,9 @@ const FACES: [THREE.Vector3Tuple, THREE.Vector3Tuple][] = [
 ];
 
 // Distance from the lamp. Solid surfaces cast lamp shadows, lit windows (emissive) included; plants, water,
-// steam and fireflies let the light through. Surfaces within the lamp's clearance are its own fixture (lantern base, lamp shade)
-// and are skipped too, so the cube map records what lies beyond them.
+// steam and fireflies let the light through. Record both triangle sides so a lamp inside a closed shell,
+// or behind a single-sided panel, is still blocked. Clearance skips fragments near the lamp (e.g. its
+// lantern base or shade); farther parts of the same fixture still block light.
 const VERT = /* glsl */ `
 in float aFlag;
 out vec3 vW; out float vF;
@@ -55,7 +56,7 @@ export class LampShadows {
   render(renderer: THREE.WebGLRenderer) {
     if (this.rendered) return;
     this.rendered = true;
-    const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide, uniforms: { uLamp: { value: new THREE.Vector3() }, uClearance: { value: 0 } } });
+    const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, glslVersion: THREE.GLSL3, side: THREE.DoubleSide, uniforms: { uLamp: { value: new THREE.Vector3() }, uClearance: { value: 0 } } });
     const scene = new THREE.Scene(), mesh = new THREE.Mesh(this.geometry, mat);
     mesh.frustumCulled = false;
     scene.add(mesh);

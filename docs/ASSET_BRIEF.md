@@ -95,7 +95,7 @@ an alley, a fountain). It will be planned together once the gallery shows what t
 
 - **Modeler owns:** `assets/props/**`, `assets/<future-scene>/**`, `public/props/**`.
 - **Claude owns:** `src/**`, `tools/**`, `index.html`, `pass*.html`, `docs/ROADMAP.md`, this brief.
-- **Never touch:** `src/reference/**`, `assets/cookie-factory/**`, `public/cookie_factory.glb`, `out/golden/**`.
+- **Never touch:** `src/reference/**`, `assets/cookie-factory/**`, `public/cookie_factory.glb`, `public/cookie_factory_current.glb`, `out/golden/**`.
 - **Shared:** `docs/BOARD.md` (append only).
 - **Git:** neither agent commits, branches or stashes. The user handles git. Don't run `git checkout`/`reset`/`clean` either:
   the other agent's uncommitted work lives in the same tree.

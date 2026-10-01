@@ -44,7 +44,7 @@ src/
   app/                 the demo pages: compare/ (index.html), viewer/ (pass3.html), shared orbit camera, params, pass registry
   reference/           FROZEN: Pass 0 and Pass 1 pipelines and their world. Never edit (golden images prove they are unchanged).
 archive/pass2-atmosphere/   Pass 2, archived (not built)
-assets/cookie-factory/      Blender source, build script and export_glb.py for public/cookie_factory.glb
+assets/cookie-factory/      Blender source, build script and export_glb.py for public/cookie_factory_current.glb
 tools/                      headless-Chrome capture and check scripts
 docs/ROADMAP.md
 ```
@@ -130,6 +130,9 @@ wide. `node tools/door-strip.mjs` shows they hold steady. Passes 0–1 still fli
 
 ## Assets
 
-`public/cookie_factory.glb` comes from `assets/cookie-factory/cookie_factory.blend` (built by `build_cookie_factory.py`). Regenerate it with
-`blender -b assets/cookie-factory/cookie_factory.blend --python assets/cookie-factory/export_glb.py`. The model was built for Harvest Frenzy
+`public/cookie_factory_current.glb` (the Cookie Co. scene) comes from `assets/cookie-factory/cookie_factory.blend` (built by
+`build_cookie_factory.py`). Regenerate it with
+`blender -b assets/cookie-factory/cookie_factory.blend --python assets/cookie-factory/export_glb.py`. `public/cookie_factory.glb` is
+the frozen export that the Pass 0/1 references load; it predates the fix to the door's inside-out winding and is never re-exported.
+The model was built for Harvest Frenzy
 (`../farm-frenzy` keeps its own 2D sprite versions). three.js turns spaces in node names into underscores, so match names with `[ _]`.
