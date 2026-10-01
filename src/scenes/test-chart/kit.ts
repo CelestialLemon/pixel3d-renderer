@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FLAG, flip, GeometryCollector, linearColor as lin, place } from '../../renderer';
+import { FLAG, flip, GeometryCollector, linearColor as lin, place, thin } from '../../renderer';
 
 // Small building blocks for the test chart: boxes, rods between two points, and inward-facing shells.
 // Colours are sRGB hex. Every helper takes the collector first.
@@ -14,12 +14,16 @@ const UP = new THREE.Vector3(0, 1, 0);
 export const box = (s: C, x: number, y: number, z: number, w: number, h: number, d: number, hex: number, flag: number = FLAG.NORMAL, ry = 0) =>
   s.add(BOX, place(x, y + h / 2, z, 0, ry, 0, w, h, d), lin(hex), flag);
 
-/** Square-section rod `w` thick from `a` to `b`. */
+/** Under this width a rod or wire is thin-marked, as the asset brief's `thin_` rule says. */
+export const THIN_UNDER = 0.05;
+export const thinIf = (w: number, flag: number = FLAG.NORMAL) => (w < THIN_UNDER ? thin(flag) : flag);
+
+/** Square-section rod `w` thick from `a` to `b`. Thin-marked under THIN_UNDER. */
 export function rod(s: C, a: P3, b: P3, w: number, hex: number, flag: number = FLAG.NORMAL) {
   const pa = new THREE.Vector3(...a), dir = new THREE.Vector3(...b).sub(pa), len = dir.length();
   const q = new THREE.Quaternion().setFromUnitVectors(UP, dir.clone().normalize());
   const m = new THREE.Matrix4().compose(pa.addScaledVector(dir, 0.5), q, new THREE.Vector3(w, len, w));
-  s.add(BOX, m, lin(hex), flag);
+  s.add(BOX, m, lin(hex), thinIf(w, flag));
 }
 
 /** A sagging wire from `a` to `b` (catenary-like parabola), built from `n` rods. */

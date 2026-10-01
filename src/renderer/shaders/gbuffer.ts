@@ -64,12 +64,14 @@ void main(){
 
 export const GBUF_FRAG = /* glsl */ `
 precision highp float;
+uniform int uSS;   // samples per art pixel along each axis: the dither threshold stays per art pixel
 in vec3 vN; in vec3 vC; in float vF; in float vD; in float vA;
 layout(location = 0) out vec4 gAlbedo;
 layout(location = 1) out vec4 gNormal;
 ${BAYER4}
 void main(){
-  if (vA < 0.999 && vA < bayer4(ivec2(gl_FragCoord.xy))) discard;
-  gAlbedo = vec4(vC, 1.0 + floor(vF + 0.5));
+  if (vA < 0.999 && vA < bayer4(ivec2(gl_FragCoord.xy) / uSS)) discard;
+  float f = floor(vF + 0.5);
+  gAlbedo = vec4(vC, 1.0 + f + (vF - f > 0.1 ? 0.25 : 0.0));   // + 0.25: thin mark (flags.ts)
   gNormal = vec4(normalize(vN), vD);
 }`;

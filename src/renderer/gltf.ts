@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { FLAG } from './flags';
+import { FLAG, thin } from './flags';
 import type { GeometryCollector, RGB } from './geometry';
 import type { Motion } from './motion';
 import type { Lamp } from './scene';
@@ -12,6 +12,8 @@ export interface MeshRule {
   flag?: number;
   /** Default: the material's base colour (textures are ignored). */
   color?: RGB;
+  /** Add the thin mark (see `thin` in flags.ts) to whatever flag the mesh ends up with. */
+  thin?: boolean;
   /** Set to make the mesh move: it goes into the dynamic collector. */
   motion?: Motion;
 }
@@ -25,7 +27,7 @@ const nodeName = (o: THREE.Object3D) => (!PREFIX.test(o.name) && o.parent?.type 
 
 /**
  * Behaviour from object-name prefixes, the asset naming convention in docs/ASSET_BRIEF.md: `glass_` is skipped,
- * `water_` and `decor_` get their flags. `thin_` and `move_*` are recognised but change nothing yet (there is no
+ * `water_` and `decor_` get their flags, `thin_` gets the thin mark. `move_*` is recognised but changes nothing yet (there is no
  * spin motion mode). Pass to `collectGltf`, or call it first inside a scene's own rule.
  */
 export function namedMeshRule(mesh: THREE.Mesh): MeshRule | void {
@@ -33,15 +35,16 @@ export function namedMeshRule(mesh: THREE.Mesh): MeshRule | void {
   if (n.startsWith('glass_')) return { skip: true };
   if (n.startsWith('water_')) return { flag: FLAG.WATER };
   if (n.startsWith('decor_')) return { flag: FLAG.DECOR };
+  if (n.startsWith('thin_')) return { thin: true };
 }
 
-/** Lamps from `lamp_*` empties: world position, plus `color` (linear RGB) and `radius` from the node's custom properties. */
+/** Lamps from `lamp_*` empties: world position, plus `color` (linear RGB), `radius` and `clearance` from the node's custom properties. */
 export function collectLamps(root: THREE.Object3D): Lamp[] {
   const lamps: Lamp[] = [];
   root.traverse((o) => {
     if (!/^lamp_/i.test(o.name) || (o as THREE.Mesh).isMesh) return;
-    const { color = [1, 0.62, 0.22], radius = 3 } = o.userData as { color?: [number, number, number]; radius?: number };
-    lamps.push({ position: o.getWorldPosition(new THREE.Vector3()), color, radius });
+    const { color = [1, 0.62, 0.22], radius = 3, clearance } = o.userData as { color?: [number, number, number]; radius?: number; clearance?: number };
+    lamps.push({ position: o.getWorldPosition(new THREE.Vector3()), color, radius, clearance });
   });
   return lamps;
 }
@@ -67,7 +70,8 @@ export function collectGltf(root: THREE.Object3D, staticOut: GeometryCollector, 
     const r = rule(mesh, mat) ?? {};
     if (r.skip) return;
     const e = mat.emissive;
-    const flag = r.flag ?? (e && e.r + e.g + e.b > 0.05 ? FLAG.EMISSIVE : FLAG.NORMAL);
+    const base = r.flag ?? (e && e.r + e.g + e.b > 0.05 ? FLAG.EMISSIVE : FLAG.NORMAL);
+    const flag = r.thin ? thin(base) : base;
     const color = r.color ?? [mat.color.r, mat.color.g, mat.color.b];
     if (r.motion) dynamicOut.add(mesh.geometry, mesh.matrixWorld, color, flag, false, r.motion);
     else staticOut.add(mesh.geometry, mesh.matrixWorld, color, flag);

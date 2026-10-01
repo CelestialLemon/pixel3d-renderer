@@ -18,7 +18,7 @@ void main(){
     for (int k = 0; k < 4; k++) {
       ivec2 q = clamp(p + offsets[k], ivec2(0), ivec2(uRes) - 1);
       vec4 aq = texelFetch(tAlbedo, q, 0), nq = texelFetch(tNormal, q, 0);
-      if (a.a != aq.a || distance(a.rgb, aq.rgb) > 0.01 || dot(nd.xyz, nq.xyz) < 0.97) interior = false;
+      if (floor(a.a + 0.5) != floor(aq.a + 0.5) || distance(a.rgb, aq.rgb) > 0.01 || dot(nd.xyz, nq.xyz) < 0.97) interior = false;
     }
     for (int i = 0; i < 4 && interior; i++) {
       int cnt = 0;

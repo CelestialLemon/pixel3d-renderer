@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { FLAG, linearColor as lin, place, type Lamp } from '../../renderer';
-import { addInward, box, rod, wire, type C } from './kit';
+import { addInward, box, rod, thinIf, wire, type C } from './kit';
 
 // The six bays of the test chart. Each builder gets the bay centre (cx, cz); a bay spans ±3.5 around it.
 // The camera's default azimuth looks from +x/+z, so "front" below means larger z.
@@ -15,8 +15,8 @@ export function thinBay(s: C, cx: number, cz: number) {
   // Poles of every width: dark ones at the back, short light ones in front of them.
   THIN_WIDTHS.forEach((w, i) => {
     const x = cx - 3 + i * 0.42;
-    box(s, x, 0, cz - 2.7, w, 2.2, w, dark);
-    box(s, x, 0, cz - 2.1, w, 1.4, w, light);
+    box(s, x, 0, cz - 2.7, w, 2.2, w, dark, thinIf(w));
+    box(s, x, 0, cz - 2.1, w, 1.4, w, light, thinIf(w));
   });
   // Rails along x between two posts, one per width, stacked.
   box(s, cx + 0.4, 0, cz - 2.4, 0.16, 2.2, 0.16, wood);
@@ -179,7 +179,7 @@ export function lampsBay(s: C, cx: number, cz: number): Lamp[] {
     box(s, x, 0, z, 0.08, 1.6, 0.08, 0x2b2724);
     const glow = new THREE.Color(color[0], color[1], color[2]).getHex(THREE.SRGBColorSpace);
     box(s, x, 1.6, z, 0.22, 0.24, 0.22, glow, FLAG.EMISSIVE);
-    lamps.push({ position: new THREE.Vector3(x, 1.72, z + 0.2), color, radius: 2.6 });
+    lamps.push({ position: new THREE.Vector3(x, 1.72, z), color, radius: 2.6 });   // centre of the head, so the post can't shadow it
   });
   return lamps;
 }

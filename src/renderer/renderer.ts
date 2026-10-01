@@ -5,6 +5,8 @@ import { POST_VERT } from './shaders/common';
 import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_STATIC_VERT } from './shaders/gbuffer';
 import { POST_FRAG } from './shaders/post';
 import { CLEAN_FRAG } from './shaders/cleanup';
+import { RESOLVE_FRAG } from './shaders/resolve';
+import { LAMP_TILE, LampShadows } from './lampShadows';
 
 /** Stylisation switches. All on is the intended look; the toggles exist for comparison and debugging. */
 export interface RenderSettings {
@@ -36,10 +38,15 @@ export class PixelRenderer {
   readonly scene = new THREE.Scene();
   readonly light = new THREE.DirectionalLight(0xffffff, 1);
 
+  /** Supersampled G-buffer (S x S per art pixel) and sun-shadow mask, rasterised by `renderGeometry`. */
+  private gbufHi!: THREE.WebGLRenderTarget;
+  private shadowHi!: THREE.WebGLRenderTarget;
+  /** Resolved to art resolution: albedo+flag, normal+depth, shadow (alpha). What the post shader reads. */
   private gbuf!: THREE.WebGLRenderTarget;
-  private shadowRT!: THREE.WebGLRenderTarget;
   private stylised!: THREE.WebGLRenderTarget;
   private staticMesh: THREE.Mesh;
+  private staticMat: THREE.ShaderMaterial;
+  private resolveMat: THREE.ShaderMaterial;
   private dynMesh: THREE.Mesh;
   private dynMat: THREE.ShaderMaterial;
   private shadowMat: THREE.ShadowMaterial;
@@ -50,9 +57,19 @@ export class PixelRenderer {
   private quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private shadowDirty = true;
   private shadowCenter: THREE.Vector3;
+  private lampShadows: LampShadows;
 
   width = 1; height = 1;
   viewHeight = 13;
+  /**
+   * G-buffer samples per art pixel along each axis: 3 for the thin-feature resolve (docs/THIN_FEATURES.md), or 1 for one
+   * sample at the pixel centre (cheaper; thin features flicker). Takes effect on the next `resize`.
+   */
+  supersample = 3;
+  /** Resolve policy at supersample 3: 0 majority; k >= 1 near-priority, where a nearer surface needs k + 1 of the 9 samples. */
+  resolvePolicy = 1;
+  /** Apply near-priority only to thin-marked surfaces (`thin()`, the `thin_` prefix); everything else resolves by majority. */
+  resolveThinOnly = true;
   sun = new THREE.Vector3(0, 1, 0);
 
   constructor(readonly canvas: HTMLCanvasElement, readonly pixelScene: PixelScene) {
@@ -63,14 +80,15 @@ export class PixelRenderer {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
 
-    const smat = new THREE.ShaderMaterial({ vertexShader: GBUF_STATIC_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide });
+    const smat = new THREE.ShaderMaterial({ vertexShader: GBUF_STATIC_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide, uniforms: { uSS: { value: 1 } } });
     smat.shadowSide = THREE.DoubleSide;
+    this.staticMat = smat;
     this.staticMesh = new THREE.Mesh(pixelScene.staticGeometry, smat);
     this.staticMesh.castShadow = true; this.staticMesh.receiveShadow = true; this.staticMesh.frustumCulled = false;
 
     this.dynMat = new THREE.ShaderMaterial({
       vertexShader: GBUF_DYN_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.DoubleSide,
-      uniforms: { uTime: { value: 0 }, uNight: { value: 0 } },
+      uniforms: { uTime: { value: 0 }, uNight: { value: 0 }, uSS: { value: 1 } },
     });
     this.dynMesh = new THREE.Mesh(pixelScene.dynamicGeometry, this.dynMat);
     this.dynMesh.frustumCulled = false; this.dynMesh.castShadow = false;
@@ -90,6 +108,7 @@ export class PixelRenderer {
     this.shadowMat.transparent = false; this.shadowMat.blending = THREE.NoBlending;
 
     const { lamps, ripples, grooves } = pixelScene;
+    this.lampShadows = new LampShadows(lamps, pixelScene.staticGeometry);
     const common = { glslVersion: THREE.GLSL3, depthTest: false, depthWrite: false } as const;
     this.postMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: POST_FRAG,
@@ -103,6 +122,7 @@ export class PixelRenderer {
         uLitTint: { value: new THREE.Vector2() }, uShadeTint: { value: new THREE.Vector2() },
         uSkyTop: { value: new THREE.Color(0x79b6dc) }, uSkyBot: { value: new THREE.Color(0xf6e6c2) },
         uLampCount: { value: lamps.length },
+        tLampShadow: { value: this.lampShadows.target.texture }, uLampAtlas: { value: new THREE.Vector3(this.lampShadows.size.x, this.lampShadows.size.y, LAMP_TILE) },
         uLampPos: { value: padded(lamps.map((l) => l.position.clone()), LIMITS.lamps, () => new THREE.Vector3()) },
         uLampCol: { value: padded(lamps.map((l) => new THREE.Vector3(...l.color)), LIMITS.lamps, () => new THREE.Vector3()) },
         uLampRad: { value: padded(lamps.map((l) => l.radius), LIMITS.lamps, () => 1) },
@@ -117,6 +137,13 @@ export class PixelRenderer {
     this.cleanMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: CLEAN_FRAG,
       uniforms: { tImage: { value: null }, tAlbedo: { value: null }, tNormal: { value: null }, uRes: { value: new THREE.Vector2() }, uOn: { value: 1 } },
+    });
+    this.resolveMat = new THREE.ShaderMaterial({
+      ...common, vertexShader: POST_VERT, fragmentShader: RESOLVE_FRAG,
+      uniforms: {
+        tAlbedo: { value: null }, tNormal: { value: null }, tShadow: { value: null }, uS: { value: 1 }, uPolicy: { value: 0 }, uThinOnly: { value: 0 }, uTexel: { value: 0.05 },
+        uRight: { value: new THREE.Vector3() }, uUp: { value: new THREE.Vector3() }, uFwd: { value: new THREE.Vector3() },
+      },
     });
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.postMat);
     this.quad.frustumCulled = false;
@@ -143,12 +170,15 @@ export class PixelRenderer {
   resize(w: number, h: number) {
     this.width = w; this.height = h;
     this.renderer.setSize(w, h, false);
-    const mk = (opts: THREE.RenderTargetOptions, count = 1) => new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, generateMipmaps: false, count, ...opts });
-    this.gbuf?.dispose(); this.shadowRT?.dispose(); this.stylised?.dispose();
+    const S = this.supersample === 3 ? 3 : 1;
+    const mk = (opts: THREE.RenderTargetOptions, count = 1, k = 1) => new THREE.WebGLRenderTarget(w * k, h * k, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, generateMipmaps: false, count, ...opts });
+    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised]) t?.dispose();
     // Full float depth avoids false depth discontinuities on planar roof/paving edges.
-    this.gbuf = mk({ type: THREE.FloatType }, 2);
-    this.shadowRT = mk({ type: THREE.UnsignedByteType });
+    this.gbufHi = mk({ type: THREE.FloatType }, 2, S);
+    this.shadowHi = mk({ type: THREE.UnsignedByteType }, 1, S);
+    this.gbuf = mk({ type: THREE.FloatType, depthBuffer: false }, 3);
     this.stylised = mk({ type: THREE.UnsignedByteType, depthBuffer: false });
+    this.staticMat.uniforms.uSS.value = S; this.dynMat.uniforms.uSS.value = S; this.resolveMat.uniforms.uS.value = S;
     this.postMat.uniforms.uRes.value.set(w, h);
     this.cleanMat.uniforms.uRes.value.set(w, h);
   }
@@ -174,9 +204,10 @@ export class PixelRenderer {
   /** Rasterise into the G-buffer (+ static shadow mask) with the dynamic mesh posed at `time` seconds. */
   renderGeometry(time: number) {
     const r = this.renderer;
+    this.lampShadows.render(r);
     this.dynMat.uniforms.uTime.value = time;
     r.setClearColor(0x000000, 0);
-    r.setRenderTarget(this.gbuf); r.clear(); r.render(this.scene, this.camera);
+    r.setRenderTarget(this.gbufHi); r.clear(); r.render(this.scene, this.camera);
 
     // The shadow mask only needs the static world; moving bits borrow the shadow of
     // whatever surface sits behind them, which is what a small tuft or puff would get.
@@ -184,16 +215,25 @@ export class PixelRenderer {
     r.setClearColor(0xffffff, 1);
     this.dynMesh.visible = false;
     this.scene.overrideMaterial = this.shadowMat;
-    r.setRenderTarget(this.shadowRT); r.clear(); r.render(this.scene, this.camera);
+    r.setRenderTarget(this.shadowHi); r.clear(); r.render(this.scene, this.camera);
     this.scene.overrideMaterial = null;
     this.dynMesh.visible = true;
+
+    const ru = this.resolveMat.uniforms;
+    ru.tAlbedo.value = this.gbufHi.textures[0]; ru.tNormal.value = this.gbufHi.textures[1]; ru.tShadow.value = this.shadowHi.texture;
+    ru.uPolicy.value = this.resolvePolicy; ru.uThinOnly.value = this.resolveThinOnly ? 1 : 0; ru.uTexel.value = this.viewHeight / this.height;
+    ru.uRight.value.setFromMatrixColumn(this.camera.matrixWorld, 0);
+    ru.uUp.value.setFromMatrixColumn(this.camera.matrixWorld, 1);
+    ru.uFwd.value.setFromMatrixColumn(this.camera.matrixWorld, 2).negate();
+    this.quad.material = this.resolveMat;
+    r.setRenderTarget(this.gbuf); r.render(this.quadScene, this.quadCam);
   }
 
   /** Stylise the G-buffer into the final pixel image on the canvas. `time` drives clouds and water. */
   renderStyle(s: RenderSettings, time: number) {
     const r = this.renderer, cam = this.camera;
     const u = this.postMat.uniforms;
-    u.tAlbedo.value = this.gbuf.textures[0]; u.tNormal.value = this.gbuf.textures[1]; u.tShadow.value = this.shadowRT.texture;
+    u.tAlbedo.value = this.gbuf.textures[0]; u.tNormal.value = this.gbuf.textures[1]; u.tShadow.value = this.gbuf.textures[2];
     u.uTexel.value = this.viewHeight / this.height;
     u.uRight.value.setFromMatrixColumn(cam.matrixWorld, 0);
     u.uUp.value.setFromMatrixColumn(cam.matrixWorld, 1);
@@ -214,12 +254,19 @@ export class PixelRenderer {
     r.setRenderTarget(null); r.render(this.quadScene, this.quadCam);
   }
 
+  /** Debug and tools: the albedo + flag G-buffer the post shader reads (RGBA float, bottom row first). */
+  readAlbedo(): Float32Array {
+    const out = new Float32Array(this.width * this.height * 4);
+    this.renderer.readRenderTargetPixels(this.gbuf, 0, 0, this.width, this.height, out, undefined, 0);
+    return out;
+  }
+
   /** Free GPU resources. The scene's geometries are disposed too. */
   dispose() {
-    this.gbuf?.dispose(); this.shadowRT?.dispose(); this.stylised?.dispose();
-    this.light.shadow.map?.dispose();
+    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised]) t?.dispose();
+    this.light.shadow.map?.dispose(); this.lampShadows.dispose();
     for (const m of [this.staticMesh, this.dynMesh, this.quad]) m.geometry.dispose();
-    for (const m of [this.staticMesh.material, this.dynMat, this.shadowMat, this.postMat, this.cleanMat]) (m as THREE.Material).dispose();
+    for (const m of [this.staticMat, this.dynMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat]) (m as THREE.Material).dispose();
     this.renderer.dispose();
   }
 }

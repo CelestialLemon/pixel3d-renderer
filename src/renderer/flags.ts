@@ -18,3 +18,10 @@ export const FLAG = {
 } as const;
 
 export type Flag = typeof FLAG[keyof typeof FLAG];
+
+/**
+ * Marks a surface as deliberately thin (wires, spokes, railings: the `thin_` asset prefix). Added to the flag value, so every
+ * shader that rounds the flag still reads the plain flag; the thin-feature resolve keeps marked surfaces visible.
+ */
+export const THIN_MARK = 0.25;
+export const thin = (flag: number) => Math.round(flag) + THIN_MARK;   // idempotent

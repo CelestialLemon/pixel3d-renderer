@@ -52,7 +52,7 @@ Claude is adding a generic name-based rule to the loader, so these prefixes on *
 | `glass_` | Window glass. For now it is skipped (see-through). Put the lit interior *behind* it. |
 | `thin_` | Deliberately thinner than 0.05 m (wires, spokes, railings): a flicker-test feature. |
 | `move_<kind>_` | A part meant to move later (`move_spin_` sails/wheels, `move_sway_` cloth/signs). Make it a separate object with its **origin at the pivot**. |
-| `lamp_` | An **Empty** (not a mesh) marking a light source. Custom properties: `color` (3 floats, linear RGB) and `radius` (metres the light reaches). |
+| `lamp_` | An **Empty** (not a mesh) marking a light source. Custom properties: `color` (3 floats, linear RGB), `radius` (metres the light reaches) and optional `clearance` (metres, default 0.45). Solid geometry blocks lamp light; anything within `clearance` of the empty counts as the lamp's own fixture and doesn't. Set a smaller `clearance` for a lamp mounted near a wall or ceiling that must still block it. |
 
 **Hierarchies:** a mesh's *motion* comes from its nearest `move_*` ancestor (or from itself), pivoting at that ancestor's origin. Its
 *flags* (`thin_`, `decor_`, ...) come from its own name. Example: `move_spin_wheel_L` (rim and hub, origin at the axle) with
@@ -64,7 +64,7 @@ Separate props, one folder each under `assets/props/<name>/`. Each one targets a
 (`?scene=props`) and announce it on the board when it is viewable. Suggested order (the first ones are the most useful):
 
 1. **street_lamp**: a cast-iron post (about 0.08 m thick) with a lantern head, emissive glass panes and a `lamp_` empty inside (warm colour).
-   *Tests:* emissive, a thin vertical pole, a lamp. Make a second variant, **street_lamp_cool**, with a cool blue-white lamp colour (coloured lights are a renderer to-do).
+   *Tests:* emissive, a thin vertical pole, a lamp. Make a second variant, **street_lamp_cool**, with a cool blue-white lamp colour (coloured lamp light works since 2026-10-01).
 2. **fence_set**: a run of picket fence (slats 0.08 m), a wrought-iron railing (bars 0.03 m → `thin_`), and a rope barrier between posts
    (`thin_`). *Tests:* thin features at three widths, side by side.
 3. **cart**: a wooden hand cart with two spoked wheels (each wheel a `move_spin_` object, spokes `thin_` at about 0.03 m, rims thicker). *Tests:* curves, spokes, overlapping depth.
