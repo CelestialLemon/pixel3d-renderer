@@ -1,0 +1,23 @@
+{
+  "id": "telegraph_pole",
+  "description": "Two 3.6 m poles and three 0.02 m sagging overhead wires; deliberate worst-case flicker.",
+  "triangles": 2728,
+  "boundsBlender": {
+    "min": [
+      -2.5910000801086426,
+      -0.824999988079071,
+      0.0
+    ],
+    "max": [
+      2.5910000801086426,
+      0.824999988079071,
+      3.697988986968994
+    ]
+  },
+  "dimensionsMetres": [
+    5.182000160217285,
+    1.649999976158142,
+    3.697988986968994
+  ],
+  "lamps": []
+}

@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { FLAG } from './flags';
+import { FLAG, thin } from './flags';
 import type { GeometryCollector, RGB } from './geometry';
 import type { Motion } from './motion';
+import type { Lamp } from './scene';
 
 /** How one glTF mesh enters the scene. Anything left out uses the default. */
 export interface MeshRule {
@@ -11,8 +12,41 @@ export interface MeshRule {
   flag?: number;
   /** Default: the material's base colour (textures are ignored). */
   color?: RGB;
+  /** Add the thin mark (see `thin` in flags.ts) to whatever flag the mesh ends up with. */
+  thin?: boolean;
   /** Set to make the mesh move: it goes into the dynamic collector. */
   motion?: Motion;
+}
+
+/**
+ * The object's own name, or for a mesh that is one primitive of a multi-material node, the node's name. GLTFLoader
+ * turns such a node into a Group named after the node, whose child meshes are named after the mesh data instead.
+ */
+const PREFIX = /^(decor|water|glass|thin|move|lamp)_/i;
+const nodeName = (o: THREE.Object3D) => (!PREFIX.test(o.name) && o.parent?.type === 'Group' ? o.parent.name : o.name);
+
+/**
+ * Behaviour from object-name prefixes, the asset naming convention in docs/ASSET_BRIEF.md: `glass_` is skipped,
+ * `water_` and `decor_` get their flags, `thin_` gets the thin mark. `move_*` is recognised but changes nothing yet (there is no
+ * spin motion mode). Pass to `collectGltf`, or call it first inside a scene's own rule.
+ */
+export function namedMeshRule(mesh: THREE.Mesh): MeshRule | void {
+  const n = nodeName(mesh).toLowerCase();
+  if (n.startsWith('glass_')) return { skip: true };
+  if (n.startsWith('water_')) return { flag: FLAG.WATER };
+  if (n.startsWith('decor_')) return { flag: FLAG.DECOR };
+  if (n.startsWith('thin_')) return { thin: true };
+}
+
+/** Lamps from `lamp_*` empties: world position, plus `color` (linear RGB), `radius` and `clearance` from the node's custom properties. */
+export function collectLamps(root: THREE.Object3D): Lamp[] {
+  const lamps: Lamp[] = [];
+  root.traverse((o) => {
+    if (!/^lamp_/i.test(o.name) || (o as THREE.Mesh).isMesh) return;
+    const { color = [1, 0.62, 0.22], radius = 3, clearance } = o.userData as { color?: [number, number, number]; radius?: number; clearance?: number };
+    lamps.push({ position: o.getWorldPosition(new THREE.Vector3()), color, radius, clearance });
+  });
+  return lamps;
 }
 
 /** Load a glTF/GLB and bake its world matrices. */
@@ -36,7 +70,8 @@ export function collectGltf(root: THREE.Object3D, staticOut: GeometryCollector, 
     const r = rule(mesh, mat) ?? {};
     if (r.skip) return;
     const e = mat.emissive;
-    const flag = r.flag ?? (e && e.r + e.g + e.b > 0.05 ? FLAG.EMISSIVE : FLAG.NORMAL);
+    const base = r.flag ?? (e && e.r + e.g + e.b > 0.05 ? FLAG.EMISSIVE : FLAG.NORMAL);
+    const flag = r.thin ? thin(base) : base;
     const color = r.color ?? [mat.color.r, mat.color.g, mat.color.b];
     if (r.motion) dynamicOut.add(mesh.geometry, mesh.matrixWorld, color, flag, false, r.motion);
     else staticOut.add(mesh.geometry, mesh.matrixWorld, color, flag);

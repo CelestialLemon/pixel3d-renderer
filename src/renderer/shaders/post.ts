@@ -17,6 +17,7 @@ uniform float uSunI; uniform float uAmbient; uniform float uExpo; uniform float 
 uniform vec2 uLitTint; uniform vec2 uShadeTint;
 uniform vec3 uSkyTop; uniform vec3 uSkyBot;
 uniform int uLampCount; uniform vec3 uLampPos[MAX_LAMPS]; uniform vec3 uLampCol[MAX_LAMPS]; uniform float uLampRad[MAX_LAMPS];
+uniform sampler2D tLampShadow; uniform vec3 uLampAtlas;   // atlas width, height, face tile size
 uniform int uRippleCount; uniform vec2 uRipples[MAX_RIPPLES];
 uniform int uGrooveCount; uniform float uGrooves[MAX_GROOVES]; uniform vec3 uGrooveAxis; uniform vec2 uGrooveY;
 out vec4 outColor;
@@ -52,10 +53,10 @@ vec3 toSRGB(vec3 c){
 
 // Hue-shifted ramp, band -1 (ink) .. 4 (glint). The time-of-day grade adds a warm
 // tint to the lit bands and a cool one to the shadow bands; lamp light ignores both
-// and glows warm. "self" colours (windows, fireflies) ignore exposure.
-vec3 ramp(vec3 lin, int band, int mode){          // mode 0 normal, 1 self-lit, 2 lamp-lit, 3 steam
+// and takes the lamp's colour. "self" colours (windows, fireflies) ignore exposure.
+vec3 ramp(vec3 lin, int band, int mode, vec3 lampTint){   // mode 0 normal, 1 self-lit, 2 lamp-lit, 3 steam
   int i = band + 1;
-  if (mode == 2) lin *= vec3(1.0, 0.66, 0.34) * 1.7;   // warm light multiplies the surface colour
+  if (mode == 2) lin *= lampTint * 1.7;               // lamp light multiplies the surface colour
   const float LM[6] = float[6](0.57, 0.72, 0.86, 1.00, 1.065, 1.12);
   const float CM[6] = float[6](0.72, 0.86, 0.96, 1.00, 0.92, 0.82);
   const vec2  TT[6] = vec2[6](vec2(0.012,-0.020), vec2(0.012,-0.018), vec2(0.006,-0.009), vec2(0.0), vec2(0.002, 0.012), vec2(0.003, 0.018));
@@ -64,9 +65,10 @@ vec3 ramp(vec3 lin, int band, int mode){          // mode 0 normal, 1 self-lit, 
   lab.x = min(lab.x * LM[i] * expo, 0.98);
   lab.yz = lab.yz * CM[i] * (mode == 0 ? uChroma : 1.0) + TT[i];
   if (mode == 0) lab.yz += mix(uShadeTint, uLitTint, smoothstep(1.0, 3.0, float(band) + 1.0));
-  if (mode == 2) { lab.yz *= 1.05; lab.yz += vec2(0.006, 0.016); }
+  if (mode == 2) { lab.yz *= 1.05; lab.yz += 0.017 * normalize(toLab(lampTint).yz + vec2(1e-4, 0.0)) * min(length(toLab(lampTint).yz) * 8.0, 1.0); }
   return fromLab(lab);
 }
+vec3 ramp(vec3 lin, int band, int mode){ return ramp(lin, band, mode, vec3(1.0)); }   // lamp tint unused outside mode 2
 ${BAYER4}
 
 ivec2 clampP(ivec2 q){ return clamp(q, ivec2(0), ivec2(uRes) - 1); }
@@ -109,20 +111,56 @@ float shadeAt(ivec2 q){
   return s;
 }
 
-// Warm light from the scene's lamps: a falloff pool on walls and ground.
-float lampAt(vec3 wp, vec3 n){
-  float L = 0.0;
+// Is the segment lamp i -> wp blocked? The lamp's distance cube map (see lampShadows.ts) holds the
+// nearest solid surface in each direction; 0 means nothing there. Face table matches FACES in lampShadows.ts.
+float lampVisible(int i, vec3 wp, vec3 n){
+  vec3 v = wp + n * 0.03 - uLampPos[i];          // nudge off the surface against self-shadowing
+  vec3 av = abs(v);
+  int face; vec3 F, U;
+  if (av.x >= av.y && av.x >= av.z) { face = v.x > 0.0 ? 0 : 1; F = vec3(sign(v.x), 0, 0); U = vec3(0, 1, 0); }
+  else if (av.y >= av.z)            { face = v.y > 0.0 ? 2 : 3; F = vec3(0, sign(v.y), 0); U = vec3(0, 0, 1); }
+  else                              { face = v.z > 0.0 ? 4 : 5; F = vec3(0, 0, sign(v.z)); U = vec3(0, 1, 0); }
+  vec3 R = cross(F, U);
+  float fw = dot(v, F);
+  vec2 uv = clamp(vec2(dot(v, R), dot(v, U)) / fw * 0.5 + 0.5, 0.0, 0.9999);
+  int t = i * 6 + face, cols = int(uLampAtlas.x / uLampAtlas.z);
+  ivec2 px = ivec2(t % cols, t / cols) * int(uLampAtlas.z) + ivec2(uv * uLampAtlas.z);
+  float stored = texelFetch(tLampShadow, px, 0).r;
+  float dist = length(v);
+  // Slope-scaled bias: a surface seen at a grazing angle spans a long depth range inside one cube texel.
+  float cosA = max(dot(n, -v / max(dist, 1e-4)), 0.2);   // capped: at most 0.02 + 0.06 x distance
+  float texel = 2.0 * dist / uLampAtlas.z;
+  return (stored <= 0.0 || dist < stored + 0.02 + texel * 1.5 / cosA) ? 1.0 : 0.0;
+}
+
+// Light from the scene's lamps: a coloured falloff pool on walls and ground, blocked by solid geometry.
+// Distance below the lamp counts half, so a lamp on a tall post still reaches the ground around it.
+// Returns (colour of the strongest lamp, summed strength): one hue per pool keeps the palette small, and
+// the ordered dither \`jit\` breaks the border where two pools meet into a pixel pattern.
+vec4 lampAt(vec3 wp, vec3 n, float jit){
+  vec4 L = vec4(vec3(1.0), 0.0);
+  float best = 0.0;
   for (int i = 0; i < MAX_LAMPS; i++) {
     if (i >= uLampCount) break;
     vec3 dv = uLampPos[i] - wp; float dist = length(dv);
-    float att = 1.0 - clamp(dist / uLampRad[i], 0.0, 1.0);
-    L += att * att * (0.3 + 0.7 * max(dot(n, dv / max(dist, 1e-3)), 0.0));
+    float att = 1.0 - clamp(length(dv * vec3(1.0, dv.y > 0.0 ? 0.5 : 1.0, 1.0)) / uLampRad[i], 0.0, 1.0);
+    if (att <= 0.0) continue;
+    float ndl = dot(n, dv / max(dist, 1e-3));         // surfaces facing away from the lamp get nothing
+    float k = ndl > 0.0 ? att * att * (0.3 + 0.7 * ndl) : 0.0;
+    if (k < 0.02) continue;
+    k *= lampVisible(i, wp, n);
+    vec3 c = uLampCol[i];
+    float score = k * (1.0 + jit * (fract(float(i) * 0.618034) * 2.0 - 1.0));   // per-lamp phase so the winner varies
+    if (score > best) { best = score; L.rgb = c / max(max(c.r, c.g), max(c.b, 1e-3)); }
+    L.a += k;
   }
-  return L * uLampOn;
+  L.a *= uLampOn;
+  return L;
 }
 
 // Sparse screen-space contact occlusion. Plane-relative depth rejects coplanar
-// tiles; world-sized taps keep the footprint consistent when zooming.
+// tiles; a world-distance bound keeps screen taps from shadowing unrelated surfaces
+// far along the view ray (e.g. a parapet coping across a curved bridge deck).
 float contactAt(ivec2 p, vec3 n, float d){
   if (uContact == 0) return 0.0;
   const vec2 taps[12] = vec2[12](
@@ -134,10 +172,13 @@ float contactAt(ivec2 p, vec3 n, float d){
     float radius = i < 4 ? 0.10 : i < 8 ? 0.24 : 0.43;
     ivec2 offset = ivec2(round(taps[i] * max(radius / uTexel, 1.0)));
     ivec2 q = p + offset;
+    if (any(lessThan(q, ivec2(0))) || any(greaterThanEqual(q, ivec2(uRes)))) continue;
     vec4 aq = A(q), nq = N(q);
     if (aq.a < 0.5 || !solid(flagOf(aq.a))) continue;
+    vec3 separation = (uRight * float(offset.x) + uUp * float(offset.y)) * uTexel + uFwd * (nq.w - d);
+    float rangeWeight = 1.0 - smoothstep(0.43, 0.55, length(separation));
     float delta = predictDepth(n, d, vec2(offset)) - nq.w;
-    occ += smoothstep(0.025, 0.09, delta) * (1.0 - smoothstep(0.5, 1.35, delta));
+    occ += rangeWeight * smoothstep(0.025, 0.09, delta) * (1.0 - smoothstep(0.5, 1.35, delta));
   }
   return occ / 12.0;
 }
@@ -233,7 +274,7 @@ void main(){
   for (int i = 0; i < 4; i++) {
     ivec2 q = p + OFF[i];
     vec4 aq = A(q);
-    if (aq.a != a.a || distance(aq.rgb, a.rgb) > 0.01 || dot(n, N(q).xyz) < 0.94 || abs(N(q).w - predictDepth(n, d, vec2(OFF[i]))) > THR) continue;
+    if (flagOf(aq.a) != fl || distance(aq.rgb, a.rgb) > 0.01 || dot(n, N(q).xyz) < 0.94 || abs(N(q).w - predictDepth(n, d, vec2(OFF[i]))) > THR) continue;
     g = max(g, abs(shadeAt(q) - s));
   }
   float dw = (uDither == 1 && fl != F_DECOR && fl != F_GROOVED && g > 0.003 && g < 0.075) ? 0.045 : 0.0;
@@ -271,23 +312,30 @@ void main(){
   }
 
   // ---- 6. lamp pools: warm light that survives the cool night grade -----------------
+  vec3 lampTint = vec3(1.0);
   if (uLampOn > 0.01 && fl != F_EMISSIVE) {
-    float lamp = lampAt(wp, n);
-    if (uGlow == 1) {                       // halo around lit glass
+    vec4 L = lampAt(wp, n, uDither == 1 ? (bayer4(p) - 0.5) * 0.6 : 0.0);
+    if (uGlow == 1) {                       // halo around lit glass, in the glass colour
       float near = 0.0, spark = 0.0;
+      vec3 glass = vec3(0.0);
       for (int i = 0; i < 8; i++) {
         float ang = float(i) * 0.785398;
         vec2 dir = vec2(cos(ang), sin(ang));
         vec4 aq = A(p + ivec2(round(dir * 3.0)));
-        if (aq.a > 0.5 && flagOf(aq.a) == F_EMISSIVE) near += 0.125;
+        if (aq.a > 0.5 && flagOf(aq.a) == F_EMISSIVE) { near += 0.125; glass += aq.rgb; }
         vec4 ab = A(p + ivec2(round(dir * 2.0)));
-        if (ab.a > 0.5 && flagOf(ab.a) == F_GLOW) spark = 0.45;
+        if (ab.a > 0.5 && flagOf(ab.a) == F_GLOW) { spark = 0.45; glass += ab.rgb * 4.0; }
       }
-      lamp += 0.7 * near * uLampOn + spark;
+      float h = 0.7 * near * uLampOn + spark;
+      if (h > L.a) L.rgb = glass / max(max(glass.r, glass.g), max(glass.b, 1e-3));
+      L.a += h;
     }
-    float lj = lamp + (uDither == 1 ? (bayer4(p) - 0.5) * 0.14 : 0.0);
+    float lj = L.a + (uDither == 1 ? (bayer4(p) - 0.5) * 0.14 : 0.0);
     int lb = lj > 0.60 ? 3 : lj > 0.30 ? 2 : lj > 0.12 ? 1 : 0;
-    if (lb > 0 && fl != F_STEAM) { band = max(band, lb); mode = 2; }
+    if (lb > 0 && fl != F_STEAM) {
+      band = max(band, lb); mode = 2;
+      lampTint = L.rgb;
+    }
   }
 
   // Grooves (door planks): fixed world positions, but always exactly one screen pixel wide, so
@@ -302,6 +350,6 @@ void main(){
     if (nearest * across < 0.5 * uTexel) band = -1;
   }
 
-  vec3 col = ramp(a.rgb, band, mode);
+  vec3 col = ramp(a.rgb, band, mode, lampTint);
   outColor = vec4(toSRGB(finish(col, p)), 1.0);
 }`;

@@ -81,7 +81,8 @@ def arch(name,x,y,z,w,h,depth,mat):
     for i in range(1,17):
         a=math.pi*i/16;pts.append((rad*math.cos(a),spring+rad*math.sin(a)))
     n=len(pts);vs=[(x+px,y+dy,z+pz) for dy in [-depth/2,depth/2] for px,pz in pts]
-    fs=[tuple(range(n-1,-1,-1)),tuple(range(n,2*n))]+[(i,(i+1)%n,(i+1)%n+n,i+n) for i in range(n)]
+    # Wound outward (pts run counter-clockwise seen from the front, -y): an inside-out solid shows its back faces.
+    fs=[tuple(range(n)),tuple(range(2*n-1,n-1,-1))]+[(i,i+n,(i+1)%n+n,(i+1)%n) for i in range(n)]
     return mesh(name,vs,fs,mat,.025)
 
 # The model is entirely mesh geometry; the sprite is only a design reference.

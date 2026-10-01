@@ -44,7 +44,7 @@ src/
   app/                 the demo pages: compare/ (index.html), viewer/ (pass3.html), shared orbit camera, params, pass registry
   reference/           FROZEN: Pass 0 and Pass 1 pipelines and their world. Never edit (golden images prove they are unchanged).
 archive/pass2-atmosphere/   Pass 2, archived (not built)
-assets/cookie-factory/      Blender source, build script and export_glb.py for public/cookie_factory.glb
+assets/cookie-factory/      Blender source, build script and export_glb.py for public/cookie_factory_current.glb
 tools/                      headless-Chrome capture and check scripts
 docs/ROADMAP.md
 ```
@@ -100,7 +100,7 @@ All tools drive headless Chrome with SwiftShader (`tools/lib.mjs`; set `CHROME_P
 
 | Command | Checks |
 | --- | --- |
-| `npm run golden` | **Golden images** (`tools/golden.mjs`): 13 fixed views with a frozen clock, compared pixel for pixel with `out/golden/`. Any difference fails and writes the new image to `out/golden-diff/`. Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update`. `node tools/golden.mjs pass3` runs a subset. |
+| `npm run golden` | **Golden images** (`tools/golden.mjs`): 24 fixed views with a frozen clock, compared pixel for pixel with the approved images in `golden/` (tracked, so a PR shows reviewers every view it changes). Any difference fails and writes the new image to `golden/diff/` (git-ignored). Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update`. `node tools/golden.mjs pass3` runs a subset. |
 | `node tools/verify.mjs` | Comparison page: Pass 0 matches its standalone page; modes; ordered wipe dividers; shared camera, sun and resolution; layouts; PNG export sizes; mobile; time of day; animation toggle; no browser or shader errors. |
 | `node tools/check-viewer.mjs` | The viewer page's controls, compare wipe and mobile layout. |
 | `node tools/anim-check.mjs` | The world moves between two clock times and renders identically at the same time. |
@@ -130,6 +130,9 @@ wide. `node tools/door-strip.mjs` shows they hold steady. Passes 0–1 still fli
 
 ## Assets
 
-`public/cookie_factory.glb` comes from `assets/cookie-factory/cookie_factory.blend` (built by `build_cookie_factory.py`). Regenerate it with
-`blender -b assets/cookie-factory/cookie_factory.blend --python assets/cookie-factory/export_glb.py`. The model was built for Harvest Frenzy
+`public/cookie_factory_current.glb` (the Cookie Co. scene) comes from `assets/cookie-factory/cookie_factory.blend` (built by
+`build_cookie_factory.py`). Regenerate it with
+`blender -b assets/cookie-factory/cookie_factory.blend --python assets/cookie-factory/export_glb.py`. `public/cookie_factory.glb` is
+the frozen export that the Pass 0/1 references load; it predates the fix to the door's inside-out winding and is never re-exported.
+The model was built for Harvest Frenzy
 (`../farm-frenzy` keeps its own 2D sprite versions). three.js turns spaces in node names into underscores, so match names with `[ _]`.

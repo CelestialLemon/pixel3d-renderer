@@ -9,8 +9,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "golden": "node tools/golden.mjs",
     "golden:update": "node tools/golden.mjs --update",
+    "thin-check": "node tools/thin-check.mjs",
+    "lamp-shadow-check": "node tools/lamp-shadow-check.mjs",
+    "resolve-check": "node tools/resolve-check.mjs",
     "verify": "node tools/verify.mjs && node tools/check-viewer.mjs && node tools/anim-check.mjs",
-    "check": "npm run typecheck && npm run golden && npm run verify"
+    "check": "npm run typecheck && npm run lamp-shadow-check && npm run resolve-check && npm run golden && npm run verify"
   },
   "dependencies": {
     "three": "^0.180.0"

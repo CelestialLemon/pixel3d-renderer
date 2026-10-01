@@ -1,15 +1,20 @@
 import type * as THREE from 'three';
 
 /** Shader limits on the per-scene arrays below. Keep in sync with shaders/post.ts. */
-export const LIMITS = { lamps: 8, ripples: 4, grooves: 8 } as const;
+export const LIMITS = { lamps: 16, ripples: 4, grooves: 8 } as const;
 
-/** A warm light that glows after dusk (window, lantern, oven). */
+/** A light that glows after dusk (window, lantern, oven). Solid static geometry blocks it. */
 export interface Lamp {
   position: THREE.Vector3;
-  /** Linear RGB. Passed to the shader but not used yet: lamp light is one fixed warm tint for now. */
+  /** Linear RGB. Tints the lit surfaces; the brightest channel sets the hue, not the strength. */
   color: [number, number, number];
-  /** Distance at which the light fades to nothing. */
+  /** Distance at which the light fades to nothing. Distance below the lamp counts half, so a raised lamp reaches the ground. */
   radius: number;
+  /**
+   * Geometry closer than this to the lamp is its own fixture (lantern base, shade) and casts no lamp shadow.
+   * Default 0.45 m. Lower it for a lamp mounted close to a wall or ceiling that must still block it.
+   */
+  clearance?: number;
 }
 
 /**

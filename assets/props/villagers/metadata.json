@@ -1,0 +1,23 @@
+{
+  "id": "villagers",
+  "description": "Four 1.7\u20131.9 m standing figures: light, medium, deep and olive skin; contrasting clothes; one straw hat.",
+  "triangles": 4112,
+  "boundsBlender": {
+    "min": [
+      -1.8988776206970215,
+      -0.282150000333786,
+      0.0
+    ],
+    "max": [
+      1.8871724605560303,
+      0.282150000333786,
+      1.9205999374389648
+    ]
+  },
+  "dimensionsMetres": [
+    3.7860500812530518,
+    0.564300000667572,
+    1.9205999374389648
+  ],
+  "lamps": []
+}

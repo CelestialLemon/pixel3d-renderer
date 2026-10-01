@@ -12,7 +12,7 @@ import { buildTrees } from './trees';
 // Cookie Co.: the cookie factory from Harvest Frenzy in a meadow with a pond, trees and wildlife.
 
 async function build(paletteSize = 56): Promise<PixelScene> {
-  const root = await loadGltf('/cookie_factory.glb');
+  const root = await loadGltf('/cookie_factory_current.glb');
   // One generator for the whole build, consumed in a fixed order: the scene and its palette are reproducible.
   const rnd = mulberry32(11);
   const s = new GeometryCollector(false), d = new GeometryCollector(true);

@@ -21,6 +21,14 @@ if (params.has('clean-ui')) document.body.classList.add('clean');
 async function main() {
   const pixelScene = await scene.build(params.has('k') ? num('k', 56) : undefined);
   const p3 = new PixelRenderer($<HTMLCanvasElement>('p3-view'), pixelScene);
+  // Thin-feature resolve (docs/THIN_FEATURES.md). The default is ss=3 with resolve=thin; ?ss=1 turns supersampling off and
+  // ?resolve=majority|near|near3 picks another policy for comparison.
+  p3.supersample = num('ss', p3.supersample);
+  const resolve = params.get('resolve');
+  if (resolve) {
+    p3.resolvePolicy = ({ majority: 0, near: 1, near3: 2, thin: 1 } as Record<string, number>)[resolve] ?? p3.resolvePolicy;
+    p3.resolveThinOnly = resolve === 'thin';
+  }
   let p1: PassView | null = null;
   let look: Look = lookAt(hour);
   // Pass 1 has no dusk grade, so it keeps the sun at least 12 degrees up.

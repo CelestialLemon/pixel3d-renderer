@@ -1,0 +1,23 @@
+{
+  "id": "stone_arch_bridge",
+  "description": "Open curved stone footbridge; unobstructed 1.5 m square upward-facing water_ plane.",
+  "triangles": 1282,
+  "boundsBlender": {
+    "min": [
+      -2.0299999713897705,
+      -1.059999942779541,
+      0.0
+    ],
+    "max": [
+      2.0299999713897705,
+      1.059999942779541,
+      1.8300000429153442
+    ]
+  },
+  "dimensionsMetres": [
+    4.059999942779541,
+    2.119999885559082,
+    1.8300000429153442
+  ],
+  "lamps": []
+}

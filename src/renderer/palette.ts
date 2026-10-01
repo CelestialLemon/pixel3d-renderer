@@ -21,7 +21,7 @@ const fromLab = ([L, a, b]: RGB): RGB => {
 export function quantizePalette(geos: THREE.BufferGeometry[], K: number, rnd: () => number): number {
   const key = (col: THREE.BufferAttribute, flag: THREE.BufferAttribute, i: number) => {
     const q = (v: number) => Math.round(v * 1023);
-    return q(col.getX(i)) * 1048576 + q(col.getY(i)) * 1024 + q(col.getZ(i)) + flag.getX(i) * 1e10;
+    return q(col.getX(i)) * 1048576 + q(col.getY(i)) * 1024 + q(col.getZ(i)) + Math.round(flag.getX(i)) * 1e10;   // rounded: the thin mark is not a colour
   };
   const uniq = new Map<number, { rgb: RGB; lab: RGB; w: number; idx: number }>();
   for (const g of geos) {
