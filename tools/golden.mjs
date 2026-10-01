@@ -1,11 +1,11 @@
 // Golden-image regression check: renders a fixed set of views with a frozen clock and compares them
 // pixel for pixel against images saved earlier.
-//   node tools/golden.mjs --update   save the current output as the reference (out/golden/)
+//   node tools/golden.mjs --update   save the current output as the reference (golden/)
 //   node tools/golden.mjs            compare against the reference; exits 1 on any difference
 //   node tools/golden.mjs pass3      only the shots whose name contains "pass3"
-// Diff images for failed shots go to out/golden-diff/. Use this to prove a refactor changed nothing,
-// and to see exactly which views a deliberate renderer change affects.
-import { readFile } from 'node:fs/promises';
+// The new render of each failed shot goes to golden/diff/; each run first removes the diffs of the shots it renders.
+// Use this to prove a refactor changed nothing, and to see exactly which views a deliberate renderer change affects.
+import { readFile, rm } from 'node:fs/promises';
 import { launch, newPage, open, canvasPng, writePng, pixelDiff } from './lib.mjs';
 
 const VIEW = 'auto=0&clean-ui=1&time=8&px=3';
@@ -38,14 +38,15 @@ try {
   for (const shot of shots) {
     if (shot.path !== loaded) { await open(page, shot.path); loaded = shot.path; }
     const png = await canvasPng(page, shot.canvas);
-    const ref = `out/golden/${shot.name}.png`;
+    const ref = `golden/${shot.name}.png`, diff = `golden/diff/${shot.name}.png`;
+    await rm(diff, { force: true });   // a stale diff from an earlier run must not outlive a now-identical shot
     if (update) { await writePng(ref, png); console.log('saved', shot.name); continue; }
     const saved = await readFile(ref).catch(() => null);
     if (!saved) { console.log('MISSING', shot.name, '(run with --update first)'); failed++; continue; }
     const result = await pixelDiff(page, 'data:image/png;base64,' + saved.toString('base64'), png);
     if (result.sizeMismatch || result.pixels > 0) {
       failed++;
-      await writePng(`out/golden-diff/${shot.name}.png`, png);
+      await writePng(diff, png);
       console.log('DIFF', shot.name, JSON.stringify(result));
     } else console.log('same', shot.name);
   }
