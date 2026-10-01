@@ -5,5 +5,5 @@ export { FLAG, type Flag } from './flags';
 export { MODE, motion, type Motion, type Vec3, type Vec4 } from './motion';
 export { GeometryCollector, linearColor, place, flip, type RGB } from './geometry';
 export { quantizePalette } from './palette';
-export { loadGltf, collectGltf, type MeshRule } from './gltf';
+export { loadGltf, collectGltf, namedMeshRule, collectLamps, type MeshRule } from './gltf';
 export { lookAt, nearestPreset, hourLabel, PRESETS, type Look } from './look';

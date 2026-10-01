@@ -8,7 +8,8 @@ type ViewState = { az: number; el: number; size: number; tx: number; tz: number 
 /**
  * Damped orbit camera shared by the demo pages: drag to orbit, wheel to zoom, shift/right-drag to pan,
  * 45-degree turns, optional auto-orbit. `view` eases towards `target` every frame.
- * Query parameters: `az`, `el` (degrees), `zoom` (visible world height), `auto=1`.
+ * Query parameters: `view` (a scene preset name), then `az`, `el` (degrees), `zoom` (visible world height), `tx`, `tz`
+ * (orbit target) override it; `auto=1`.
  */
 export class Orbit {
   readonly view: ViewState;
@@ -18,8 +19,12 @@ export class Orbit {
   private pausedUntil = 0;
 
   constructor(readonly scene: SceneView) {
-    const first = scene.presets[0];
-    this.view = { az: num('az', scene.azimuth) * DEG, el: num('el', first.el) * DEG, size: num('zoom', first.size), tx: scene.target.x, tz: scene.target.z };
+    const name = params.get('view')?.toLowerCase();
+    const first = scene.presets.find((p) => p.name.toLowerCase() === name) ?? scene.presets[0];
+    this.view = {
+      az: num('az', first.az ?? scene.azimuth) * DEG, el: num('el', first.el) * DEG, size: num('zoom', first.size),
+      tx: num('tx', first.tx ?? scene.target.x), tz: num('tz', first.tz ?? scene.target.z),
+    };
     this.target = { ...this.view };
   }
 
@@ -32,7 +37,13 @@ export class Orbit {
   /** Snap to the nearest 45 degrees, then turn `delta` steps. */
   turn(delta: number) { this.target.az = Math.round(this.target.az / (45 * DEG)) * 45 * DEG + delta * 45 * DEG; this.pause(); }
 
-  preset(index: number) { const p = this.scene.presets[index]; this.target.size = p.size; this.target.el = p.el * DEG; }
+  preset(index: number) {
+    const p = this.scene.presets[index], t = this.target;
+    t.size = p.size; t.el = p.el * DEG;
+    if (p.tx !== undefined) t.tx = p.tx;
+    if (p.tz !== undefined) t.tz = p.tz;
+    if (p.az !== undefined) t.az = p.az * DEG;
+  }
 
   /** Jump straight to the target (no easing). */
   snap() { Object.assign(this.view, this.target); }

@@ -21,6 +21,11 @@ const SHOTS = [
   { name: 'pass3-side', path: `pass3.html?${VIEW}&hour=12&az=120&el=50&zoom=12`, canvas: 'p3-view' },
   { name: 'pass3-door', path: `pass3.html?${VIEW}&hour=19.5&zoom=6&px=2`, canvas: 'p3-view' },
   { name: 'pass3-flat', path: `pass3.html?${VIEW}&hour=12&outline=0&dither=0&clean=0&contacts=0&clouds=0&glow=0&vignette=0`, canvas: 'p3-view' },
+  // Test chart (src/scenes/test-chart): the overview at three times of day, then each bay's camera preset.
+  ...[12, 17.5, 22].map((h) => ({ name: `chart-overview-hour${h}`, path: `pass3.html?${VIEW}&scene=test-chart&hour=${h}`, canvas: 'p3-view' })),
+  ...['thin', 'curves', 'ink', 'ao', 'palette', 'lamps'].map((v) => ({ name: `chart-${v}`, path: `pass3.html?${VIEW}&scene=test-chart&view=${v}&hour=12`, canvas: 'p3-view' })),
+  { name: 'chart-lamps-night', path: `pass3.html?${VIEW}&scene=test-chart&view=lamps&hour=22`, canvas: 'p3-view' },
+  { name: 'chart-curves-golden', path: `pass3.html?${VIEW}&scene=test-chart&view=curves&hour=17.5`, canvas: 'p3-view' },
 ];
 
 const args = process.argv.slice(2), update = args.includes('--update'), filter = args.find((a) => !a.startsWith('--'));

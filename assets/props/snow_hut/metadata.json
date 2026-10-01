@@ -1,0 +1,23 @@
+{
+  "id": "snow_hut",
+  "description": "Snow-covered hut, snowman and winter pine; distinct near-white, blue-shadow snow and ice materials.",
+  "triangles": 2542,
+  "boundsBlender": {
+    "min": [
+      -2.4978549480438232,
+      -1.0425000190734863,
+      0.0
+    ],
+    "max": [
+      2.4978549480438232,
+      1.0425000190734863,
+      3.0299999713897705
+    ]
+  },
+  "dimensionsMetres": [
+    4.9957098960876465,
+    2.0850000381469727,
+    3.0299999713897705
+  ],
+  "lamps": []
+}

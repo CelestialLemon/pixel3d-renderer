@@ -1,0 +1,23 @@
+{
+  "id": "well",
+  "description": "Actual hollow annular stone interior, sheltered roof, crank and 0.025 m hanging rope.",
+  "triangles": 2460,
+  "boundsBlender": {
+    "min": [
+      -1.1500000953674316,
+      -0.8299999833106995,
+      0.0
+    ],
+    "max": [
+      1.1500000953674316,
+      0.8299999833106995,
+      2.7200000286102295
+    ]
+  },
+  "dimensionsMetres": [
+    2.3000001907348633,
+    1.659999966621399,
+    2.7200000286102295
+  ],
+  "lamps": []
+}

@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FLAG } from './flags';
 import type { GeometryCollector, RGB } from './geometry';
 import type { Motion } from './motion';
+import type { Lamp } from './scene';
 
 /** How one glTF mesh enters the scene. Anything left out uses the default. */
 export interface MeshRule {
@@ -13,6 +14,36 @@ export interface MeshRule {
   color?: RGB;
   /** Set to make the mesh move: it goes into the dynamic collector. */
   motion?: Motion;
+}
+
+/**
+ * The object's own name, or for a mesh that is one primitive of a multi-material node, the node's name. GLTFLoader
+ * turns such a node into a Group named after the node, whose child meshes are named after the mesh data instead.
+ */
+const PREFIX = /^(decor|water|glass|thin|move|lamp)_/i;
+const nodeName = (o: THREE.Object3D) => (!PREFIX.test(o.name) && o.parent?.type === 'Group' ? o.parent.name : o.name);
+
+/**
+ * Behaviour from object-name prefixes, the asset naming convention in docs/ASSET_BRIEF.md: `glass_` is skipped,
+ * `water_` and `decor_` get their flags. `thin_` and `move_*` are recognised but change nothing yet (there is no
+ * spin motion mode). Pass to `collectGltf`, or call it first inside a scene's own rule.
+ */
+export function namedMeshRule(mesh: THREE.Mesh): MeshRule | void {
+  const n = nodeName(mesh).toLowerCase();
+  if (n.startsWith('glass_')) return { skip: true };
+  if (n.startsWith('water_')) return { flag: FLAG.WATER };
+  if (n.startsWith('decor_')) return { flag: FLAG.DECOR };
+}
+
+/** Lamps from `lamp_*` empties: world position, plus `color` (linear RGB) and `radius` from the node's custom properties. */
+export function collectLamps(root: THREE.Object3D): Lamp[] {
+  const lamps: Lamp[] = [];
+  root.traverse((o) => {
+    if (!/^lamp_/i.test(o.name) || (o as THREE.Mesh).isMesh) return;
+    const { color = [1, 0.62, 0.22], radius = 3 } = o.userData as { color?: [number, number, number]; radius?: number };
+    lamps.push({ position: o.getWorldPosition(new THREE.Vector3()), color, radius });
+  });
+  return lamps;
 }
 
 /** Load a glTF/GLB and bake its world matrices. */

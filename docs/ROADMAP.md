@@ -8,18 +8,25 @@ and every animation anchor are `PixelScene` data or per-vertex attributes. Scene
 registry, Passes 0–1 are frozen in `src/reference/`, Pass 2 is archived, and `tools/golden.mjs` gives pixel-exact regression checks.
 The restructure changed no output pixels.
 
-## 1. Test scenes (next)
+## 1. Test scenes (in progress)
 
 The renderer has only ever been judged on one cozy daytime meadow, so a change can look good there and break on content it has never seen.
 
-1. **A test-chart scene** (`src/scenes/test-chart/`): a calibration grid where each row targets one risk.
-   - Thin features at several widths: fences, rails, wires, mullions, ladders, poles. These feed section 2.
-   - Smooth curves (sphere, torus, dome) for banding and dither.
-   - Overlapping silhouettes at nearly equal depth, stairs and concave interiors for ink and creases.
-   - Overhangs, arches and a tunnel for AO and self-shadowing.
-   - A palette stress strip: saturated hues, near-identical neighbours, white, near-black, skin tones, metals.
-   - Large flat planes at different heights for seams, plus coloured and many lamps and a lit interior behind glass.
-2. **Golden shots for each scene.** Add test-chart views to `tools/golden.mjs`, and saved camera bookmarks per scene so captures repeat exactly.
+1. **Done (2026-10-01): the test-chart scene** (`?scene=test-chart`, `src/scenes/test-chart/`). Six bays on a 1 m checker: thin
+   features (poles, rails, ladder, wires, fence, mullions at 0.02–0.16 widths), curves, ink and creases, AO and self-shadowing, palette
+   stress, and terraces with a lit room and seven coloured lamps. Each bay is a camera preset (`?view=thin|curves|ink|ao|palette|lamps`),
+   and `tools/golden.mjs` has 12 `chart-*` shots. **What it showed on first run:**
+   - Rails and poles under ~0.04 render as broken dotted lines (the sub-pixel problem of section 2, now measurable per width).
+   - All six near-identical colour pairs collapse to one palette colour each, and the two darkest greys merge.
+   - Lamp light ignores occlusion: the room's lamp makes a dithered pool on top of its own roof and speckles outside its walls.
+   - Lamp colour is ignored (section 3): seven differently coloured lamps cast identical orange pools.
+   - Metals read as flat coloured balls: there is no specular or metal treatment.
+   - The broad low mound renders as one flat band at noon (no visible gradient on a gentle slope).
+   - Found on the props gallery: contact occlusion (`contactAt` in `shaders/post.ts`) paints a false checker on the faceted, curved
+     deck of `stone_arch_bridge`. It disappears with `contacts=0`. Repro: `pass3.html?scene=props&view=stone_arch_bridge&zoom=5&hour=12`.
+2. **Modeled props (in progress, with a second agent):** purpose-made Blender props per `docs/ASSET_BRIEF.md`, coordinated on
+   `docs/BOARD.md`. Next on the renderer side: name-prefix loader rules (`decor_`, `water_`, `glass_`, `thin_`, `move_`, `lamp_`)
+   and a `?scene=props` gallery.
 3. **CC0 low-poly packs** (Kenney, Quaternius, KayKit) through `collectGltf`. These are the first real-world assets, and they need:
    - **Textures:** today only `material.color` is read, so a textured model renders as one flat colour per material. Sample the base-colour
      texture per vertex or face before quantisation, or add a UV/albedo-texture path to the G-buffer.

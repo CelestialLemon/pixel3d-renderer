@@ -1,0 +1,23 @@
+{
+  "id": "market_stall",
+  "description": "Produce canopy with 0.6 m front overhang, two distinct red stripe tones and saturated fruit.",
+  "triangles": 4620,
+  "boundsBlender": {
+    "min": [
+      -1.25,
+      -1.0149999856948853,
+      0.0
+    ],
+    "max": [
+      1.25,
+      1.0149999856948853,
+      2.930000066757202
+    ]
+  },
+  "dimensionsMetres": [
+    2.5,
+    2.0299999713897705,
+    2.930000066757202
+  ],
+  "lamps": []
+}

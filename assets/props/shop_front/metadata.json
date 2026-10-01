@@ -1,0 +1,38 @@
+{
+  "id": "shop_front",
+  "description": "Open lit shop display behind glass_ panel; warm lamp; stocked shelves; move_sway_ hanging sign.",
+  "triangles": 2020,
+  "boundsBlender": {
+    "min": [
+      -1.75,
+      -0.9699999094009399,
+      0.0
+    ],
+    "max": [
+      1.75,
+      0.9700000286102295,
+      3.5199999809265137
+    ]
+  },
+  "dimensionsMetres": [
+    3.5,
+    1.9399999380111694,
+    3.5199999809265137
+  ],
+  "lamps": [
+    {
+      "name": "lamp_shop_interior",
+      "positionBlender": [
+        -0.19999998807907104,
+        -0.11999998986721039,
+        2.190000057220459
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.21
+      ],
+      "radius": 2.5
+    }
+  ]
+}

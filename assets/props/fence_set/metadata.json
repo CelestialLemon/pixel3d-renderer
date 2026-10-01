@@ -1,0 +1,23 @@
+{
+  "id": "fence_set",
+  "description": "Three width tests: 0.08 m pine pickets, 0.03 m iron bars and 0.03 m sagging rope.",
+  "triangles": 1802,
+  "boundsBlender": {
+    "min": [
+      -3.931317090988159,
+      -0.08500000089406967,
+      0.0
+    ],
+    "max": [
+      3.934999942779541,
+      0.10000000149011612,
+      1.2799999713897705
+    ]
+  },
+  "dimensionsMetres": [
+    7.866316795349121,
+    0.1850000023841858,
+    1.2799999713897705
+  ],
+  "lamps": []
+}

@@ -1,0 +1,23 @@
+{
+  "id": "metal_props",
+  "description": "Copper hollow pot, iron anvil on a stump, hollow brass bell and curved steel kettle.",
+  "triangles": 4156,
+  "boundsBlender": {
+    "min": [
+      -2.221250057220459,
+      -0.38999998569488525,
+      0.0
+    ],
+    "max": [
+      2.221250057220459,
+      0.38999998569488525,
+      1.0425000190734863
+    ]
+  },
+  "dimensionsMetres": [
+    4.442500114440918,
+    0.7799999713897705,
+    1.0425000190734863
+  ],
+  "lamps": []
+}

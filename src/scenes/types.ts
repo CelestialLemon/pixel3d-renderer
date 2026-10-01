@@ -7,8 +7,11 @@ export interface SceneView {
   groundY: number;
   /** Pan limits for the orbit target. */
   pan: { minX: number; maxX: number; minZ: number; maxZ: number };
-  /** Named framings for the preset buttons. The first one is the default. */
-  presets: { name: string; size: number; el: number }[];
+  /**
+   * Named framings for the preset buttons; `?view=<name>` (case-insensitive) starts on one. The first one is the default.
+   * `tx`/`tz` move the orbit target, `az` sets the azimuth (degrees); left out, they keep the current value.
+   */
+  presets: { name: string; size: number; el: number; tx?: number; tz?: number; az?: number }[];
   azimuth: number;
 }
 

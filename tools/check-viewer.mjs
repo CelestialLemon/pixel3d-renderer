@@ -31,6 +31,10 @@ try {
   ok('canvas exports PNG', (await page.evaluate(() => document.getElementById('p3-view').toDataURL('image/png').length)) > 5000);
   await page.setViewport({ width: 390, height: 780, deviceScaleFactor: 2 }); await new Promise((r) => setTimeout(r, 1500));
   ok('mobile viewport has no horizontal scroll', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.setViewport({ width: 1200, height: 800 });
+  await open(page, 'pass3.html?auto=0&scene=test-chart&view=ink');
+  ok('?view= starts on a bay preset', (await st()).tx === 8);
+  await page.click('#view-presets button:nth-child(2)'); ok('bay preset moves the orbit target', (await st()).tx === -8);
   ok(`no console/page errors (${errors.length})`, errors.length === 0); if (errors.length) console.log(errors);
 } finally { await browser.close(); }
 process.exitCode = failed ? 1 : 0;
