@@ -7,6 +7,12 @@ export const num = (key: string, fallback: number) => {
   return value !== null && value !== '' && Number.isFinite(+value) ? +value : fallback;
 };
 
+/** Palette size parameter: a whole number of at least 1, or `fallback` (the quantizer rejects anything else). */
+export const paletteSize = (key: string, fallback: number) => {
+  const value = num(key, fallback);
+  return Number.isInteger(value) && value >= 1 ? value : fallback;
+};
+
 /** Switch that is on unless the parameter is `0`. */
 export const on = (key: string) => params.get(key) !== '0';
 

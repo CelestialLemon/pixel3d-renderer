@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { collectGltf, collectLamps, GeometryCollector, LIMITS, linearColor as lin, loadGltf, namedMeshRule, place, quantizePalette, type Lamp, type PixelScene } from '../../renderer';
-import { mulberry32 } from '../shared/random';
+import { DEFAULT_PALETTE_SIZE, collectGltf, collectLamps, GeometryCollector, LIMITS, linearColor as lin, loadGltf, namedMeshRule, place, quantizePalette, type Lamp, type PixelScene } from '../../renderer';
 import type { SceneDefinition, SceneView } from '../types';
 
 // Props gallery: every modeled prop in assets/props/<id>/ (built per docs/ASSET_BRIEF.md, exported to
@@ -31,8 +30,7 @@ function layout() {
 }
 const LAYOUT = layout();
 
-async function build(paletteSize = 56): Promise<PixelScene> {
-  const rnd = mulberry32(3);
+async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const s = new GeometryCollector(false), d = new GeometryCollector(true);
   const tile = new THREE.PlaneGeometry(1, 1), tiles = [lin(0x9c9a8e), lin(0xa5a397)];
   const gx = Math.ceil(LAYOUT.hx), gz = Math.ceil(LAYOUT.hz);
@@ -53,7 +51,7 @@ async function build(paletteSize = 56): Promise<PixelScene> {
   }
 
   const staticGeometry = s.build(), dynamicGeometry = d.build();
-  const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize, rnd);
+  const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize);
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
   return {
     staticGeometry, dynamicGeometry, lamps, ripples: [], grooves: null,

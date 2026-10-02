@@ -26,7 +26,7 @@ emission**. Everything else is thrown away. So:
   and **`export_extras=True`** (custom properties carry lamp data, see below). Write to `public/props/<name>.glb`.
 - **Colour = one flat Principled *Base Color* per material.** No textures, no UVs, no vertex colours, no procedural shader nodes. All of these are
   ignored. For variation, use several materials (the factory uses 5 terracotta tile materials and 4 brick materials, for example). Give
-  materials descriptive names ("Weathered pine plank"). The renderer reduces every scene to a palette of about 56 colours, so dozens of
+  materials descriptive names ("Weathered pine plank"). The renderer reduces every scene to a palette of about 80 colours, so dozens of
   near-identical shades are wasted. Pick colours deliberately.
 - **Self-lit surfaces** (lit windows, lantern glass, glowing signs): give the material an Emission colour with strength of about 0.3 or more. The loader flags them
   emissive automatically.

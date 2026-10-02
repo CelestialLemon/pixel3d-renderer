@@ -19,6 +19,12 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    - Rails and poles under ~0.04 render as broken dotted lines (the sub-pixel problem of section 2, now measurable per width).
      **Fixed 2026-10-01** by the thin-feature resolve (section 2).
    - All six near-identical colour pairs collapse to one palette colour each, and the two darkest greys merge.
+     **Improved 2026-10-02:** the palette is chosen by minimax merging instead of k-means (`quantizePalette`), so a
+     colour on a small object is no longer absorbed into a clearly different one, and the default size is now 80 colours
+     (`DEFAULT_PALETTE_SIZE`). At 80 the darkest greys and the other distinct colours (dark teal, navy/purple, pink/peach,
+     mint/cream, white/off-white) separate; the six near-identical pairs and the two ground checker tiles still merge, because
+     they are the closest colours in the chart. `tools/palette-check.mjs` reports each scene's worst colour shift;
+     `?compare=palette&left-k=56&k=80` wipes two palettes against each other.
    - Lamp light ignores occlusion: the room's lamp makes a dithered pool on top of its own roof and speckles outside its walls.
      **Fixed 2026-10-01:** per-lamp distance cube maps (`src/renderer/lampShadows.ts`), with `Lamp.clearance` for the lamp's own fixture.
    - Lamp colour is ignored (section 3): seven differently coloured lamps cast identical orange pools. **Fixed 2026-10-01:** each pool

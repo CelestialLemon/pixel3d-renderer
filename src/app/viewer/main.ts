@@ -1,13 +1,14 @@
 import * as THREE from 'three';
-import { hourLabel, lookAt, nearestPreset, PixelRenderer, PRESETS, type Look, type RenderSettings } from '../../renderer';
+import { DEFAULT_PALETTE_SIZE, hourLabel, lookAt, nearestPreset, PixelRenderer, PRESETS, type Look, type RenderSettings } from '../../renderer';
 import { buildWorld } from '../../reference/world';
 import { SCENES, sceneById } from '../../scenes';
 import { Orbit } from '../orbit';
-import { $, num, params, settingsFromParams } from '../params';
+import { $, num, paletteSize as paletteParam, params, settingsFromParams } from '../params';
 import { PASSES, type PassView } from '../passes';
 
 // The current renderer on its own, full window, with time-of-day controls. `?scene=<id>` picks the scene.
-// For scenes the reference passes also draw, it can wipe against Pass 1.
+// For scenes the reference passes also draw, it can wipe against Pass 1. On any scene it can wipe against the
+// same scene with another palette size (`?compare=palette`, `?left-k=` for the left side, `?k=` for the right).
 
 const scene = sceneById(params.get('scene'));
 const settings: RenderSettings & { pixel: number; animate: boolean } = {
@@ -15,27 +16,37 @@ const settings: RenderSettings & { pixel: number; animate: boolean } = {
 };
 const orbit = new Orbit(scene.view);
 let hour = num('hour', 17.5), cycle = params.get('cycle') === '1', dirty = true;
-let compare = params.get('compare') === '1' && scene.hasReference, split = num('split', 50);
+// What the left of the wipe shows: Pass 1, or this renderer with another palette size.
+type Compare = 'off' | 'pass1' | 'palette';
+let compare: Compare = params.get('compare') === 'palette' ? 'palette' : params.get('compare') === '1' && scene.hasReference ? 'pass1' : 'off';
+let split = num('split', 50);
+// The left side defaults to 56 colours, the budget before 2026-10-02.
+const LEFT_PALETTE_SIZE = 56;
 if (params.has('clean-ui')) document.body.classList.add('clean');
 
 async function main() {
-  const pixelScene = await scene.build(params.has('k') ? num('k', 56) : undefined);
-  const p3 = new PixelRenderer($<HTMLCanvasElement>('p3-view'), pixelScene);
+  const paletteSize = params.has('k') ? paletteParam('k', DEFAULT_PALETTE_SIZE) : undefined, leftPaletteSize = paletteParam('left-k', LEFT_PALETTE_SIZE);
+  const pixelScene = await scene.build(paletteSize);
   // Thin-feature resolve (docs/THIN_FEATURES.md). The default is ss=3 with resolve=thin; ?ss=1 turns supersampling off and
   // ?resolve=majority|near|near3 picks another policy for comparison.
-  p3.supersample = num('ss', p3.supersample);
-  const resolve = params.get('resolve');
-  if (resolve) {
-    p3.resolvePolicy = ({ majority: 0, near: 1, near3: 2, thin: 1 } as Record<string, number>)[resolve] ?? p3.resolvePolicy;
-    p3.resolveThinOnly = resolve === 'thin';
-  }
-  let p1: PassView | null = null;
+  const configure = (r: PixelRenderer) => {
+    r.supersample = num('ss', r.supersample);
+    const resolve = params.get('resolve');
+    if (resolve) {
+      r.resolvePolicy = ({ majority: 0, near: 1, near3: 2, thin: 1 } as Record<string, number>)[resolve] ?? r.resolvePolicy;
+      r.resolveThinOnly = resolve === 'thin';
+    }
+    return r;
+  };
+  const p3 = configure(new PixelRenderer($<HTMLCanvasElement>('p3-view'), pixelScene));
+  let p1: PassView | null = null, pOther: PixelRenderer | null = null;
+  const left = () => (compare === 'pass1' ? p1 : compare === 'palette' ? pOther : null);
   let look: Look = lookAt(hour);
   // Pass 1 has no dusk grade, so it keeps the sun at least 12 degrees up.
   const pass1Look = (): Look => ({ ...look, sunEl: Math.max(look.sunEl, 12) });
   const applyLook = () => {
     look = lookAt(hour);
-    p3.setLook(look); p1?.setLook(pass1Look());
+    p3.setLook(look); p1?.setLook(pass1Look()); pOther?.setLook(look);
     $<HTMLOutputElement>('clock').value = hourLabel(hour);
     $('clock-title').textContent = `${nearestPreset(hour)} · ${hourLabel(hour)}`;
     $<HTMLInputElement>('hour').value = String(hour);
@@ -49,9 +60,17 @@ async function main() {
     p1.setLook(pass1Look());
     fit();
   };
+  const ensureOther = async () => {
+    if (pOther) return;
+    $('loading').classList.remove('done');
+    pOther = configure(new PixelRenderer($<HTMLCanvasElement>('pal-view'), await scene.build(leftPaletteSize)));
+    $('loading').classList.add('done');
+    pOther.setLook(look);
+    fit();
+  };
   const fit = () => {
     const w = Math.max(1, Math.ceil(innerWidth / settings.pixel)), h = Math.max(1, Math.ceil(innerHeight / settings.pixel));
-    for (const [pipe, el] of [[p3, 'p3-view'], [p1, 'p1-view']] as const) {
+    for (const [pipe, el] of [[p3, 'p3-view'], [p1, 'p1-view'], [pOther, 'pal-view']] as const) {
       if (!pipe) continue;
       if (pipe.width !== w || pipe.height !== h) pipe.resize(w, h);
       const c = $<HTMLCanvasElement>(el); c.style.width = `${w * settings.pixel}px`; c.style.height = `${h * settings.pixel}px`;
@@ -86,13 +105,23 @@ async function main() {
   $('title-name').textContent = scene.title;
 
   const setSplit = (v: number) => { split = THREE.MathUtils.clamp(v, 0, 100); document.body.style.setProperty('--split', `${split}%`); $('divider').setAttribute('aria-valuenow', String(Math.round(split))); };
-  const setCompare = async (next: boolean) => {
-    compare = next && scene.hasReference; $<HTMLInputElement>('compare').checked = compare;
-    if (compare) await ensureP1();
-    document.body.classList.toggle('compare', compare); dirty = true;
+  // Both comparisons draw into the left canvas, so only one can be on at a time. `true` means Pass 1 (the old API).
+  const setCompare = async (next: Compare | boolean) => {
+    compare = next === true ? 'pass1' : next === false ? 'off' : next;
+    if (compare === 'pass1' && !scene.hasReference) compare = 'off';
+    $<HTMLInputElement>('compare').checked = compare === 'pass1';
+    $<HTMLInputElement>('compare-palette').checked = compare === 'palette';
+    if (compare === 'pass1') await ensureP1();
+    if (compare === 'palette') await ensureOther();
+    $('tag1').textContent = compare === 'palette' && pOther ? `${pOther.pixelScene.stats.paletteColors} colours` : 'Pass 1';
+    $('tag3').textContent = compare === 'palette' ? `${pixelScene.stats.paletteColors} colours` : 'Pass 3';
+    $('palette-sizes').hidden = compare !== 'palette';
+    document.body.classList.toggle('compare', compare !== 'off');
+    document.body.classList.toggle('compare-pass1', compare === 'pass1'); document.body.classList.toggle('compare-palette', compare === 'palette'); fit();
   };
   $<HTMLInputElement>('compare').closest('label')!.hidden = !scene.hasReference;
-  $<HTMLInputElement>('compare').onchange = (e) => setCompare((e.target as HTMLInputElement).checked);
+  $<HTMLInputElement>('compare').onchange = (e) => setCompare((e.target as HTMLInputElement).checked ? 'pass1' : 'off');
+  $<HTMLInputElement>('compare-palette').onchange = (e) => setCompare((e.target as HTMLInputElement).checked ? 'palette' : 'off');
   const div = $('divider');
   div.onpointerdown = (e) => { div.setPointerCapture(e.pointerId); setSplit(e.clientX / innerWidth * 100); };
   div.onpointermove = (e) => { if (div.hasPointerCapture(e.pointerId)) setSplit(e.clientX / innerWidth * 100); };
@@ -105,6 +134,16 @@ async function main() {
   $('rotL').onclick = () => orbit.turn(-1); $('rotR').onclick = () => orbit.turn(1);
   const { triangles, paletteColors } = pixelScene.stats;
   $('stats').textContent = `${(triangles / 1000).toFixed(0)}k tris · ${paletteColors} base colors`;
+  // Palette sizes for the two sides of the palette wipe. A new size rebuilds the scene, so it reloads the page.
+  for (const [id, key, value] of [['k-left', 'left-k', leftPaletteSize], ['k-right', 'k', paletteSize]] as const) {
+    const sel = $<HTMLSelectElement>(id), v = String(value ?? DEFAULT_PALETTE_SIZE);
+    if (![...sel.options].some((o) => o.value === v)) sel.add(new Option(v, v));
+    sel.value = v;
+    sel.onchange = () => {
+      const q = new URLSearchParams(location.search); q.set(key, sel.value); q.set('compare', 'palette');
+      location.search = q.toString();
+    };
+  }
 
   // Orbit controls live on the stage, so the divider and both canvases share them.
   orbit.attach($('stage'), () => p3.viewHeight / innerHeight);
@@ -117,11 +156,11 @@ async function main() {
       const viewHeight = orbit.viewHeight(p3.width / p3.height);
       orbit.focus(focus);
       p3.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); p3.renderGeometry(time);
-      if (compare && p1) { p1.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); p1.renderGeometry(time); }
+      left()?.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); left()?.renderGeometry(time);
       dirty = false;
     }
     p3.renderStyle(settings, time);
-    if (compare && p1) p1.renderStyle(settings, time);
+    left()?.renderStyle(settings, time);
   };
   $('shot').onclick = () => {
     render();
@@ -129,16 +168,16 @@ async function main() {
     out.width = c3.width; out.height = c3.height;
     const ctx = out.getContext('2d')!; ctx.imageSmoothingEnabled = false;
     ctx.drawImage(c3, 0, 0);
-    if (compare && p1) { const w = Math.round(out.width * split / 100); if (w > 0) ctx.drawImage($<HTMLCanvasElement>('p1-view'), 0, 0, w, out.height, 0, 0, w, out.height); }
+    if (left()) { const w = Math.round(out.width * split / 100); if (w > 0) ctx.drawImage($<HTMLCanvasElement>(compare === 'palette' ? 'pal-view' : 'p1-view'), 0, 0, w, out.height, 0, 0, w, out.height); }
     const a = document.createElement('a'); a.download = `${scene.id}-pass3-${hourLabel(hour).replace(':', '')}.png`; a.href = out.toDataURL('image/png'); a.click();
   };
   (window as any).app3 = {
-    p3, get p1() { return p1; }, settings, orbit, scene, pixelScene, render, redraw: () => (dirty = true),
+    p3, get p1() { return p1; }, get pOther() { return pOther; }, settings, orbit, scene, pixelScene, render, redraw: () => (dirty = true),
     setHour: (h: number) => { hour = h; applyLook(); }, setCompare, setSplit,
   };
 
   applyLook();
-  if (compare) await setCompare(true);
+  if (compare !== 'off') await setCompare(compare);
   const frame = (now: number) => {
     const dt = Math.min((now - last) / 1000, 0.1); last = now;
     if (settings.animate && !params.has('time')) time += dt;

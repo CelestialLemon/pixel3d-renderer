@@ -4,8 +4,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #6f9c48; fon
 #stage { position: fixed; inset: 0; overflow: hidden; touch-action: none; cursor: grab; }
 #stage:active { cursor: grabbing; }
 #stage canvas { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); image-rendering: pixelated; image-rendering: crisp-edges; pointer-events: none; }
-#p1-view { display: none; clip-path: inset(0 calc(100% - var(--split, 50%)) 0 0); }
-body.compare #p1-view { display: block; }
+#p1-view, #pal-view { display: none; clip-path: inset(0 calc(100% - var(--split, 50%)) 0 0); }
+body.compare-pass1 #p1-view, body.compare-palette #pal-view { display: block; }
 #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #f1e3c4; font-size: 18px; letter-spacing: .1em; z-index: 9; }
 #loading.done { display: none; }
 .panel, #title, #panel, #hint, #tags span { background: rgba(255,243,218,.93); border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
