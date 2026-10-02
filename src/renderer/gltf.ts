@@ -23,7 +23,8 @@ export interface MeshRule {
  * turns such a node into a Group named after the node, whose child meshes are named after the mesh data instead.
  */
 const PREFIX = /^(decor|water|glass|thin|move|lamp)_/i;
-const nodeName = (o: THREE.Object3D) => (!PREFIX.test(o.name) && o.parent?.type === 'Group' ? o.parent.name : o.name);
+export const meshNodeName = (o: THREE.Object3D) => (!PREFIX.test(o.name) && o.parent?.type === 'Group' ? o.parent.name : o.name);
+const nodeName = meshNodeName;
 
 /**
  * Behaviour from object-name prefixes, the asset naming convention in docs/ASSET_BRIEF.md: `glass_` is skipped,

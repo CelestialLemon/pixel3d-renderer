@@ -1,0 +1,40 @@
+{
+  "id": "stair_arch",
+  "description": "Thirteen-stone gateway: clear 1.9 m span to a 2.5 m spring line, 3.45 m centre headroom, inset amber niches, no lamp empties.",
+  "triangles": 492,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    2.5,
+    0.8
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 4.2,
+  "attachmentsBlender": {
+    "passageWidthMetres": 1.9,
+    "springHeightMetres": 2.5,
+    "centreHeadroomMetres": 3.45
+  },
+  "boundsBlender": {
+    "min": [
+      -1.25,
+      -0.4000000059604645,
+      0.0
+    ],
+    "max": [
+      1.25,
+      0.4000000059604645,
+      3.74147891998291
+    ]
+  },
+  "dimensionsMetres": [
+    2.5,
+    0.800000011920929,
+    3.74147891998291
+  ],
+  "lamps": []
+}

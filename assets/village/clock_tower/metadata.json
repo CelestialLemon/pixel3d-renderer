@@ -1,0 +1,40 @@
+{
+  "id": "clock_tower",
+  "description": "Four warm emissive clock faces, stone base and timber shaft, open brass-bell belfry, tall slate spire; no additional lamp empties.",
+  "triangles": 4226,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    4,
+    4
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0,
+    -1.53,
+    0
+  ],
+  "maxHeightMetres": 14,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -1.8250000476837158,
+      -1.9300000667572021,
+      0.0
+    ],
+    "max": [
+      1.8250000476837158,
+      1.7999999523162842,
+      13.629999160766602
+    ]
+  },
+  "dimensionsMetres": [
+    3.6500000953674316,
+    3.7300000190734863,
+    13.629999160766602
+  ],
+  "lamps": []
+}

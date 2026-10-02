@@ -1,0 +1,52 @@
+{
+  "id": "fountain",
+  "description": "Hollow round stone basin, flat upward water_ disc, carved column and upper bowl, four teal rim lanterns with one coloured lamp.",
+  "triangles": 3556,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    3,
+    3
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": null,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -1.4800000190734863,
+      -1.4800000190734863,
+      0.0
+    ],
+    "max": [
+      1.4800000190734863,
+      1.4800000190734863,
+      2.1100001335144043
+    ]
+  },
+  "dimensionsMetres": [
+    2.9600000381469727,
+    2.9600000381469727,
+    2.1100001335144043
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Fountain_teal_rim",
+      "positionBlender": [
+        0.0,
+        -1.2699999809265137,
+        0.8399999737739563
+      ],
+      "colorLinear": [
+        0.2,
+        0.9,
+        0.7
+      ],
+      "radius": 3.5,
+      "clearance": 0.18
+    }
+  ]
+}

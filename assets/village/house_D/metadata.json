@@ -1,0 +1,79 @@
+{
+  "id": "house_D",
+  "description": "Lantern Row house_D; finished four-sided half-timber architecture, true recessed windows, slate roof and authored lamp extras.",
+  "triangles": 9016,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    5,
+    5
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0.0,
+    -1.9900000095367432,
+    0.0
+  ],
+  "maxHeightMetres": 9,
+  "attachmentsBlender": {
+    "doors": [
+      [
+        0.0,
+        -1.9900000095367432,
+        0.0
+      ]
+    ]
+  },
+  "boundsBlender": {
+    "min": [
+      -2.4149999618530273,
+      -2.4149999618530273,
+      0.0
+    ],
+    "max": [
+      2.4149999618530273,
+      2.4149999618530273,
+      8.864500045776367
+    ]
+  },
+  "dimensionsMetres": [
+    4.829999923706055,
+    4.829999923706055,
+    8.864500045776367
+  ],
+  "lamps": [
+    {
+      "name": "lamp_house_D_front_floor0_window0",
+      "positionBlender": [
+        -0.9733999967575073,
+        -1.9249999523162842,
+        2.012200117111206
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.5,
+      "clearance": 0.07
+    },
+    {
+      "name": "lamp_house_D_front_floor1_window0",
+      "positionBlender": [
+        -0.840499997138977,
+        -2.0450000762939453,
+        3.9082000255584717
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.5,
+      "clearance": 0.07
+    }
+  ]
+}

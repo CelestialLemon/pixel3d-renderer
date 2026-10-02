@@ -40,11 +40,15 @@ src/
     look.ts            time of day: sun, colour grade, sky, lamps
   scenes/              scene content: one folder per scene, registered in scenes/index.ts
     cookie-co/         the factory, meadow, trees, pond and wildlife
+    village/           Lantern Row, a night village street: layout, paving, walls, canal, trees, and placement of the modelled buildings
+    test-chart/        calibration bays (thin features, curves, ink, AO, palette, lamps)
+    props/             gallery of every modelled prop in assets/props/
     shared/            seeded randomness and noise for building scenes
   app/                 the demo pages: compare/ (index.html), viewer/ (pass3.html), shared orbit camera, params, pass registry
   reference/           FROZEN: Pass 0 and Pass 1 pipelines and their world. Never edit (golden images prove they are unchanged).
 archive/pass2-atmosphere/   Pass 2, archived (not built)
 assets/cookie-factory/      Blender source, build script and export_glb.py for public/cookie_factory_current.glb
+assets/props/, assets/village/   Blender build scripts for the batch 1 props and the Lantern Row models (GLBs in public/props/, public/village/)
 tools/                      headless-Chrome capture and check scripts
 docs/ROADMAP.md
 ```
@@ -78,7 +82,8 @@ are scene data. To add one:
 2. Use one seeded `mulberry32` generator per build (and consume it in a fixed order), so the scene and its palette are reproducible.
 3. Add it to `SCENES` in `src/scenes/index.ts`. `/pass3.html?scene=<id>` shows it, and a scene picker appears once there are two.
 
-Shader limits per scene: 8 lamps, 4 ripple points, 8 groove positions (`LIMITS` in `scene.ts`).
+Shader limits per scene: 32 lamps, 4 ripple points, 8 groove positions (`LIMITS` in `scene.ts`). A scene can set `hour`, the time of day
+the viewer starts at (Lantern Row starts at night).
 
 ### Passes
 
@@ -101,7 +106,9 @@ All tools drive headless Chrome with SwiftShader (`tools/lib.mjs`; set `CHROME_P
 
 | Command | Checks |
 | --- | --- |
-| `npm run golden` | **Golden images** (`tools/golden.mjs`): 24 fixed views with a frozen clock, compared pixel for pixel with the approved images in `golden/` (tracked, so a PR shows reviewers every view it changes). Any difference fails and writes the new image to `golden/diff/` (git-ignored). Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update`. `node tools/golden.mjs pass3` runs a subset. |
+| `npm run golden` | **Golden images** (`tools/golden.mjs`): 29 fixed views with a frozen clock, compared pixel for pixel with the approved images in `golden/` (tracked, so a PR shows reviewers every view it changes). Any difference fails and writes the new image to `golden/diff/` (git-ignored). Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update`. `node tools/golden.mjs pass3` runs a subset. |
+| `npm run lamp-shadow-check` | Lamp shadow atlas: enclosed shells, back-facing panels, fixture clearance, and fitting small device limits (2048 and 512 px) with smaller faces. |
+| `npm run village-check` | Lantern Row: tree and bush canopies clear every building, backdrop house and the road (`layoutProblems` in `layout.ts`); models tied to layout features follow them; villager splitting keeps nested meshes single and parent prefixes; a missing or corrupt model fails the build visibly. |
 | `node tools/verify.mjs` | Comparison page: Pass 0 matches its standalone page; modes; ordered wipe dividers; shared camera, sun and resolution; layouts; PNG export sizes; mobile; time of day; animation toggle; no browser or shader errors. |
 | `node tools/check-viewer.mjs` | The viewer page's controls, compare wipe and mobile layout. |
 | `node tools/anim-check.mjs` | The world moves between two clock times and renders identically at the same time. |

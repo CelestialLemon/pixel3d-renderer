@@ -6,7 +6,7 @@ import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_STATIC_VERT } from './shaders/gbuffer';
 import { POST_FRAG } from './shaders/post';
 import { CLEAN_FRAG } from './shaders/cleanup';
 import { RESOLVE_FRAG } from './shaders/resolve';
-import { LAMP_TILE, LampShadows } from './lampShadows';
+import { LampShadows } from './lampShadows';
 
 /** Stylisation switches. All on is the intended look; the toggles exist for comparison and debugging. */
 export interface RenderSettings {
@@ -108,7 +108,9 @@ export class PixelRenderer {
     this.shadowMat.transparent = false; this.shadowMat.blending = THREE.NoBlending;
 
     const { lamps, ripples, grooves } = pixelScene;
-    this.lampShadows = new LampShadows(lamps, pixelScene.staticGeometry);
+    const gl = this.renderer.getContext();
+    this.lampShadows = new LampShadows(lamps, pixelScene.staticGeometry,
+      Math.min(this.renderer.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number));
     const common = { glslVersion: THREE.GLSL3, depthTest: false, depthWrite: false } as const;
     this.postMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: POST_FRAG,
@@ -122,7 +124,7 @@ export class PixelRenderer {
         uLitTint: { value: new THREE.Vector2() }, uShadeTint: { value: new THREE.Vector2() },
         uSkyTop: { value: new THREE.Color(0x79b6dc) }, uSkyBot: { value: new THREE.Color(0xf6e6c2) },
         uLampCount: { value: lamps.length },
-        tLampShadow: { value: this.lampShadows.target.texture }, uLampAtlas: { value: new THREE.Vector3(this.lampShadows.size.x, this.lampShadows.size.y, LAMP_TILE) },
+        tLampShadow: { value: this.lampShadows.target.texture }, uLampAtlas: { value: new THREE.Vector3(this.lampShadows.size.x, this.lampShadows.size.y, this.lampShadows.tile) },
         uLampPos: { value: padded(lamps.map((l) => l.position.clone()), LIMITS.lamps, () => new THREE.Vector3()) },
         uLampCol: { value: padded(lamps.map((l) => new THREE.Vector3(...l.color)), LIMITS.lamps, () => new THREE.Vector3()) },
         uLampRad: { value: padded(lamps.map((l) => l.radius), LIMITS.lamps, () => 1) },

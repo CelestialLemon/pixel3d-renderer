@@ -86,16 +86,26 @@ and shown in the gallery scene (`?scene=props`); the list stays here as the reco
 After each prop: render a preview PNG (Workbench or EEVEE, front three-quarter view, transparent or plain background) to
 `assets/props/<name>/preview.png`, look at it yourself, then post on the board.
 
-## Batch 2 (later, discuss on the board first)
+## Batch 2: Lantern Row (done, 2026-10-02)
 
-A second hero scene: a **night village street** diorama (cobbles, 3–4 buildings with lit windows, lamps of several colours, stairs,
-an alley, a fountain). It will be planned together once the gallery shows what the renderer struggles with.
+The models of the night village scene (`?scene=village`), one folder each under `assets/village/<id>/`, exported to
+`public/village/<id>.glb`, with shared materials in `assets/village/village_common.py` and `architecture.py`. Validate them with
+`node assets/village/validate.mjs`. Each building is built to a footprint (`BUILDINGS` in `src/scenes/village/layout.ts`): the envelope
+includes eaves, steps, signs and fixtures, the origin is the footprint centre on the ground, and the front faces Blender −Y. The scene
+turns and places them, so a model can move without a re-export.
+
+- Buildings: `house_A`–`house_E`, `tavern` (two facades, rose `move_sway_` sign), `clock_tower`, `bakery`, `stair_arch` (gateway, 1.9 m
+  clear opening). About 2 `lamp_` empties per building at most; other lit windows are emission only.
+- Square and street: `fountain` (teal lamp), `closed_stall`, `festoon` (emissive bulbs, no lamps), `bench`, `barrel`, `crate`,
+  `flower_box`, `signpost`.
+- The scene finds chimney smoke emitters by node name (`chimney_mouth` or `dark_flue`), so keep those names.
+- Buildings are also reused as backdrop copies past the street, with their lamps dropped.
 
 ## Ownership (to avoid editing each other's files)
 
 Ownership is agreed on `docs/BOARD.md` at the start of each piece of work. These are the defaults for modelling work:
 
-- **The modelling agent owns:** `assets/props/**`, `assets/<future-scene>/**`, `public/props/**`.
+- **The modelling agent owns:** `assets/props/**`, `assets/village/**`, `assets/<future-scene>/**`, `public/props/**`, `public/village/**`.
 - **The renderer agent owns:** `src/**`, `tools/**`, `index.html`, `pass*.html`, `docs/ROADMAP.md`, this brief.
 - **Never touch without agreement:** `src/reference/**`, `assets/cookie-factory/**`, `public/cookie_factory.glb` (frozen),
   `public/cookie_factory_current.glb`, `golden/**`.

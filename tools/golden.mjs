@@ -26,6 +26,9 @@ const SHOTS = [
   ...['thin', 'curves', 'ink', 'ao', 'palette', 'lamps'].map((v) => ({ name: `chart-${v}`, path: `pass3.html?${VIEW}&scene=test-chart&view=${v}&hour=12`, canvas: 'p3-view' })),
   { name: 'chart-lamps-night', path: `pass3.html?${VIEW}&scene=test-chart&view=lamps&hour=22`, canvas: 'p3-view' },
   { name: 'chart-curves-golden', path: `pass3.html?${VIEW}&scene=test-chart&view=curves&hour=17.5`, canvas: 'p3-view' },
+  // Lantern Row (night village): the default street view at night and golden hour, and three presets at night.
+  ...[22, 17.5].map((h) => ({ name: `village-street-hour${h}`, path: `pass3.html?${VIEW}&scene=village&hour=${h}`, canvas: 'p3-view' })),
+  ...['overview', 'square', 'canal'].map((v) => ({ name: `village-${v}`, path: `pass3.html?${VIEW}&scene=village&view=${v}&hour=22`, canvas: 'p3-view' })),
 ];
 
 const args = process.argv.slice(2), update = args.includes('--update'), filter = args.find((a) => !a.startsWith('--'));

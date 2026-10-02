@@ -1,12 +1,30 @@
 import * as THREE from 'three';
 import type { Lamp } from './scene';
 
-/** Pixel size of one cube face in the lamp shadow atlas. */
+/** Pixel size of one cube face in the lamp shadow atlas, when the device allows it. */
 export const LAMP_TILE = 256;
 /** Default `Lamp.clearance`: a street lantern from its lamp to the corners of its tray. */
 export const DEFAULT_CLEARANCE = 0.45;
-/** Cube faces per atlas row (two lamps). */
+/** Cube faces per atlas row (two lamps), when the device allows it. */
 const COLS = 12;
+/** Smallest face size tried before giving up: below this, lamp shadows are too coarse to be worth drawing. */
+const MIN_TILE = 32;
+
+export interface AtlasLayout { tile: number; cols: number; width: number; height: number }
+
+/**
+ * Atlas layout for `lamps` lamps (six faces each) that fits a device whose textures and renderbuffers are at most
+ * `maxSize` pixels on a side (the smaller of MAX_TEXTURE_SIZE and MAX_RENDERBUFFER_SIZE; WebGL2 guarantees 2048).
+ * Uses LAMP_TILE faces in rows of COLS when they fit, and otherwise halves the face size until they do.
+ */
+export function atlasLayout(lamps: number, maxSize: number): AtlasLayout {
+  const tiles = Math.max(lamps, 1) * 6;
+  for (let tile = LAMP_TILE; tile >= MIN_TILE; tile /= 2) {
+    const cols = Math.min(COLS, Math.floor(maxSize / tile), tiles), rows = Math.ceil(tiles / cols);
+    if (cols >= 1 && rows * tile <= maxSize) return { tile, cols, width: cols * tile, height: rows * tile };
+  }
+  throw new Error(`lamp shadows: ${lamps} lamps do not fit a ${maxSize}px texture even at ${MIN_TILE}px faces`);
+}
 
 // Cube faces as (forward, up). The post shader's lampFace() uses the same table; right = cross(forward, up).
 const FACES: [THREE.Vector3Tuple, THREE.Vector3Tuple][] = [
@@ -42,11 +60,17 @@ void main(){
 export class LampShadows {
   readonly target: THREE.WebGLRenderTarget;
   readonly size = new THREE.Vector2();
+  /** Face size and faces per row actually used (see `atlasLayout`); the post shader reads the face size from a uniform. */
+  readonly tile: number;
+  private readonly cols: number;
   private rendered = false;
 
-  constructor(private lamps: Lamp[], private geometry: THREE.BufferGeometry) {
-    const tiles = Math.max(lamps.length, 1) * 6;
-    this.size.set(Math.min(tiles, COLS) * LAMP_TILE, Math.ceil(tiles / COLS) * LAMP_TILE);
+  /** `maxSize`: the device's texture and renderbuffer size limit (the smaller of the two). */
+  constructor(private lamps: Lamp[], private geometry: THREE.BufferGeometry, maxSize: number) {
+    const layout = atlasLayout(lamps.length, maxSize);
+    if (layout.tile < LAMP_TILE) console.warn(`lamp shadows: ${lamps.length} lamps need ${layout.tile}px faces to fit this device's ${maxSize}px limit`);
+    this.tile = layout.tile; this.cols = layout.cols;
+    this.size.set(layout.width, layout.height);
     this.target = new THREE.WebGLRenderTarget(this.size.x, this.size.y, {
       type: THREE.FloatType, format: THREE.RedFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
       depthBuffer: true, generateMipmaps: false,
@@ -72,12 +96,12 @@ export class LampShadows {
       mat.uniforms.uLamp.value.copy(lamp.position);
       mat.uniforms.uClearance.value = lamp.clearance ?? DEFAULT_CLEARANCE;
       FACES.forEach(([f, u], fi) => {
-        const t = li * 6 + fi, x = (t % COLS) * LAMP_TILE, y = Math.floor(t / COLS) * LAMP_TILE;
+        const t = li * 6 + fi, x = (t % this.cols) * this.tile, y = Math.floor(t / this.cols) * this.tile;
         cam.position.copy(lamp.position);
         cam.up.set(...u);
         cam.lookAt(lamp.position.clone().add(new THREE.Vector3(...f)));
         cam.updateMatrixWorld();
-        this.target.viewport.set(x, y, LAMP_TILE, LAMP_TILE);
+        this.target.viewport.set(x, y, this.tile, this.tile);
         renderer.setRenderTarget(this.target);
         renderer.render(scene, cam);
       });

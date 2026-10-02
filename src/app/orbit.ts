@@ -28,6 +28,9 @@ export class Orbit {
     this.target = { ...this.view };
   }
 
+  /** Widest wheel zoom: 30, or the scene's widest preset if that is wider. */
+  get maxSize() { return Math.max(30, ...this.scene.presets.map((p) => p.size)); }
+
   /** Point the camera looks at. */
   focus(out = new THREE.Vector3()) { return out.set(this.view.tx, this.scene.groundY + this.scene.target.height, this.view.tz); }
 
@@ -87,7 +90,7 @@ export class Orbit {
         t.tz = THREE.MathUtils.clamp(t.tz + (sa * dx - ca * dy / sn) * drag.k, pan.minZ, pan.maxZ);
       } else { t.az -= dx * 0.0075; t.el = THREE.MathUtils.clamp(t.el + dy * 0.005, 28 * DEG, 76 * DEG); }
     };
-    el.addEventListener('wheel', (e) => { e.preventDefault(); this.target.size = THREE.MathUtils.clamp(this.target.size * Math.exp(e.deltaY * 0.0012), 5, 30); }, { passive: false });
+    el.addEventListener('wheel', (e) => { e.preventDefault(); this.target.size = THREE.MathUtils.clamp(this.target.size * Math.exp(e.deltaY * 0.0012), 5, this.maxSize); }, { passive: false });
   }
 
   /** A/D or arrow keys turn 45 degrees; H calls `onToggleUi`. Ignored while a form control has focus. */

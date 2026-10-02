@@ -1,0 +1,36 @@
+{
+  "id": "crate",
+  "description": "Open slatted market crate with corner posts, visible floor and diagonal braces.",
+  "triangles": 264,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    1.1,
+    0.95
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": null,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -0.5049999952316284,
+      -0.45250001549720764,
+      0.0
+    ],
+    "max": [
+      0.5049999952316284,
+      0.45250001549720764,
+      0.7599999904632568
+    ]
+  },
+  "dimensionsMetres": [
+    1.0099999904632568,
+    0.9050000309944153,
+    0.7599999904632568
+  ],
+  "lamps": []
+}

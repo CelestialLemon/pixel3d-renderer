@@ -1,0 +1,84 @@
+{
+  "id": "tavern",
+  "description": "Lantern Row tavern; finished four-sided half-timber architecture, true recessed windows, slate roof and authored lamp extras.",
+  "triangles": 7764,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    7,
+    6
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0.0,
+    -2.490000009536743,
+    0.0
+  ],
+  "maxHeightMetres": 10,
+  "attachmentsBlender": {
+    "doors": [
+      [
+        0.0,
+        -2.490000009536743,
+        0.0
+      ],
+      [
+        -2.9749999046325684,
+        1.3004137144889683e-07,
+        0.0
+      ]
+    ]
+  },
+  "boundsBlender": {
+    "min": [
+      -3.450000047683716,
+      -2.9800000190734863,
+      0.0
+    ],
+    "max": [
+      3.4149999618530273,
+      2.9086809158325195,
+      9.354499816894531
+    ]
+  },
+  "dimensionsMetres": [
+    6.864999771118164,
+    5.888680934906006,
+    9.354499816894531
+  ],
+  "lamps": [
+    {
+      "name": "lamp_tavern_front_floor0_window0",
+      "positionBlender": [
+        -1.4767999649047852,
+        -2.424999952316284,
+        2.012200117111206
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.5,
+      "clearance": 0.07
+    },
+    {
+      "name": "lamp_tavern_left_floor0_window0",
+      "positionBlender": [
+        -2.9100000858306885,
+        1.1858000755310059,
+        2.012200117111206
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.5,
+      "clearance": 0.07
+    }
+  ]
+}
