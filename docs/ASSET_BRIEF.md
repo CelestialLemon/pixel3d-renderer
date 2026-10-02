@@ -51,7 +51,7 @@ The loader has a generic name-based rule, so these prefixes on **object names** 
 | `water_` | Water surface (animated ripples and sparkles). Must be a flat, upward-facing surface. |
 | `glass_` | Window glass. For now it is skipped (see-through). Put the lit interior *behind* it. |
 | `thin_` | Deliberately thinner than 0.05 m (wires, spokes, railings): a flicker-test feature. |
-| `move_<kind>_` | A part meant to move later (`move_spin_` sails/wheels, `move_sway_` cloth/signs). Make it a separate object with its **origin at the pivot**. |
+| `move_<kind>_` | A moving part (`move_spin_` sails/wheels, `move_sway_` cloth/signs). Make it a separate object with its **origin at the pivot** and its **local X axis along the axle or hinge**: it turns about that axis (custom props `speed` rad/s, `amplitude` rad). A scene opts in to motion. |
 | `lamp_` | An **Empty** (not a mesh) marking a light source. Custom properties: `color` (3 floats, linear RGB), `radius` (metres the light reaches) and optional `clearance` (metres, default 0.45). Solid geometry blocks lamp light; anything within `clearance` of the empty counts as the lamp's own fixture and doesn't. Set a smaller `clearance` for a lamp mounted near a wall or ceiling that must still block it. |
 
 **Hierarchies:** a mesh's *motion* comes from its nearest `move_*` ancestor (or from itself), pivoting at that ancestor's origin. Its
@@ -100,6 +100,89 @@ turns and places them, so a model can move without a re-export.
   `flower_box`, `signpost`.
 - The scene finds chimney smoke emitters by node name (`chimney_mouth` or `dark_flue`), so keep those names.
 - Buildings are also reused as backdrop copies past the street, with their lamps dropped.
+
+## Batch 3: Lantern Row, the canal town (in progress, 2026-10-02)
+
+The user's verdict on batch 2: the render is good, but the scene is monotonous and cramped. The houses look alike, there's no air
+between things, and the canal and its bridge are too small. Batch 3 rebuilds Lantern Row as a canal town that feels like a real village.
+A wide canal runs through the middle of town, a market square and town hall stand on the north bank, cottages, gardens and a mill
+on the south bank, and countryside and old ruins at the edges. Keep the fireflies and trees.
+
+**Variety is the point of this batch.** Each new building should read as a different *kind* of building at a glance, through its
+silhouette, roof shape, wall material and height, not just its trim. Roofs come in three families: the existing blue slate, **red clay
+tile** and **thatch**. Walls add **rough fieldstone**, **red-brown brick** and **tarred or red-painted timber** to the batch-2
+plaster. Add the new shared materials to `village_common.py`, with names that start `Village ` like the existing ones.
+The scene may recolour placed copies by material name (for example a batch-2 house with a red-tile roof), so **keep material names
+stable** once published.
+
+### The canal contract
+
+The scene builds the canal procedurally, and models that touch it must fit this cross-section (heights relative to the quay = 0):
+
+- Water surface at **y = −1.0**, bed at −1.5, vertical stone quay walls. Water is **6 m wide** on the straight reaches. Quays
+  (stone towpaths) at y = 0 run along both sides.
+- Boats need **1.6 m** of headroom above the water under every bridge (arch soffit at y ≥ +0.6 over the navigable 3 m centre).
+
+### Models
+
+Envelopes are w × d in metres, front facing Blender −Y, origin at the footprint centre on the ground (y = 0 = quay or street level)
+unless stated. The scene places them (`src/scenes/village/layout.ts`), so positions aren't part of the contract.
+
+Buildings (each a distinct type):
+
+1. **town_hall** (about 10 × 7, up to 13 m): the grandest building. Stone arcaded ground floor (open arches you can see into), a
+   timber or plaster upper floor, a red-tile hipped roof, a central gable with a balcony and a small bell or clock turret, banners.
+   Up to 2 lamps (under the arcade).
+2. **chapel** (about 6 × 11): a fieldstone nave with a steep slate roof, a small bell tower at the front, and tall pointed windows with
+   **coloured** emissive glass (deep blue, rose, gold), the scene's only stained glass. 1 lamp over the door.
+3. **watch_tower** (about 4 × 4, 14–15 m): square fieldstone, tapering, with a timber hoarding/lookout on top and a lit brazier
+   (`lamp_`, warm orange, large radius). It stands on the upper level at the town's edge.
+4. **ruins** (about 9 × 8): a collapsed old keep or chapel with broken walls at varied heights, a broken arch, fallen rubble blocks,
+   no roof. Ivy and vines as `decor_vine_*` objects draped over the tops and down the faces, in two or three greens.
+5. **watermill** (about 8 × 6 *including the wheel*): fieldstone ground floor, timber upper floor, a thatch or tile roof. The wheel
+   (`move_spin_wheel`, origin on the axle, radius about 1.7 m, paddles more than 0.05 m thick) sits on the building's **+X side**, hanging
+   past the quay over the water. Its axle is at y ≈ +0.5, so the wheel dips below the water surface at −1.0. A wooden mill race (flume)
+   feeds the top of the wheel. Lit windows, 1 lamp.
+6. **smithy** (about 6 × 5): brick and timber, an **open front** with the forge visible inside: glowing coals (emissive) and a `lamp_`
+   (deep orange, radius about 5 m) in the hearth, an anvil, a quench barrel, tools on the wall, and a tall brick chimney (keep the
+   `chimney_mouth` name so it smokes).
+7. **cottage_thatch** (about 5 × 4) and **cottage_long** (about 7 × 4.5, L-shaped or with a lean-to): low, one and a half storeys,
+   fieldstone or whitewash walls, **thick rounded thatch** roofs (ridge cap, eaves at least 0.35 m deep), small deep-set windows. 1 lamp
+   each at most.
+8. **barn** (about 8 × 6): red-painted vertical boards, a big double door (one leaf ajar onto a dim interior), a hayloft opening with
+   hay showing, a gambrel or steep roof. No lamps.
+9. **market_hall** (about 7 × 4.5): an open timber hall on stone posts with a red-tile roof. Under it, two or three trestle tables with
+   goods (fruit, cloth bolts, pottery). 1–2 hanging lanterns (lamps).
+
+Waterside:
+
+10. **bridge_stone** (about 13 long × 4.5 wide): the town's main road bridge. **Three arches**: a big centre arch over the navigable
+    middle (soffit at least +0.6), two smaller side arches, cutwaters on the piers, solid parapets with coping, and a hump to about
+    y = +1.3 at the crown, with ramps landing on both quays at y = 0. It spans along its own **Y** axis: water from −3 to +3, abutments
+    beyond. Two lamp posts at the crown (lamps). Leave no water under it; the scene supplies the canal.
+11. **footbridge** (about 8 × 1.8): a timber footbridge spanning the same 6 m, with a gentle arch, plank deck, and railings with posts
+    above 0.05 m (rails may be `thin_`). It spans along Y and lands at y = 0 on both quays.
+12. **rowboat** (about 3.2 × 1.3) and **barge** (about 8 × 2.2, a low cabin with a lit window, a stovepipe and a lantern `lamp_`): origin
+    at the **waterline** (the scene puts it at y = −1.0), bow toward −Y.
+13. **jetty** (about 4 × 2.5): timber landing stage at y = −0.55 on piles going down to the bed, with a short ladder up to the quay edge
+    at local y = +1.25 (the jetty's back edge). Origin at the quay edge, deck extending toward −Y over the water. Two mooring posts.
+
+Square, street and edges:
+
+14. **guardian_statue** (plinth about 2 × 2, about 4.5 m tall): the town's fantasy relic in the square. A robed stone guardian holding up
+    a glowing crystal (emissive, cool violet or teal, with a `lamp_` inside the crystal, radius about 6 m), weathered stone with moss
+    (`decor_` greens), and runes carved into the plinth that glow faintly (emissive). It should look old and a little mysterious.
+15. **wardstone** (about 2 × 2): a tall leaning runic monolith with glowing rune grooves (emissive, the same hue as the statue's
+    crystal), ringed by three smaller broken standing stones. It goes inside the ruins. 1 dim lamp.
+16. **Clutter**: `hay_bales` (a small stack), `woodpile` (stacked logs under a little lean-to roof), `laundry_line` (two posts and a
+    `thin_` line with three or four cloth pieces as `move_sway_`), `notice_board` (a roofed board with paper notices), `market_stall_lit`
+    (the batch-1 stall's look, *open*, with goods and a hanging lantern `lamp_`), `well_village` (optional: the batch-1 well is fine),
+    `mooring_bollard` (iron, 0.25 m).
+
+**Lamps.** The renderer allows 32 lamps today. Opus is raising the limit for this batch, but keep authored lamps to the ones listed (a
+dozen or so new ones). Every other glow is emission only.
+
+**Budget.** About 10k triangles per building and 5k per prop, as in batch 2.
 
 ## Ownership (to avoid editing each other's files)
 

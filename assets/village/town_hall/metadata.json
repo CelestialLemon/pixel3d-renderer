@@ -1,0 +1,71 @@
+{
+  "id": "town_hall",
+  "description": "Grand civic hall: three open front arcades, side arcades, ivory upper floor, red hipped roof, balcony, clock pediment, banners and bronze belfry.",
+  "triangles": 9260,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    10,
+    7
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0,
+    -2.875,
+    0
+  ],
+  "maxHeightMetres": 13,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -4.799985885620117,
+      -3.4800000190734863,
+      0.0
+    ],
+    "max": [
+      4.799986362457275,
+      3.265000343322754,
+      12.149999618530273
+    ]
+  },
+  "dimensionsMetres": [
+    9.599971771240234,
+    6.74500036239624,
+    12.149999618530273
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Hall_arcade_lantern",
+      "positionBlender": [
+        -2.950000047683716,
+        -0.8999999761581421,
+        2.319999933242798
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 4.0,
+      "clearance": 0.28
+    },
+    {
+      "name": "lamp_Hall_arcade_lantern.001",
+      "positionBlender": [
+        2.950000047683716,
+        -0.8999999761581421,
+        2.319999933242798
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 4.0,
+      "clearance": 0.28
+    }
+  ]
+}

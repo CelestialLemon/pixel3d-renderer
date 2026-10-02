@@ -1,0 +1,53 @@
+{
+  "id": "jetty",
+  "description": "Lower timber landing at Z=-.55 on bed-reaching piles, two mooring posts and a ladder to the quay; deck extends -Y from the quay-edge origin.",
+  "triangles": 560,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    4,
+    2.5
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 0.4,
+  "attachmentsBlender": {
+    "deckHeightMetres": -0.55,
+    "quayEdgeBlenderY": 0,
+    "waterlineMetres": -1,
+    "bedHeightMetres": -1.5
+  },
+  "boundsBlender": {
+    "min": [
+      -1.975000023841858,
+      -2.5,
+      -1.5
+    ],
+    "max": [
+      1.975000023841858,
+      0.0,
+      0.303491473197937
+    ]
+  },
+  "dimensionsMetres": [
+    3.950000047683716,
+    2.5,
+    1.803491473197937
+  ],
+  "lamps": [],
+  "minHeightMetres": -1.5,
+  "footprintBoundsBlender": [
+    [
+      -2,
+      -2.5
+    ],
+    [
+      2,
+      0
+    ]
+  ],
+  "origin": "quay edge at Y=0, Z=0"
+}

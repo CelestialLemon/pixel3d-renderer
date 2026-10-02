@@ -1,0 +1,52 @@
+{
+  "id": "market_stall_lit",
+  "description": "Open striped market stall with fruit, dark-red canvas bands and a hanging amber lantern.",
+  "triangles": 1308,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    3,
+    2
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 2.8,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -1.2960000038146973,
+      -0.9050000309944153,
+      0.0
+    ],
+    "max": [
+      1.2960000038146973,
+      0.728674590587616,
+      2.6471450328826904
+    ]
+  },
+  "dimensionsMetres": [
+    2.5920000076293945,
+    1.6336746215820312,
+    2.6471450328826904
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Lit_stall_hanging_lantern",
+      "positionBlender": [
+        0.8399999737739563,
+        -0.07999999821186066,
+        2.0
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.2,
+      "clearance": 0.28
+    }
+  ]
+}

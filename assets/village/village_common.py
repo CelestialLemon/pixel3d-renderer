@@ -29,10 +29,29 @@ def palette():
         ('dim', 'Village quiet amber interior', (.50, .27, .10), .35),
         ('teal_glow', 'Village teal luminous glass', (.10, .70, .58), .55),
         ('rose_sign', 'Village tavern rose enamel', (.57, .12, .24), 0),
+        ('tile', 'Village red clay tile', (.52, .16, .075), 0),
+        ('tile2', 'Village sunworn clay tile', (.68, .25, .105), 0),
+        ('tile3', 'Village shaded clay tile', (.38, .095, .06), 0),
+        ('thatch', 'Village golden reed thatch', (.57, .40, .18), 0),
+        ('thatch2', 'Village weathered reed thatch', (.40, .29, .14), 0),
+        ('fieldstone', 'Village rough fieldstone', (.30, .34, .32), 0),
+        ('fieldstone2', 'Village pale fieldstone', (.45, .46, .37), 0),
+        ('red_brick', 'Village red brown brick', (.45, .16, .10), 0),
+        ('red_timber', 'Village barn red timber', (.40, .075, .055), 0),
+        ('tar', 'Village tarred waterside timber', (.095, .12, .12), 0),
+        ('whitewash', 'Village chalk whitewash', (.79, .76, .64), 0),
+        ('moss', 'Village moss olive', (.26, .37, .13), 0),
+        ('relic', 'Village relic violet glow', (.39, .22, .92), .65),
+        ('rune', 'Village faint violet rune', (.24, .15, .51), .35),
+        ('stained_blue', 'Village stained glass cobalt', (.075, .20, .70), .55),
+        ('stained_rose', 'Village stained glass rose', (.75, .10, .31), .55),
+        ('stained_gold', 'Village stained glass gold', (.95, .53, .10), .55),
+        ('coal', 'Village forge glowing coals', (.95, .14, .015), .85),
     ]}
 
 
-def export_village(name, description, budget=10000, footprint=(5, 5), front_door=(0, -2.05, 0), max_height=None, attachments=None):
+def export_village(name, description, budget=10000, footprint=(5, 5), front_door=(0, -2.05, 0), max_height=None, attachments=None,
+                   min_height=0, footprint_bounds=None, origin='footprint centre at ground'):
     """Export before creating a studio rig; retain the authored footprint origin."""
     output = ROOT / 'assets' / 'village' / name
     output.mkdir(parents=True, exist_ok=True)
@@ -55,10 +74,11 @@ def export_village(name, description, budget=10000, footprint=(5, 5), front_door
         evaluated.to_mesh_clear()
     low = Vector(tuple(min(p[i] for p in points) for i in range(3)))
     high = Vector(tuple(max(p[i] for p in points) for i in range(3)))
-    assert low.z >= -.001, f'Below ground: {low.z}'
+    assert low.z >= min_height-.001, f'Below agreed minimum: {low.z} < {min_height}'
     assert count <= budget, f'Triangle budget: {count} > {budget}'
-    assert max(abs(low.x), abs(high.x)) <= footprint[0]/2+.001, f'X envelope: {low.x}, {high.x}'
-    assert max(abs(low.y), abs(high.y)) <= footprint[1]/2+.001, f'Y envelope: {low.y}, {high.y}'
+    xy_bounds = footprint_bounds or ((-footprint[0]/2, -footprint[1]/2), (footprint[0]/2, footprint[1]/2))
+    for axis in range(2):
+        assert low[axis] >= xy_bounds[0][axis]-.001 and high[axis] <= xy_bounds[1][axis]+.001, f'XY envelope: {low}, {high}'
     if max_height is not None:
         assert high.z <= max_height+.001, f'Height envelope: {high.z} > {max_height}'
     glb_path = runtime / f'{name}.glb'
@@ -79,6 +99,9 @@ def export_village(name, description, budget=10000, footprint=(5, 5), front_door
                    'clearance': obj.get('clearance', .45)}
                   for obj in bpy.context.scene.objects if obj.name.startswith('lamp_')],
     }
+    # Batch-two metadata remains byte-stable when default contracts are used.
+    if min_height != 0 or footprint_bounds is not None or origin != 'footprint centre at ground':
+        metadata.update(minHeightMetres=min_height, footprintBoundsBlender=[list(p) for p in xy_bounds], origin=origin)
     (output/'metadata.json').write_text(json.dumps(metadata, indent=2)+'\n')
     # Optional editable Blender file contains architecture only, never preview lights/camera.
     bpy.ops.wm.save_as_mainfile(filepath=str(output/f'{name}.blend'))

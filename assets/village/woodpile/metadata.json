@@ -1,0 +1,36 @@
+{
+  "id": "woodpile",
+  "description": "Stacked split logs with visible cut ends, sheltered by a small sloping tarred-timber roof.",
+  "triangles": 1644,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    2.5,
+    2.2
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 1.9,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -1.1799999475479126,
+      -0.9620767831802368,
+      0.0
+    ],
+    "max": [
+      1.1799999475479126,
+      0.9620767831802368,
+      1.721795916557312
+    ]
+  },
+  "dimensionsMetres": [
+    2.359999895095825,
+    1.9241535663604736,
+    1.721795916557312
+  ],
+  "lamps": []
+}

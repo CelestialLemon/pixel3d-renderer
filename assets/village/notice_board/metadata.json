@@ -1,0 +1,36 @@
+{
+  "id": "notice_board",
+  "description": "Roofed oak village notice board with four overlapping paper notices and readable ink strokes.",
+  "triangles": 1360,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    2.1,
+    1.1
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 3,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -1.024999976158142,
+      -0.4800000488758087,
+      0.0
+    ],
+    "max": [
+      1.024999976158142,
+      0.4800000488758087,
+      2.819999933242798
+    ]
+  },
+  "dimensionsMetres": [
+    2.049999952316284,
+    0.9600000977516174,
+    2.819999933242798
+  ],
+  "lamps": []
+}

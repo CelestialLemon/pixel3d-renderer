@@ -1,0 +1,56 @@
+{
+  "id": "cottage_long",
+  "description": "Long whitewashed thatched farmhouse with lean-to",
+  "triangles": 3176,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    7,
+    4.5
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0,
+    -1.55,
+    0
+  ],
+  "maxHeightMetres": 5,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -3.1933491230010986,
+      -1.9500000476837158,
+      0.0
+    ],
+    "max": [
+      3.205634117126465,
+      2.2149999141693115,
+      4.754500389099121
+    ]
+  },
+  "dimensionsMetres": [
+    6.398983001708984,
+    4.164999961853027,
+    4.754500389099121
+  ],
+  "lamps": [
+    {
+      "name": "lamp_cottage_long_door_lantern",
+      "positionBlender": [
+        0.7200000286102295,
+        -1.7200000286102295,
+        1.9700000286102295
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.0,
+      "clearance": 0.28
+    }
+  ]
+}

@@ -14,14 +14,16 @@ void main(){
   gl_Position = projectionMatrix * vp;
 }`;
 
-// Modes and parameter layouts match motion.ts.
-export const GBUF_DYN_VERT = /* glsl */ `
-uniform float uTime; uniform float uNight;
-in vec3 aColor; in float aFlag; in float aMode; in vec3 aAnchor; in vec4 aAnim;
-out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+// The dynamic mesh's motion, shared by the G-buffer pass and the moving-part shadow mask (renderer.ts), so the two always
+// pose a vertex identically. Modes and parameter layouts match motion.ts. The including shader declares uTime, uNight
+// and the aMode / aAnchor / aAnim attributes.
+export const POSE = /* glsl */ `
 float wind(vec2 p, float t){ return sin(p.x*0.42 + p.y*0.27 + t*1.5)*0.6 + sin(p.x*0.91 - p.y*0.63 + t*2.6)*0.4; }
-void main(){
-  vec3 pos = position; vec3 nrm = normal; float alpha = 1.0;
+// Rotate v by angle a about the unit axis k (Rodrigues).
+vec3 rotateAxis(vec3 v, vec3 k, float a){ float c = cos(a), s = sin(a); return v * c + cross(k, v) * s + k * dot(k, v) * (1.0 - c); }
+// Move a vertex (position, normal) by its motion mode at uTime; alpha < 1 fades it out by dithering.
+void pose(inout vec3 pos, inout vec3 nrm, out float alpha){
+  alpha = 1.0;
   int mode = int(aMode + 0.5);
   if (mode == 1) {                       // sway: tips lean with travelling gusts. anim = (weight, base x, base z)
     float w = aAnim.x, g = wind(aAnim.yz, uTime);
@@ -55,7 +57,21 @@ void main(){
     vec3 c = vec3(aAnchor.x + sin(a * 1.1) * 2.2, aAnchor.y + 0.55 + 0.45 * sin(a * 1.7 + aAnim.x * 5.0), aAnchor.z + cos(a * 0.9) * 2.0);
     alpha = step(0.25, 0.5 + 0.5 * sin(uTime * 2.3 + aAnim.x * 40.0)) * step(0.3, uNight);
     pos = c + position;
+  } else if (mode == 6 || mode == 7) {   // spin / swing about an axis through the anchor. anim = (axis xyz, speed or amplitude)
+    float a = mode == 6 ? uTime * aAnim.w : aAnim.w * sin(uTime * 1.3 + dot(aAnchor, vec3(1.7, 0.3, 2.1)));
+    pos = aAnchor + rotateAxis(position - aAnchor, aAnim.xyz, a);
+    nrm = rotateAxis(normal, aAnim.xyz, a);
   }
+}`;
+
+export const GBUF_DYN_VERT = /* glsl */ `
+uniform float uTime; uniform float uNight;
+in vec3 aColor; in float aFlag; in float aMode; in vec3 aAnchor; in vec4 aAnim;
+out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+${POSE}
+void main(){
+  vec3 pos = position; vec3 nrm = normal; float alpha;
+  pose(pos, nrm, alpha);
   vN = nrm; vC = aColor; vF = aFlag; vA = alpha;
   vec4 vp = viewMatrix * vec4(pos, 1.0);
   vD = -vp.z;

@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
 
 /** Shader limits on the per-scene arrays below. Keep in sync with shaders/post.ts. */
-export const LIMITS = { lamps: 32, ripples: 4, grooves: 8 } as const;
+export const LIMITS = { lamps: 64, ripples: 4, grooves: 8 } as const;
 
 /** A light that glows after dusk (window, lantern, oven). Solid static geometry blocks it. */
 export interface Lamp {

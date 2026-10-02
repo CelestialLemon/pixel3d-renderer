@@ -12,9 +12,10 @@
     "thin-check": "node tools/thin-check.mjs",
     "lamp-shadow-check": "node tools/lamp-shadow-check.mjs",
     "village-check": "node tools/village-check.mjs",
+    "moving-shadow-check": "node tools/moving-shadow-check.mjs",
     "resolve-check": "node tools/resolve-check.mjs",
     "verify": "node tools/verify.mjs && node tools/check-viewer.mjs && node tools/anim-check.mjs",
-    "check": "npm run typecheck && npm run lamp-shadow-check && npm run village-check && npm run resolve-check && npm run golden && npm run verify"
+    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run golden && npm run verify"
   },
   "dependencies": {
     "three": "^0.180.0"

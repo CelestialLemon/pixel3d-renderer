@@ -1,0 +1,67 @@
+{
+  "id": "footbridge",
+  "description": "Arched timber footbridge with separate chunky planks and curved handrails; navigable centre clears 1.6 m over water.",
+  "triangles": 2160,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    1.8,
+    8
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 2,
+  "attachmentsBlender": {
+    "spanAxisBlender": [
+      0,
+      1,
+      0
+    ],
+    "landingPositionsBlender": [
+      [
+        0,
+        -4,
+        0
+      ],
+      [
+        0,
+        4,
+        0
+      ]
+    ],
+    "minimumSoffitMetres": 0.6
+  },
+  "boundsBlender": {
+    "min": [
+      -0.85999995470047,
+      -4.0,
+      -0.12999999523162842
+    ],
+    "max": [
+      0.85999995470047,
+      4.0,
+      1.8991016149520874
+    ]
+  },
+  "dimensionsMetres": [
+    1.71999990940094,
+    8.0,
+    2.029101610183716
+  ],
+  "lamps": [],
+  "minHeightMetres": -0.2,
+  "footprintBoundsBlender": [
+    [
+      -0.9,
+      -4.0
+    ],
+    [
+      0.9,
+      4.0
+    ]
+  ],
+  "origin": "footprint centre at ground"
+}

@@ -1,0 +1,52 @@
+{
+  "id": "wardstone",
+  "description": "Leaning violet-runed monolith ringed by three broken standing stones, with moss and a dim violet spill light.",
+  "triangles": 672,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    2,
+    2
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 3,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -0.9352041482925415,
+      -0.7620977163314819,
+      0.0
+    ],
+    "max": [
+      0.9520188570022583,
+      0.7921083569526672,
+      2.559999942779541
+    ]
+  },
+  "dimensionsMetres": [
+    1.8872230052947998,
+    1.554206132888794,
+    2.559999942779541
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Wardstone_runes",
+      "positionBlender": [
+        -0.25,
+        -0.44999998807907104,
+        1.399999976158142
+      ],
+      "colorLinear": [
+        0.35,
+        0.2,
+        0.85
+      ],
+      "radius": 3.2,
+      "clearance": 0.35
+    }
+  ]
+}

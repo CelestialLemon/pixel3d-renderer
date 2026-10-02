@@ -1,0 +1,36 @@
+{
+  "id": "hay_bales",
+  "description": "Small stack of four golden reed hay bales with chunky twine bindings.",
+  "triangles": 272,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    2.2,
+    1.6
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 1.5,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -0.9650000333786011,
+      -0.6449999809265137,
+      0.0
+    ],
+    "max": [
+      0.9950000047683716,
+      0.7450000047683716,
+      1.409999966621399
+    ]
+  },
+  "dimensionsMetres": [
+    1.9600000381469727,
+    1.3899999856948853,
+    1.409999966621399
+  ],
+  "lamps": []
+}

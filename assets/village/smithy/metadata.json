@@ -1,0 +1,52 @@
+{
+  "id": "smithy",
+  "description": "Open brick-and-timber workshop with glowing forge, brick hood and smoking chimney, horned anvil, quench barrel and hung tools.",
+  "triangles": 5124,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    6,
+    5
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 7,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -2.890000104904175,
+      -2.4089205265045166,
+      0.0
+    ],
+    "max": [
+      2.890000104904175,
+      2.4089200496673584,
+      6.8545002937316895
+    ]
+  },
+  "dimensionsMetres": [
+    5.78000020980835,
+    4.817840576171875,
+    6.8545002937316895
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Smithy_forge",
+      "positionBlender": [
+        0.949999988079071,
+        0.8399999737739563,
+        1.309999942779541
+      ],
+      "colorLinear": [
+        1.0,
+        0.19,
+        0.025
+      ],
+      "radius": 5,
+      "clearance": 0.2
+    }
+  ]
+}

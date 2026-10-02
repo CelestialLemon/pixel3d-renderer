@@ -1,0 +1,56 @@
+{
+  "id": "chapel",
+  "description": "Long fieldstone nave, steep blue slate roof, square front belfry and tall cobalt/rose/gold pointed stained-glass windows; one door lamp.",
+  "triangles": 8190,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    6,
+    11
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0,
+    -4.89,
+    0
+  ],
+  "maxHeightMetres": 11,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -2.81000018119812,
+      -5.489999771118164,
+      0.0
+    ],
+    "max": [
+      2.81000018119812,
+      5.110000133514404,
+      10.549999237060547
+    ]
+  },
+  "dimensionsMetres": [
+    5.62000036239624,
+    10.600000381469727,
+    10.549999237060547
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Chapel_door_lantern",
+      "positionBlender": [
+        0.6600000262260437,
+        -5.079999923706055,
+        2.819999933242798
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.5,
+      "clearance": 0.28
+    }
+  ]
+}

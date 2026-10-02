@@ -1,0 +1,54 @@
+{
+  "id": "windmill_large",
+  "description": "Full-size tapered fieldstone tower mill with dark timber cap and four pivoted cloth sails on named thin oak lattice.",
+  "triangles": 3524,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    9,
+    5.4
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0,
+    -1.805,
+    0
+  ],
+  "maxHeightMetres": 13,
+  "attachmentsBlender": {
+    "baseDiameterMetres": 3.8,
+    "capHeightMetres": 10.715,
+    "sailPivotBlender": [
+      0.0,
+      -2.25,
+      8.350000381469727
+    ],
+    "sailAxisBlender": [
+      0,
+      -1,
+      0
+    ],
+    "sailRadiusMetres": 4.25
+  },
+  "boundsBlender": {
+    "min": [
+      -4.206212997436523,
+      -2.5999999046325684,
+      0.0
+    ],
+    "max": [
+      4.206212997436523,
+      1.899999976158142,
+      12.556215286254883
+    ]
+  },
+  "dimensionsMetres": [
+    8.412425994873047,
+    4.5,
+    12.556215286254883
+  ],
+  "lamps": []
+}

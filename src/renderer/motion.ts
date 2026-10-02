@@ -1,7 +1,7 @@
 // Vertex animation for the dynamic mesh. Every dynamic vertex carries a mode, an anchor point and four
 // parameters; the G-buffer vertex shader (shaders/gbuffer.ts) moves it. Keep the modes and parameter
 // layouts in sync with that shader.
-export const MODE = { STATIC: 0, SWAY: 1, CONVEYOR: 2, SMOKE: 3, BUTTERFLY: 4, FIREFLY: 5 } as const;
+export const MODE = { STATIC: 0, SWAY: 1, CONVEYOR: 2, SMOKE: 3, BUTTERFLY: 4, FIREFLY: 5, SPIN: 6, SWING: 7 } as const;
 
 export type Vec3 = [number, number, number];
 export type Vec4 = [number, number, number, number];
@@ -28,4 +28,8 @@ export const motion = {
   butterfly: (home: Vec3, phase: number, seed: number): Motion => ({ mode: MODE.BUTTERFLY, anchor: home, anim: [phase, seed, 0, 0] }),
   /** Firefly drifting around `home` (on the ground), blinking, visible at night only. */
   firefly: (home: Vec3, phase: number, seed: number): Motion => ({ mode: MODE.FIREFLY, anchor: home, anim: [phase, seed, 0, 0] }),
+  /** Steady rotation about the unit `axis` through `pivot`, at `speed` radians per second (a wheel, sails). */
+  spin: (pivot: Vec3, axis: Vec3, speed: number): Motion => ({ mode: MODE.SPIN, anchor: pivot, anim: [...axis, speed] }),
+  /** Gentle back-and-forth rotation about the unit `axis` through `pivot`, up to `amplitude` radians (a hanging sign, washing). */
+  swing: (pivot: Vec3, axis: Vec3, amplitude: number): Motion => ({ mode: MODE.SWING, anchor: pivot, anim: [...axis, amplitude] }),
 };

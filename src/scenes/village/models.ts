@@ -1,45 +1,80 @@
 import * as THREE from 'three';
-import { collectGltf, collectLamps, GeometryCollector, loadGltf, meshNodeName, namedMeshRule, type Lamp } from '../../renderer';
-import { BACKDROP, BRIDGE, BUILDINGS, CANAL, facingAngle, FOUNTAIN, groundY, PARAPET, type Facing } from './layout';
+import {
+  collectGltf, collectLamps, GeometryCollector, loadGltf, meshNodeName, movingPartMotion, namedMeshRule, type Lamp, type MeshRule, type RGB,
+} from '../../renderer';
+import { BACKDROP, BASIN, BRIDGE, BUILDINGS, CANAL, facingAngle, FOOTBRIDGE, FOUNTAIN, groundY, JETTY, STATUE, type Facing } from './layout';
 
 // Places the modelled buildings and props. Every model must load: a missing or broken GLB fails the scene build,
 // so it can never be hidden by a stand-in.
 
 /**
- * A model placed in the scene: `src` is `village` (public/village/) or `props` (public/props/, batch 1).
- * `backdrop` copies fill the land past the street: their windows glow but their lamps are dropped, to keep the lamp budget.
+ * A model placed in the scene: `src` is `village` (public/village/) or `props` (public/props/, batch 1). `y` defaults
+ * to the ground height; boats sit on the water. `look` recolours this copy (see RECOLOURS).
+ * `backdrop` copies fill the land past the town: their windows glow but their lamps are dropped, to keep the lamp budget.
  */
-export interface Placement { id: string; src: 'village' | 'props'; x: number; z: number; front: Facing; y?: number; backdrop?: boolean }
+export interface Placement { id: string; src: 'village' | 'props'; x: number; z: number; front: Facing; y?: number; look?: string; backdrop?: boolean }
 
-const parapetTop = PARAPET.height + PARAPET.coping, parapetZ = CANAL.z0 - PARAPET.inset;
+const lamp = (x: number, z: number, id = 'street_lamp'): Placement => ({ id, src: 'props', x, z, front: '+z' });
+const at = (id: string, x: number, z: number, front: Facing = '+z', extra: Partial<Placement> = {}): Placement => ({ id, src: 'village', x, z, front, ...extra });
 
-/** Batch 1 props and village clutter. Anything tied to a layout feature takes its position from layout.ts. */
+/** Props, street furniture and boats. Anything tied to a layout feature takes its position from layout.ts. */
 export const PROPS: Placement[] = [
-  { id: 'stone_arch_bridge', src: 'props', x: BRIDGE.x, z: BRIDGE.z, front: '+x' },
-  ...([[-9.2, 0.7], [-3.4, 0.7], [6.6, 0.9], [-6, 5.9], [5, 5.9], [-4.2, 9.8], [5.6, 9.9]] as const)
-    .map(([x, z]) => ({ id: 'street_lamp', src: 'props' as const, x, z, front: '+z' as const })),
-  { id: 'street_lamp_cool', src: 'props', x: 8, z: -6.2, front: '+z' },
-  { id: 'fountain', src: 'village', x: FOUNTAIN.x, z: FOUNTAIN.z, front: '+z' },
-  { id: 'well', src: 'props', x: 9.6, z: -9.3, front: '+z' },
-  { id: 'cart', src: 'props', x: -8.2, z: 5.3, front: '-x' },
-  // the square: the festoon hangs across the front of the fountain
-  { id: 'closed_stall', src: 'village', x: 5.2, z: -4.0, front: '+z' },
-  { id: 'festoon', src: 'village', x: FOUNTAIN.x, z: FOUNTAIN.z + 2.1, front: '+z' },
-  { id: 'bench', src: 'village', x: 0.7, z: -4.15, front: '+z' },
-  { id: 'barrel', src: 'village', x: 6.45, z: -1.25, front: '+z' },
-  { id: 'barrel', src: 'village', x: 6.5, z: -0.35, front: '+x' },
-  { id: 'crate', src: 'village', x: 5.75, z: -0.8, front: '-x' },
-  // the street and the canal: flower boxes stand on the parapet
-  { id: 'bench', src: 'village', x: -4.8, z: 5.85, front: '-z' },
-  { id: 'signpost', src: 'village', x: 1.6, z: 5.9, front: '-z' },
-  { id: 'crate', src: 'village', x: -10.4, z: 5.0, front: '-z' },
-  { id: 'crate', src: 'village', x: -10.35, z: 5.0, front: '-x', y: 0.76 },
-  { id: 'barrel', src: 'village', x: -9.4, z: 5.05, front: '+z' },
-  ...([-7.2, -2.6, 3.4, 7.2] as const).map((x) => ({ id: 'flower_box', src: 'village' as const, x, z: parapetZ, front: '-z' as const, y: parapetTop })),
+  at('bridge_stone', BRIDGE.x, BRIDGE.z),
+  at('footbridge', FOOTBRIDGE.x, FOOTBRIDGE.z),
+  at('jetty', JETTY.x, JETTY.z, '-z'),
+  // street lamps: along both quays, on the square, by the bridge lane and on the upper level
+  ...[[-22, -3.3], [-9, -3.3], [5, -3.3], [16, -3.3], [26, -3.3], [-13, 7.3], [3.5, 7.3], [12.5, 7.3], [21, 7.3], [-0.2, 14.5],
+    [-12.5, -15.8], [8.6, -15.8]].map(([x, z]) => lamp(x, z)),
+  lamp(-8, -26.4, 'street_lamp_cool'),
+  // the square
+  at('guardian_statue', STATUE.x, STATUE.z),
+  at('fountain', FOUNTAIN.x, FOUNTAIN.z),
+  at('festoon', BRIDGE.x, -5.4),
+  at('market_stall_lit', 2.6, -15),
+  at('market_stall_lit', 5.6, -15, '+z', { look: 'stallBlue' }),
+  at('closed_stall', -9, -15.3),
+  at('notice_board', -12.4, -4.9),
+  at('bench', -5.2, -12.6, '+x'), at('bench', 1.2, -12.6, '-x'),
+  at('barrel', 8.2, -12.2), at('crate', 8.1, -11.2, '-x'),
+  // the quays: benches and flower boxes facing the water, bollards, the barge's cargo
+  at('bench', -6.8, -2.4), at('flower_box', -8.6, -1.6), at('flower_box', 3.4, -1.6),
+  ...[9.5, 13, 20, -17, -25].map((x) => at('mooring_bollard', x, CANAL.z0 - 0.55)),
+  at('barrel', 14.6, -2.6), at('barrel', 15.3, -2.2, '+x'), at('crate', 13.4, -2.5, '-x'),
+  at('bench', 26.5, 7.0, '-z'),
+  at('signpost', 0.9, 9.2, '-z'),
+  // the south bank: the mill yard, the bakery, the cottages, the smithy and the barn
+  { id: 'cart', src: 'props', x: -13.5, z: 9.3, front: '+x' },
+  at('woodpile', -11.2, 15.6, '-x'),
+  at('laundry_line', 4.8, 18.3),
+  at('hay_bales', 19.6, 15.8, '+x'),
+  at('crate', -6.0, 13.2, '+x'), at('barrel', -6.1, 11.4),
+  at('barrel', 16.6, 13.4), at('woodpile', 16.7, 10.4, '-x'),
+  { id: 'well', src: 'props', x: -16.5, z: -15, front: '+z' },
+  // the ruins on the upper level, with the wardstone among them
+  at('wardstone', -13.6, -29.6),
+  // boats: moored at the jetty, in the basin, and the barge along the north quay
+  at('rowboat', JETTY.x - 2.9, CANAL.z1 - 1.75, '-z', { y: CANAL.waterY }),
+  at('rowboat', JETTY.x + 2.9, CANAL.z1 - 1.85, '-z', { y: CANAL.waterY, look: 'boatGreen' }),
+  at('rowboat', BASIN.x0 + 4, BASIN.z1 - 1.6, '+z', { y: CANAL.waterY }),
+  at('barge', 12.5, CANAL.z0 + 1.3, '+x', { y: CANAL.waterY }),
 ];
 
+/**
+ * Recolourings by material name, so copies of the same building differ: roofs of red clay tile instead of slate, plaster
+ * in other colours, a blue stall canopy. Material names come from assets/village/village_common.py.
+ */
+export const RECOLOURS: Record<string, Record<string, RGB>> = {
+  redTile: {
+    'Village midnight blue slate': [0.30, 0.085, 0.055], 'Village weathered blue slate': [0.38, 0.13, 0.075],
+    'Village violet slate': [0.25, 0.08, 0.06],
+  },
+  rose: { 'Village sage plaster': [0.53, 0.30, 0.30], 'Village warm ivory plaster': [0.62, 0.42, 0.18] },
+  stallBlue: { 'Village barn red timber': [0.07, 0.17, 0.36], 'Village tavern rose enamel': [0.62, 0.55, 0.42] },
+  boatGreen: { 'Village tarred waterside timber': [0.10, 0.26, 0.17] },
+};
+
 /** Buildings whose chimney smokes. */
-const SMOKY = new Set(['bakery', 'tavern', 'house_C']);
+const SMOKY = new Set(['bakery', 'tavern', 'house_C', 'smithy', 'cottage_thatch', 'town_hall']);
 
 /**
  * The name the asset rules see: the node's own name, or its multi-material parent node's name when only that one carries
@@ -48,15 +83,30 @@ const SMOKY = new Set(['bakery', 'tavern', 'house_C']);
 const PREFIXED = /^(decor|water|glass|thin|move|lamp)_/i;
 export const ruleName = (o: THREE.Object3D) => (PREFIXED.test(meshNodeName(o)) ? meshNodeName(o) : o.name);
 
-/** The asset naming rules, minus the bridge's own patch of water: the canal under it has its own, lower surface. */
-export const villageRule = (mesh: THREE.Mesh) => (/^water_clear_patch/i.test(ruleName(mesh)) ? { skip: true } : namedMeshRule(mesh));
+/**
+ * The asset naming rules, plus this copy's recolouring and, with `moving`, its `move_*` parts. Only models built to the
+ * local-X pivot convention (docs/ASSET_BRIEF.md) may move: the batch-1 props (the cart's wheels) predate it.
+ */
+export const villageRule = (look?: string, moving = false) => (mesh: THREE.Mesh, mat: THREE.MeshStandardMaterial): MeshRule | void => {
+  const rule: MeshRule = { ...namedMeshRule(mesh) };
+  if (rule.skip) return rule;
+  const color = look ? RECOLOURS[look]?.[mat.name] : undefined;
+  if (color) rule.color = color;
+  const mo = moving ? movingPartMotion(mesh) : undefined;
+  if (mo) rule.motion = mo;
+  return rule;
+};
 
 /** Villagers (batch 1 `villagers`, four figures side by side): which figure, where, and which way they face. */
-export const VILLAGERS: { figure: number; x: number; z: number; front: Facing }[] = [
-  { figure: 0, x: FOUNTAIN.x - 2.5, z: FOUNTAIN.z + 0.6, front: '+x' },    // chatting by the fountain
-  { figure: 1, x: FOUNTAIN.x - 1.85, z: FOUNTAIN.z + 0.85, front: '-x' },
-  { figure: 3, x: 9.4, z: 1.75, front: '+z' },                              // outside the tavern
-  { figure: 2, x: -3.6, z: 5.75, front: '+z' },                             // looking over the canal
+export const VILLAGERS: { figure: number; x: number; z: number; front: Facing; y?: number }[] = [
+  { figure: 0, x: STATUE.x - 1.9, z: STATUE.z + 1.7, front: '+x' },     // at the guardian statue
+  { figure: 1, x: STATUE.x - 0.9, z: STATUE.z + 2.0, front: '-x' },
+  { figure: 2, x: 2.6, z: -13.3, front: '-z' },                          // at the market stall
+  { figure: 3, x: 27, z: -3.4, front: '+z' },                            // outside the tavern
+  { figure: 1, x: BRIDGE.x + 4, z: CANAL.z1 + 0.9, front: '-z' },        // on the towpath by the bridge, looking at the water
+  { figure: 2, x: JETTY.x + 0.4, z: JETTY.z - 1.5, front: '-z', y: -0.55 }, // on the jetty
+  { figure: 0, x: 14.2, z: 15.2, front: '+x' },                          // at the smithy
+  { figure: 3, x: -16.4, z: -13.4, front: '+z' },                        // at the well
 ];
 
 /** Where the four figures of the villagers model stand along its x axis. */
@@ -92,7 +142,7 @@ function chimneyTop(root: THREE.Object3D): THREE.Vector3 | null {
 
 /** Every placement in collection order: the buildings, the props, then the backdrop copies. */
 export const PLACEMENTS: Placement[] = [
-  ...BUILDINGS.map((b) => ({ id: b.id, src: 'village' as const, x: b.x, z: b.z, front: b.front })),
+  ...BUILDINGS.map((b) => ({ id: b.id, src: 'village' as const, x: b.x, z: b.z, front: b.front, look: b.look })),
   ...PROPS,
   ...BACKDROP.map((b) => ({ id: b.id, src: 'village' as const, x: b.x, z: b.z, front: b.front, backdrop: true })),
 ];
@@ -107,25 +157,25 @@ export async function placeModels(s: GeometryCollector, d: GeometryCollector): P
   const byUrl = new Map(urls.map((url, i) => [url, models[i]]));
 
   const lamps: Lamp[] = [], chimneys: THREE.Vector3[] = [];
-  for (const place of PLACEMENTS) {
-    const root = byUrl.get(`/${place.src}/${place.id}.glb`)!.clone();
-    root.position.set(place.x, place.y ?? groundY(place.x, place.z), place.z);
-    root.rotation.y = facingAngle(place.front);
+  for (const p of PLACEMENTS) {
+    const root = byUrl.get(`/${p.src}/${p.id}.glb`)!.clone();
+    root.position.set(p.x, p.y ?? groundY(p.x, p.z), p.z);
+    root.rotation.y = facingAngle(p.front);
     root.updateMatrixWorld(true);
-    collectGltf(root, s, d, villageRule);
-    if (place.backdrop) continue;
+    collectGltf(root, s, d, villageRule(p.look, p.src === 'village'));
+    if (p.backdrop) continue;
     lamps.push(...collectLamps(root));
-    const top = SMOKY.has(place.id) ? chimneyTop(root) : null;
+    const top = SMOKY.has(p.id) ? chimneyTop(root) : null;
     if (top) chimneys.push(top);
   }
 
   const figures = villagerFigures(crowd);
   for (const v of VILLAGERS) {
     const root = new THREE.Group().add(figures[v.figure].clone());
-    root.position.set(v.x, groundY(v.x, v.z), v.z);
+    root.position.set(v.x, v.y ?? groundY(v.x, v.z), v.z);
     root.rotation.y = facingAngle(v.front);
     root.updateMatrixWorld(true);
-    collectGltf(root, s, d, villageRule);
+    collectGltf(root, s, d, villageRule());
   }
   return { lamps, chimneys };
 }

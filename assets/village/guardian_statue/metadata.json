@@ -1,0 +1,52 @@
+{
+  "id": "guardian_statue",
+  "description": "Weathered robed stone guardian raising a violet crystal; carved folds, raised hands, moss and faint luminous runes on its square plinth.",
+  "triangles": 1388,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    2,
+    2
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 4.6,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -0.9800000190734863,
+      -0.9800000190734863,
+      0.0
+    ],
+    "max": [
+      0.9800000190734863,
+      0.9800000190734863,
+      4.5
+    ]
+  },
+  "dimensionsMetres": [
+    1.9600000381469727,
+    1.9600000381469727,
+    4.5
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Guardian_crystal",
+      "positionBlender": [
+        0.0,
+        -0.10000000149011612,
+        4.059999942779541
+      ],
+      "colorLinear": [
+        0.4,
+        0.24,
+        1.0
+      ],
+      "radius": 6,
+      "clearance": 0.5
+    }
+  ]
+}
