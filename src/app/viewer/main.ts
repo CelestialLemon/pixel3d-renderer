@@ -149,7 +149,7 @@ async function main() {
   orbit.attach($('stage'), () => p3.viewHeight / innerHeight);
   orbit.bindKeys(() => document.body.classList.toggle('clean'));
 
-  let last = performance.now(), time = params.has('time') ? num('time', 0) : 0;
+  let last = performance.now(), time = params.has('time') ? num('time', 0) : 0, capturing = false;
   const focus = new THREE.Vector3();
   const render = () => {
     if (dirty || settings.animate) {
@@ -172,13 +172,22 @@ async function main() {
     const a = document.createElement('a'); a.download = `${scene.id}-pass3-${hourLabel(hour).replace(':', '')}.png`; a.href = out.toDataURL('image/png'); a.click();
   };
   (window as any).app3 = {
-    p3, get p1() { return p1; }, get pOther() { return pOther; }, settings, orbit, scene, pixelScene, render, redraw: () => (dirty = true),
+    p3, get p1() { return p1; }, get pOther() { return pOther; }, settings, orbit, scene, pixelScene, render, redraw: () => (dirty = true), get hour() { return hour; },
     setHour: (h: number) => { hour = h; applyLook(); }, setCompare, setSplit,
+    // Deterministic frame for tools/timelapse.mjs: stops the live loop for good, then draws exactly this clock time,
+    // hour and camera (radians, as in `orbit.view`). The caller reads the canvas afterwards.
+    capture: (frame: { time: number; hour?: number; view?: Partial<typeof orbit.view> }) => {
+      capturing = true; time = frame.time;
+      if (frame.hour !== undefined) { hour = frame.hour; applyLook(); }
+      if (frame.view) Object.assign(orbit.target, Object.assign(orbit.view, frame.view));
+      dirty = true; render();
+    },
   };
 
   applyLook();
   if (compare !== 'off') await setCompare(compare);
   const frame = (now: number) => {
+    if (capturing) return;
     const dt = Math.min((now - last) / 1000, 0.1); last = now;
     if (settings.animate && !params.has('time')) time += dt;
     if (cycle) { hour = (hour + dt * 0.45) % 24; applyLook(); }

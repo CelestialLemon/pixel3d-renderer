@@ -121,6 +121,52 @@ All tools drive headless Chrome with SwiftShader (`tools/lib.mjs`; set `CHROME_P
 `out/` holds scratch captures and is git-ignored; it is safe to empty. The approved golden images are tracked in `golden/`.
 Everything so far ran on SwiftShader only, never a real GPU.
 
+## Videos
+
+`tools/timelapse.mjs` renders a scene into an MP4 (or a still PNG) in `out/timelapse/`, with ffmpeg (`/opt/homebrew/bin/ffmpeg`,
+or set `FFMPEG_PATH`; `tools/video-check.mjs` also takes `FFPROBE_PATH`, by default the ffprobe next to ffmpeg). It needs a dev server.
+
+```sh
+node tools/timelapse.mjs day-to-night                       # a ready-made clip (see below)
+node tools/timelapse.mjs square-orbit --res 4k --fps 60 --workers 3
+node tools/timelapse.mjs --view mill --hour 8..22 --seconds 12   # ad hoc: fixed camera, hour swept 8:00 -> 22:00
+node tools/timelapse.mjs --still --view overview --hour 21  # one PNG
+node tools/timelapse.mjs my-clip.json --keep-frames         # your own clip file; also keep the PNG frames
+```
+
+- **Deterministic.** Frame `i` is drawn at clock time `time + i / fps` and read straight off the canvas, so nothing is recorded in
+  real time: no frame is dropped or repeated, and the same command gives the same video. The water, smoke, fireflies, mill wheel and
+  windmill run on that clock. `--workers N` renders with N headless browsers at once, with identical frames.
+- **Pixel-art friendly.** The scene is drawn at the art resolution (one canvas pixel per art pixel) and scaled up by a whole number
+  with nearest-neighbour scaling. `--res 1080p` (default) or `4k` with `--scale` 4 or 8 respectively, i.e. 480x270 art; e.g.
+  `--res 4k --scale 6` is 640x360 art, so more detail. `--res WxH` takes any size that is a multiple of `--scale`. `--fps` is 30 by default.
+- **Clips.** The presets live in `tools/timelapse-presets.mjs`: `day-to-night` (the overview from 8:00 to 22:00), `square-orbit` (a
+  slow turn round the market square) and `canal-fly` (along the canal, under the bridges). A clip file has the same shape:
+
+  ```json
+  { "scene": "village", "seconds": 16, "linear": ["hour"],
+    "keys": [{ "at": 0, "view": "street", "hour": 9 }, { "at": 8, "az": 75, "zoom": 16 }, { "at": 16, "view": "canal", "hour": 20 }] }
+  ```
+
+  A key can start from a scene view preset (`view`) and set `az`, `el` (degrees; azimuth isn't wrapped, so 0 to 360 is a full turn),
+  `zoom` (visible world height), `tx`, `tz` (the point the camera looks at) and `hour`. A channel a key leaves out isn't pinned
+  there. Every channel eases out of the first key and into the last and passes smoothly through the ones between, without
+  overshooting. Channels named in `linear` move at a constant rate. Zoom eases in log space. `--scene`, `--view`, `--hour` and
+  `--seconds` override a preset, and `--query "a=1&b=2"` adds any page parameter (e.g. `outline=0`).
+- **Any dev server, any version.** `--url http://127.0.0.1:5190` (default `$DEMO_URL` or `http://127.0.0.1:5180`) and `--page` point
+  it at another server, e.g. one started from an older checkout in a `git worktree`. The tool picks a driver for the page: `hook`
+  (`app3.capture`, this version onwards), `legacy` (the `app3` view, `setHour` and `renderGeometry`/`renderStyle` that every version of
+  the viewer has had, so camera paths and hour sweeps work too) or `url` (reload the page per frame with the camera, hour and clock
+  in the URL, which is slow). `--tier` forces one. Old pages ignore parameters they don't know (no `?scene=` before PR #1, no canal
+  town before PR #8), so they show their own default scene.
+- **Output.** `out/timelapse/<name>.mp4` (H.264, BT.709, `--crf`, default 12), `<name>.camera.json` (the camera, hour and clock of
+  every frame, and the driver used) and, with `--keep-frames`, the upscaled frames in `<name>-frames/`.
+- **Checking a video.** `node tools/video-check.mjs out/timelapse/<name>.mp4 --log out/timelapse/<name>.camera.json
+  [--reference out/timelapse/<name>-frames/%05d.png] [--static x,y,w,h]` decodes every frame and reports, as JSON, the frame count
+  and timing against the log, repeated frames, camera steps and acceleration spikes, pixels that vary inside one art pixel's block
+  (smoothing), colour error against the kept PNG frames, and flicker in a still region (art pixels; fixed camera and hour only).
+  Structural problems (frame count, timestamps, a log that doesn't match the video) fail; the image measures are warnings to inspect.
+
 ## Query parameters
 
 Both pages: `hour` (0–24, default 17.5), `time` (freeze the animation clock, e.g. `time=8`), `anim=0`, `cycle=1` (run the day), `az`, `el`
