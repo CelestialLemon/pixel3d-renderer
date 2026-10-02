@@ -23,4 +23,6 @@ export interface SceneDefinition {
   build(paletteSize?: number): Promise<PixelScene>;
   /** True if the frozen reference passes (src/reference/) draw this same scene and can be compared with it. */
   hasReference: boolean;
+  /** Hour the demo pages start at when the URL gives none (default 17.5, golden hour). */
+  hour?: number;
 }

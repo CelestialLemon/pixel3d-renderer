@@ -1,0 +1,36 @@
+{
+  "id": "closed_stall",
+  "description": "Closed night market stall, striped teal/ivory canopy, boarded teal shutters and rose sign.",
+  "triangles": 576,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    2.9,
+    1.9
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": null,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -1.3949999809265137,
+      -0.9200000166893005,
+      0.0
+    ],
+    "max": [
+      1.3949999809265137,
+      0.8740983605384827,
+      2.463007926940918
+    ]
+  },
+  "dimensionsMetres": [
+    2.7899999618530273,
+    1.7940983772277832,
+    2.463007926940918
+  ],
+  "lamps": []
+}

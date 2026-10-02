@@ -15,7 +15,7 @@ const settings: RenderSettings & { pixel: number; animate: boolean } = {
   ...settingsFromParams(), pixel: THREE.MathUtils.clamp(num('px', 3), 1, 8), animate: params.get('anim') !== '0',
 };
 const orbit = new Orbit(scene.view);
-let hour = num('hour', 17.5), cycle = params.get('cycle') === '1', dirty = true;
+let hour = num('hour', scene.hour ?? 17.5), cycle = params.get('cycle') === '1', dirty = true;
 // What the left of the wipe shows: Pass 1, or this renderer with another palette size.
 type Compare = 'off' | 'pass1' | 'palette';
 let compare: Compare = params.get('compare') === 'palette' ? 'palette' : params.get('compare') === '1' && scene.hasReference ? 'pass1' : 'off';

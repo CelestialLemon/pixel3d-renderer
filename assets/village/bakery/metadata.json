@@ -1,0 +1,64 @@
+{
+  "id": "bakery",
+  "description": "Lantern Row bakery; finished four-sided half-timber architecture, true recessed windows, slate roof and authored lamp extras.",
+  "triangles": 4940,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    4.5,
+    4
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    1.1150000095367432,
+    -1.4900000095367432,
+    0.0
+  ],
+  "maxHeightMetres": 6,
+  "attachmentsBlender": {
+    "doors": [
+      [
+        1.1150000095367432,
+        -1.4900000095367432,
+        0.0
+      ]
+    ]
+  },
+  "boundsBlender": {
+    "min": [
+      -2.1649999618530273,
+      -1.9249999523162842,
+      0.0
+    ],
+    "max": [
+      2.1649999618530273,
+      1.9150002002716064,
+      5.554500102996826
+    ]
+  },
+  "dimensionsMetres": [
+    4.329999923706055,
+    3.8400001525878906,
+    5.554500102996826
+  ],
+  "lamps": [
+    {
+      "name": "lamp_bakery_front_floor0_window0",
+      "positionBlender": [
+        -0.15801000595092773,
+        -1.4249999523162842,
+        2.1742000579833984
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.9,
+      "clearance": 0.07
+    }
+  ]
+}

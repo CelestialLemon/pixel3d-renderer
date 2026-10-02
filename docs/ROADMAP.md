@@ -41,7 +41,16 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    - **Textures:** today only `material.color` is read, so a textured model renders as one flat colour per material. Sample the base-colour
      texture per vertex or face before quantisation, or add a UV/albedo-texture path to the G-buffer.
    - **Skinned meshes and node animation:** the dynamic mesh only knows the fixed motion modes.
-4. **A second hero scene** in a different setting (night village street, snow, an interior) to check that the look generalises.
+4. **Done (2026-10-02): the second hero scene, Lantern Row** (`?scene=village`, `src/scenes/village/`). A night village street of about
+   30 × 24 m on two levels: a cobbled street, a square with a fountain and a festoon, a stair and gateway up to an upper lane behind a
+   1.6 m retaining wall, a canal with a bridge on the camera side, and backdrop houses past both ends. Sol modelled the 17 buildings and
+   props (`assets/village/`, one GLB each, placed by footprint in `layout.ts`); paving, walls, stairs, canal, trees, smoke and fireflies
+   are built in code. It starts at 22:00 (`SceneDefinition.hour`), has six `?view=` presets and `village-*` golden shots, and needed
+   `LIMITS.lamps` raised from 16 to 32 (22 lamps). **What it showed:**
+   - The Golden Hour look carries over to a night street and a dense town without changes to the renderer.
+   - Warm lamp light on grass and bushes turns olive (lamp colour multiplies green albedo). Natural, but less pretty than on stone.
+   - Side-wall window mullions break up at oblique angles (thin features, section 2).
+   - The tavern's hanging sign (`move_sway_`) is static: the loader has no motion for `move_*` parts yet (section 3, animation hook).
 
 ## 2. Sub-pixel stability (found 2026-10-01)
 

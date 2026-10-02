@@ -1,0 +1,71 @@
+{
+  "id": "house_A",
+  "description": "Front-gabled two-floor half-timbered townhouse; jettied upper floor, teal shutters, marigold boxes, tiled slate roof, open warm window recesses and two occluded spill lights.",
+  "triangles": 7876,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    5,
+    5
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0,
+    -2.05,
+    0
+  ],
+  "maxHeightMetres": null,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -2.495000123977661,
+      -2.5,
+      0.0
+    ],
+    "max": [
+      2.495000123977661,
+      2.5,
+      7.740000247955322
+    ]
+  },
+  "dimensionsMetres": [
+    4.990000247955322,
+    5.0,
+    7.740000247955322
+  ],
+  "lamps": [
+    {
+      "name": "lamp_House_A_front_lower_0",
+      "positionBlender": [
+        -1.0199999809265137,
+        -1.9500000476837158,
+        1.7599999904632568
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.6,
+      "clearance": 0.07
+    },
+    {
+      "name": "lamp_House_A_door_lantern",
+      "positionBlender": [
+        0.8299999833106995,
+        -2.3399999141693115,
+        2.1700000762939453
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.1,
+      "clearance": 0.23
+    }
+  ]
+}

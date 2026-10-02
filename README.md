@@ -40,11 +40,15 @@ src/
     look.ts            time of day: sun, colour grade, sky, lamps
   scenes/              scene content: one folder per scene, registered in scenes/index.ts
     cookie-co/         the factory, meadow, trees, pond and wildlife
+    village/           Lantern Row, a night village street: layout, paving, walls, canal, trees, and placement of the modelled buildings
+    test-chart/        calibration bays (thin features, curves, ink, AO, palette, lamps)
+    props/             gallery of every modelled prop in assets/props/
     shared/            seeded randomness and noise for building scenes
   app/                 the demo pages: compare/ (index.html), viewer/ (pass3.html), shared orbit camera, params, pass registry
   reference/           FROZEN: Pass 0 and Pass 1 pipelines and their world. Never edit (golden images prove they are unchanged).
 archive/pass2-atmosphere/   Pass 2, archived (not built)
 assets/cookie-factory/      Blender source, build script and export_glb.py for public/cookie_factory_current.glb
+assets/props/, assets/village/   Blender build scripts for the batch 1 props and the Lantern Row models (GLBs in public/props/, public/village/)
 tools/                      headless-Chrome capture and check scripts
 docs/ROADMAP.md
 ```
@@ -78,7 +82,8 @@ are scene data. To add one:
 2. Use one seeded `mulberry32` generator per build (and consume it in a fixed order), so the scene and its palette are reproducible.
 3. Add it to `SCENES` in `src/scenes/index.ts`. `/pass3.html?scene=<id>` shows it, and a scene picker appears once there are two.
 
-Shader limits per scene: 8 lamps, 4 ripple points, 8 groove positions (`LIMITS` in `scene.ts`).
+Shader limits per scene: 32 lamps, 4 ripple points, 8 groove positions (`LIMITS` in `scene.ts`). A scene can set `hour`, the time of day
+the viewer starts at (Lantern Row starts at night).
 
 ### Passes
 
