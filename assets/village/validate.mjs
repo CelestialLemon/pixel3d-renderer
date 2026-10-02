@@ -169,11 +169,11 @@ for (const name of names) {
         bridge.updateMatrixWorld(true);
         const bridgeMeshes=[];
         bridge.traverse(o=>{if(o.isMesh && !o.name.startsWith('glass_')) bridgeMeshes.push(o);});
-        for(let i=0;i<=48;i++) {
+        for(const x of bridgeName==='footbridge'?[-.78,0,.78]:[-1.8,0,1.8]) for(let i=0;i<=48;i++) {
           const z=bounds.min.x+(bounds.max.x-bounds.min.x)*i/48;
-          const hit=new Raycaster(new Vector3(0,-1,z),new Vector3(0,1,0),0,4).intersectObjects(bridgeMeshes,false)[0];
+          const hit=new Raycaster(new Vector3(x,-1,z),new Vector3(0,1,0),0,4).intersectObjects(bridgeMeshes,false)[0];
           assert(hit && bounds.max.y+.05<=hit.point.y+1,
-            `Barge air draft clears ${bridgeName} over its entire beam with 5 cm margin at ${z}`);
+            `Barge air draft clears ${bridgeName} over its entire beam with 5 cm margin at (${x},${z})`);
         }
       }
     }
