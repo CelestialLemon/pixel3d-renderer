@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { PixelPipeline as Pass0 } from '../reference/pass0/pipeline';
 import { PixelPipeline as Pass1, type Settings as RefSettings } from '../reference/pass1/pipeline';
 import { buildWorld, type World } from '../reference/world';
-import { PixelRenderer, type Look, type PixelScene, type RenderSettings } from '../renderer';
+import { DEFAULT_PALETTE_SIZE, PixelRenderer, type Look, type PixelScene, type RenderSettings } from '../renderer';
 import { cookieCo } from '../scenes/cookie-co';
-import { num } from './params';
+import { num, paletteSize } from './params';
 
 /** One renderer as the demo pages drive it. Wraps the frozen reference pipelines and the current renderer alike. */
 export interface PassView {
@@ -23,7 +23,7 @@ export interface PassView {
 export interface PassAssets { reference: World; scene: PixelScene }
 
 export const loadAssets = async (): Promise<PassAssets> => {
-  const [reference, scene] = await Promise.all([buildWorld('/cookie_factory.glb', num('k', 44)), cookieCo.build(num('k3', 56))]);
+  const [reference, scene] = await Promise.all([buildWorld('/cookie_factory.glb', num('k', 44)), cookieCo.build(paletteSize('k3', DEFAULT_PALETTE_SIZE))]);
   return { reference, scene };
 };
 

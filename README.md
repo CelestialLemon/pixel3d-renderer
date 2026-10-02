@@ -35,7 +35,7 @@ src/
     flags.ts           surface flags (NORMAL, EMISSIVE, DECOR, STEAM, WATER, GLOW, GROOVED)
     motion.ts          vertex animation modes for moving geometry (sway, conveyor, smoke, butterfly, firefly)
     geometry.ts        GeometryCollector and helpers for building scene geometry
-    palette.ts         OKLab k-means palette reduction
+    palette.ts         OKLab palette reduction (minimax merging)
     gltf.ts            glTF loading and per-mesh rules (flags, motion, skip)
     look.ts            time of day: sun, colour grade, sky, lamps
   scenes/              scene content: one folder per scene, registered in scenes/index.ts
@@ -62,8 +62,9 @@ Each frame, `PixelRenderer` (`src/renderer/renderer.ts`):
    groove lines and corner shading. Each surface flag changes which of these apply.
 4. **Cleans up** orphan pixels on flat surfaces.
 
-The geometry carries one flat colour per vertex. Scenes reduce all colours to a small palette (`quantizePalette`, k-means in OKLab), so the
-image uses a controlled set of base colours that the ramps then shade.
+The geometry carries one flat colour per vertex. Scenes reduce all colours to a small palette (`quantizePalette`: minimax merging in
+OKLab, 80 colours by default), so the image uses a controlled set of base colours that the ramps then shade. Minimax keeps the worst shift
+of any input colour small, so a colour on a small object is not absorbed into a clearly different one.
 
 ### Scenes
 
@@ -106,6 +107,7 @@ All tools drive headless Chrome with SwiftShader (`tools/lib.mjs`; set `CHROME_P
 | `node tools/anim-check.mjs` | The world moves between two clock times and renders identically at the same time. |
 | `node tools/door-strip.mjs [px] [name]` | Sub-pixel flicker contact sheet: the door at 8 tiny camera steps (`out/<name>.png`). |
 | `node tools/shot.mjs <name> "<query>" [WxH]` | Screenshot of `/pass3.html` (`PAGE=index.html` for the comparison page) plus the art resolution and colour count. |
+| `node tools/palette-check.mjs` | Palette quality per scene: worst shift of any input colour, and each merged group whose worst shift or widest input pair is at least `REPORT_THRESHOLD` (default 0.05) (`K`, `MAX_ERROR`). Fails over `MAX_ERROR` (default 0.10). |
 | `node tools/comparison-sheet.mjs` | The passes side by side at 2x (`out/passes.png`), from the captures `verify.mjs` writes. |
 
 `out/` holds scratch captures and is git-ignored; it is safe to empty. The approved golden images are tracked in `golden/`.
@@ -118,8 +120,9 @@ Both pages: `hour` (0–24, default 17.5), `time` (freeze the animation clock, e
 `outline|dither|clean|contacts|clouds|glow|vignette=0` to switch effects off.
 
 - Comparison page: `mode=pass0|pass1|pass3` (one pass), `layout=grid|wipe`, `sun` / `sunEl` (override the sun, degrees), `k` (Pass 0–1
-  palette size, default 44), `k3` (Pass 3 palette size, default 56).
-- Viewer: `scene=<id>`, `compare=1` (wipe against Pass 1), `split` (wipe position, %), `k` (palette size).
+  palette size, default 44), `k3` (Pass 3 palette size, default 80).
+- Viewer: `scene=<id>`, `compare=1` (wipe against Pass 1), `split` (wipe position, %), `k` (palette size, default 80), `compare=palette`
+  (wipe against another palette size: `left-k`, default 56, on the left and `k` on the right).
 
 ## Sub-pixel flicker (door planks)
 

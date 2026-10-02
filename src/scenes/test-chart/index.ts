@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { GeometryCollector, linearColor as lin, place, quantizePalette, type PixelScene } from '../../renderer';
-import { mulberry32 } from '../shared/random';
+import { DEFAULT_PALETTE_SIZE, GeometryCollector, linearColor as lin, place, quantizePalette, type PixelScene } from '../../renderer';
 import type { SceneDefinition } from '../types';
 import { aoBay, curvesBay, inkBay, lampsBay, paletteBay, thinBay } from './bays';
 import { kerb } from './kit';
@@ -16,8 +15,7 @@ export const BAYS = {
 } as const;
 const HALF = 3.5, GROUND = { hx: 13, hz: 9.5 };
 
-async function build(paletteSize = 56): Promise<PixelScene> {
-  const rnd = mulberry32(5);
+async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const s = new GeometryCollector(false), d = new GeometryCollector(true);
   // Checker ground: two close neutrals, so the tiles read as scale without stealing attention.
   const tile = new THREE.PlaneGeometry(1, 1), tiles = [lin(0x9c9a8e), lin(0xa5a397)];
@@ -33,7 +31,7 @@ async function build(paletteSize = 56): Promise<PixelScene> {
   const lamps = lampsBay(s, ...BAYS.lamps);
 
   const staticGeometry = s.build(), dynamicGeometry = d.build();
-  const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize, rnd);
+  const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize);
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
   return {
     staticGeometry, dynamicGeometry, lamps, ripples: [], grooves: null,

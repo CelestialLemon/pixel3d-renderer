@@ -1,5 +1,5 @@
 // Deterministic randomness and value noise for building scenes. Scenes must create their own seeded
-// generator per build, so rebuilding a scene gives the same geometry and palette.
+// generator per build, so rebuilding a scene gives the same geometry.
 
 export type Rng = () => number;
 

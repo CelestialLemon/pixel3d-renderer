@@ -11,10 +11,11 @@
 <main id="stage" aria-label="Pixel diorama">
   <canvas id="p3-view" aria-label="Pass 3 interactive scene"></canvas>
   <canvas id="p1-view" aria-label="Pass 1 for comparison"></canvas>
+  <canvas id="pal-view" aria-label="Other palette for comparison"></canvas>
 </main>
 <div id="loading">baking pixels…</div>
 <header id="title"><span class="eyebrow">PIXEL3D RENDERER · PASS 3</span><b id="title-name">Cookie Co.</b><span id="clock-title">Golden hour</span></header>
-<button id="divider" class="divider" role="slider" aria-label="Pass 1 / Pass 3 boundary" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span>↔</span></button>
+<button id="divider" class="divider" role="slider" aria-label="Comparison boundary" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span>↔</span></button>
 <div id="tags"><span id="tag1">Pass 1</span><span id="tag3">Pass 3</span></div>
 <aside id="panel">
   <label>Scene <select id="scene" aria-label="Scene"></select></label>
@@ -35,6 +36,8 @@
   <label>Pixel size <select id="pixel" aria-label="Pixel size"><option>2</option><option selected>3</option><option>4</option><option>6</option></select></label>
   <hr />
   <label><input type="checkbox" id="compare" /> Compare with Pass 1</label>
+  <label><input type="checkbox" id="compare-palette" /> Compare palettes</label>
+  <div class="row" id="palette-sizes" hidden><label>Left <select id="k-left" aria-label="Left palette size"><option>40</option><option>48</option><option>56</option><option>64</option><option>72</option><option>80</option><option>96</option></select></label><label>Right <select id="k-right" aria-label="Right palette size"><option>40</option><option>48</option><option>56</option><option>64</option><option>72</option><option>80</option><option>96</option></select></label></div>
   <div class="preset-row" id="view-presets"></div>
   <div class="row"><button id="rotL" aria-label="Rotate left">↶</button><button id="rotR" aria-label="Rotate right">↷</button><button id="shot">Save PNG</button></div>
   <div id="stats"></div>

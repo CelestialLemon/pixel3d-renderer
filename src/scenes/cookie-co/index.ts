@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GeometryCollector, loadGltf, quantizePalette, type PixelScene } from '../../renderer';
+import { DEFAULT_PALETTE_SIZE, GeometryCollector, loadGltf, quantizePalette, type PixelScene } from '../../renderer';
 import { mulberry32 } from '../shared/random';
 import type { SceneDefinition } from '../types';
 import { addFactory } from './factory';
@@ -11,9 +11,9 @@ import { buildTrees } from './trees';
 
 // Cookie Co.: the cookie factory from Harvest Frenzy in a meadow with a pond, trees and wildlife.
 
-async function build(paletteSize = 56): Promise<PixelScene> {
+async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const root = await loadGltf('/cookie_factory_current.glb');
-  // One generator for the whole build, consumed in a fixed order: the scene and its palette are reproducible.
+  // One generator for the whole build, consumed in a fixed order: the scene is reproducible.
   const rnd = mulberry32(11);
   const s = new GeometryCollector(false), d = new GeometryCollector(true);
   addFactory(root, s, d);
@@ -23,7 +23,7 @@ async function build(paletteSize = 56): Promise<PixelScene> {
   buildLife(d, rnd, flowerSpots);
 
   const staticGeometry = s.build(), dynamicGeometry = d.build();
-  const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize, rnd);
+  const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize);
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
   return {
     staticGeometry, dynamicGeometry,
