@@ -44,6 +44,16 @@ try {
     const ws = new GeometryCollector(false), wd = new GeometryCollector(true);
     collectGltf(placedWheel, ws, wd, M.villageRule(undefined, true));
     const wg = wd.build();
+    // The placed watermill: its wheel turns across the canal's flow (axle perpendicular to x) and dips into the main channel.
+    const millPlace = M.PLACEMENTS.find((p) => p.id === 'watermill');
+    const { loadGltf } = await import('/src/renderer/index.ts');
+    const mill = (await loadGltf('/village/watermill.glb')).clone();
+    mill.position.set(millPlace.x, L.groundY(millPlace.x, millPlace.z), millPlace.z); mill.rotation.y = L.facingAngle(millPlace.front);
+    mill.updateMatrixWorld(true);
+    const md0 = new GeometryCollector(true);
+    collectGltf(mill, new GeometryCollector(false), md0, M.villageRule(undefined, true));
+    const mg = md0.build();
+    const millWheel = { anchor: [...mg.attributes.aAnchor.array.slice(0, 3)], axis: [...mg.attributes.aAnim.array.slice(0, 3)], count: mg.attributes.position.count };
     const spin = { statics: ws.build().attributes.position.count, anchor: [...wg.attributes.aAnchor.array.slice(0, 3)], anim: [...wg.attributes.aAnim.array.slice(0, 4)], mode: wg.attributes.aMode.array[0] };
     const badgeWorld = new THREE.Vector3(); figures[0].children.find((m) => m.name === 'badge')?.updateMatrixWorld(true);
     figures[0].children.find((m) => m.name === 'badge')?.getWorldPosition(badgeWorld);
@@ -83,7 +93,7 @@ try {
       // Every mesh in the figure, nested ones included: a recursive copy would show the badge twice.
       figure0: (() => { const n = []; figures[0].traverse((m) => m.isMesh && n.push(m.name)); return n; })(),
       figure1: figures[1].children.map((m) => m.name),
-      badgeWorld: badgeWorld.toArray(), ropeFlags: flags, THIN_MARK, spin, MODE: (await import('/src/renderer/index.ts')).MODE,
+      badgeWorld: badgeWorld.toArray(), ropeFlags: flags, THIN_MARK, spin, millWheel, MODE: (await import('/src/renderer/index.ts')).MODE,
     };
   });
 
@@ -114,10 +124,13 @@ try {
   assert.equal(r.spin.statics, 0, 'A moving part goes to the dynamic collector only');
   assert.equal(r.spin.mode, r.MODE.SPIN, 'move_spin_ spins');
   r.spin.anchor.forEach((v, i) => near(v, [13, 0.5, -2][i], `spin pivot ${i}`));
+  assert.ok(r.millWheel.count > 0, 'the watermill has a moving wheel');
+  assert.ok(Math.abs(r.millWheel.axis[0]) < 1e-6 && Math.abs(r.millWheel.axis[1]) < 1e-6, `mill wheel axle runs across the canal's flow (along z): ${r.millWheel.axis}`);
+  assert.ok(r.millWheel.anchor[2] > r.CANAL.z0 && r.millWheel.anchor[2] < r.CANAL.z1, `mill wheel centre is over the main channel: ${r.millWheel.anchor}`);
   r.spin.anim.forEach((v, i) => assert.ok(Math.abs(v - [0, 0, -1, 0.4][i]) < 1e-6, `spin axis/speed ${i}: ${r.spin.anim}`));
   assert.deepEqual(errors, [], 'No browser errors');
   console.log(`PASS: canopies clear buildings, streets and water; buildings don't overlap; bridges, jetty, fountain, statue, boats, ripples and villagers follow the layout;
-      villager splitting keeps nested meshes single and parent prefixes intact; moving parts spin about their node's x axis;
+      villager splitting keeps nested meshes single and parent prefixes intact; moving parts spin about their node's x axis; the mill wheel turns across the flow in the main channel;
       sun shadows cover every model and tree all day (widest ${sh.worst.extent.toFixed(2)} m at hour ${sh.worst.hour}, square ${sh.radius} m).`);
 
   // Loading: a missing and a corrupt model must each stop the build with a visible failure.

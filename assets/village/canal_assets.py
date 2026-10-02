@@ -142,13 +142,9 @@ def watermill(m):
     orient_pivot_x(wheel,(1,0,0))
     wheel['axisBlender']=[1,0,0]
     beam('Mill_fixed_axle',(1.7,0,.5),(3.65,0,.5),.18,m['iron'],12)
-    # Top-fed race, with open trough and support frame above the water.
-    box('Mill_flume_floor',(3.1,1.75,2.36),(.65,2.0,.10),m['tar'])
-    for x in [2.74,3.46]: box('Mill_flume_cheek',(x,1.75,2.56),(.12,2.0,.40),m['oak'])
-    for y in [1.25,2.55]:
-        box('Mill_flume_support',(3.1,y,1.12),(.18,.18,2.4),m['tar'])
-        beam('Mill_flume_brace',(2.12,y,.40),(3.1,y,1.9),.15,m['wood'],4)
-    export_village('watermill','Fieldstone and tarred-timber mill with red hipped roof, a top-fed flume and a separately pivoted 24-paddle overshot wheel on +X.',
+    # Undershot: scene placement must align the wheel's vertical plane with the
+    # canal current. The shaft is perpendicular to that plane, into the mill.
+    export_village('watermill','Fieldstone and tarred-timber mill with red hipped roof and a separately pivoted 24-paddle undershot wheel on +X.',
         footprint=(8,6),front_door=(cx,-d/2,0),max_height=7.5,min_height=-1.3,
         attachments={'wheelAxleBlender':list(axle),'wheelAxisBlender':[1,0,0],'quayEdgeBlenderX':2.5,'waterlineMetres':-1})
 

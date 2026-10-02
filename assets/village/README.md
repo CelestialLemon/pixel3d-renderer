@@ -58,7 +58,7 @@ Twenty-four new assets add civic buildings, cottages, workshops, working watersi
 | --- | --- | ---: | ---: | ---: |
 | bridge_stone | 4.5 × 13 | 3.295 | 4,768 | 2 |
 | footbridge | 1.8 × 8 | 1.899 | 2,160 | 0 |
-| watermill | 8 × 6 | 7.255 | 7,496 | 1 |
+| watermill | 8 × 6 | 7.255 | 7,412 | 1 |
 | rowboat | 1.3 × 3.2 | 0.425 | 516 | 0 |
 | barge | 2.2 × 8 | 1.595 | 1,944 | 1 |
 | jetty | 4 × 2.5 | 0.303 | 560 | 0 |
@@ -81,12 +81,12 @@ Twenty-four new assets add civic buildings, cottages, workshops, working watersi
 | mooring_bollard | 0.25 × 0.25 | 0.287 | 180 | 0 |
 | windmill_large | 9 × 5.4 | 12.556 | 3,524 | 0 |
 
-Batch 3 total: **24 assets, 79,746 triangles and 16 authored lamps**, before scene reuse. Every new GLB passed an identical fresh-process SHA-256 rebuild.
+Batch 3 total: **24 assets, 79,662 triangles and 16 authored lamps**, before scene reuse. Every new GLB passed an identical fresh-process SHA-256 rebuild.
 
 Waterside origins are deliberately explicit:
 
 - Stone bridge spans **Y**, envelope **X=4.5, Y=13**, landing at `(0, ±6.5, 0)`. Three actual arches open through its full width. The central three metres clear a +0.6 m soffit, giving 1.6 m above the −1 m waterline. Bed-reaching piers/cutwaters extend to −1.5 m. Footbridge spans Y, lands at ±4 m and clears the same navigable centre.
-- Watermill origin stays at footprint centre/quay height. Local X=2.5 is the quay edge. `move_spin_wheel` pivots at Blender `(3.02, 0, 0.5)`, on the +X shaft, and dips below the −1 m waterline. A top-fed flume and fieldstone relief distinguish its working side.
+- Watermill origin stays at footprint centre/quay height. Local X=2.5 is the quay edge. `move_spin_wheel` pivots at Blender `(3.02, 0, 0.5)`, on the +X shaft, and dips below the −1 m waterline. It is an undershot paddle wheel: place the mill facing +X at `(-28, 0, 7.5)` so the shaft crosses the canal along world −Z, the wheel's vertical plane follows the X current, and the quay attachment sits at Z=5. Fieldstone relief distinguishes its working side; there is no top-fed flume.
 - Boats originate at the **waterline**, bow facing −Y, so place at world Y=−1. Their hulls are closed shells around genuinely hollow interiors, with an inner floor 3.5 cm above waterline to cover the scene's continuous water plane. The barge has tapered cargo decks, a low lit cabin, crates and a short elbow stovepipe. Its 1.595 m air draft clears both bridges over the entire beam, with at least 5 cm margin.
 - Jetty origin is its **back/quay edge**, Y=0, Z=0. Its 4 m wide deck extends toward −Y to −2.5, at Z=−0.55; the ladder reaches the quay and piles reach Z=−1.5. Metadata provides asymmetric XY bounds.
 - Large windmill base diameter is 3.8 m, cap 10.72 m, sail pivot `(0, −2.25, 8.35)`. The 9 × 5.4 m export envelope includes sail clearance. The sail motion root's local X aims down Blender −Y, with named `thin_` lattice children.

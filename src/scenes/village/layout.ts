@@ -34,7 +34,7 @@ export interface Footprint {
  * `waterY` and the bed at `bedY` (the cross-section in docs/ASSET_BRIEF.md, batch 3).
  */
 export const CANAL = { x0: -90, x1: 90, z0: -1, z1: 5, waterY: -1, bedY: -1.5 };
-/** The mill basin, a widening of the canal on the south bank that the mill wheel turns in. */
+/** The basin, a widening of the canal on the south bank where boats moor, east of the mill. */
 export const BASIN = { x0: -24.5, x1: -15, z0: CANAL.z1, z1: 10 };
 /** Width of the stone quay along each bank. */
 export const QUAY = 3;
@@ -69,8 +69,9 @@ export const BUILDINGS: Footprint[] = [
   { id: 'watch_tower', x: 25, z: -29, w: 4, d: 4, front: '+z' },
   { id: 'ruins', x: -14, z: -30, w: 9, d: 8, front: '+z', open: true },
   // south bank
-  // the mill's local x = +2.5 is its quay edge; the wheel hangs past it over the basin
-  { id: 'watermill', x: BASIN.x0 - 2.5, z: 8, w: 8, d: 6, front: '+z' },
+  // an undershot mill on the canal's south bank: turned front +x, its local x = +2.5 (the quay edge) lands on the water's
+  // edge at z = CANAL.z1, and the wheel turns in the main channel with its axle across the flow
+  { id: 'watermill', x: -28, z: CANAL.z1 + 2.5, w: 8, d: 6, front: '+x' },
   { id: 'bakery', x: -8.5, z: 12, w: 4.5, d: 4, front: '+x' },
   { id: 'cottage_thatch', x: -14.5, z: 16, w: 5, d: 4, front: '+z' },
   { id: 'cottage_long', x: 5, z: 12.5, w: 7, d: 4.5, front: '-x' },

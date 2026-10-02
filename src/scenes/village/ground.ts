@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FLAG, flip, GeometryCollector, linearColor as lin, place, thin, type RGB } from '../../renderer';
 import { fbm, pick, type Rng } from '../shared/random';
 import {
-  AREA, BASIN, BRIDGE, CANAL, DRY_WALLS, FENCES, FOOTBRIDGE, grassEdge, groundY, inWater, JETTY, pavedAt, PLOTS, POND, STAIRS, STAIRS_FOOT_Z,
+  AREA, BASIN, BRIDGE, BUILDINGS, CANAL, DRY_WALLS, FENCES, FOOTBRIDGE, footprintRect, grassEdge, groundY, inWater, JETTY, pavedAt, PLOTS, POND, STAIRS, STAIRS_FOOT_Z,
   WATER_STEPS,
   underBuilding, UPPER_Y, WALL_Z, type Paving,
 } from './layout';
@@ -313,6 +313,8 @@ const KERB_GAPS: { bank: 'n' | 's'; x0: number; x1: number }[] = [
   ...(['n', 's'] as const).flatMap((bank) => [BRIDGE, FOOTBRIDGE].map((b) => ({ bank, x0: b.x - b.halfWidth - 0.1, x1: b.x + b.halfWidth + 0.1 }))),
   ...WATER_STEPS.map((w) => ({ bank: w.bank, x0: Math.min(w.x, w.x + w.dir * 0.9), x1: Math.max(w.x, w.x + w.dir * 0.9) })),
   { bank: 's', x0: JETTY.x - 0.7, x1: JETTY.x + 0.7 },
+  // the mill's wall stands on the water's edge
+  ...BUILDINGS.filter((b) => b.id === 'watermill').map((b) => { const [x0, , x1] = footprintRect(b); return { bank: 's' as const, x0, x1 }; }),
 ];
 
 /**

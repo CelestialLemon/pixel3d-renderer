@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Look } from './look';
 import { LIMITS, type PixelScene } from './scene';
 import { POST_VERT } from './shaders/common';
-import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_STATIC_VERT } from './shaders/gbuffer';
+import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_STATIC_VERT, POSE } from './shaders/gbuffer';
 import { POST_FRAG } from './shaders/post';
 import { CLEAN_FRAG } from './shaders/cleanup';
 import { RESOLVE_FRAG } from './shaders/resolve';
@@ -49,6 +49,9 @@ export class PixelRenderer {
   private resolveMat: THREE.ShaderMaterial;
   private dynMesh: THREE.Mesh;
   private dynMat: THREE.ShaderMaterial;
+  /** The sun-shadow mask of the rigid moving parts, at their posed position this frame (see renderGeometry). */
+  private dynShadowMat: THREE.ShadowMaterial;
+  private hasRigidParts: boolean;
   private shadowMat: THREE.ShadowMaterial;
   private postMat: THREE.ShaderMaterial;
   private cleanMat: THREE.ShaderMaterial;
@@ -91,7 +94,7 @@ export class PixelRenderer {
       uniforms: { uTime: { value: 0 }, uNight: { value: 0 }, uSS: { value: 1 } },
     });
     this.dynMesh = new THREE.Mesh(pixelScene.dynamicGeometry, this.dynMat);
-    this.dynMesh.frustumCulled = false; this.dynMesh.castShadow = false;
+    this.dynMesh.frustumCulled = false; this.dynMesh.castShadow = false; this.dynMesh.receiveShadow = true;
     this.scene.add(this.staticMesh, this.dynMesh);
 
     const { center, radius } = pixelScene.shadow;
@@ -106,6 +109,30 @@ export class PixelRenderer {
     // Writes shadow occlusion (0 = lit, 1 = shadowed) into alpha, no blending.
     this.shadowMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1 });
     this.shadowMat.transparent = false; this.shadowMat.blending = THREE.NoBlending;
+    // The same mask for the rigid moving parts (spin, swing): three's shadow shader with each vertex posed by the G-buffer's
+    // motion code (POSE), sharing its time uniforms. Other dynamic modes are discarded and keep the mask behind them.
+    this.dynShadowMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1, side: THREE.DoubleSide });
+    this.dynShadowMat.transparent = false; this.dynShadowMat.blending = THREE.NoBlending;
+    this.dynShadowMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = this.dynMat.uniforms.uTime; shader.uniforms.uNight = this.dynMat.uniforms.uNight;
+      // Patch three's shadow shader; fail loudly if a three upgrade renames a chunk, rather than silently borrowing again.
+      const patch = (src: string, find: string, put: string) => {
+        if (!src.includes(find)) throw new Error(`moving-part shadow: three's shadow shader has no '${find}'`);
+        return src.replace(find, put);
+      };
+      let v = patch(shader.vertexShader, '#include <common>', `#include <common>
+uniform float uTime; uniform float uNight;
+attribute float aMode; attribute vec3 aAnchor; attribute vec4 aAnim;
+varying float vMode;   // only so the fragment stage can drop non-rigid modes
+${POSE}`);
+      // pose() also returns the dither alpha, which the mask doesn't use.
+      v = patch(v, '#include <beginnormal_vertex>', 'vec3 posed = position; vec3 objectNormal = normal; float posedAlpha;\n  pose(posed, objectNormal, posedAlpha); vMode = aMode;');
+      shader.vertexShader = patch(v, '#include <begin_vertex>', 'vec3 transformed = posed;');
+      shader.fragmentShader = patch(shader.fragmentShader, 'void main() {', 'varying float vMode;\nvoid main() {\n  if (vMode < 5.5) discard;');
+    };
+    // Only scenes with rigid moving parts need that second mask pass.
+    const modes = pixelScene.dynamicGeometry.getAttribute('aMode')?.array ?? [];
+    this.hasRigidParts = Array.from(modes).some((m) => m > 5.5);
 
     const { lamps, ripples, grooves } = pixelScene;
     const gl = this.renderer.getContext();
@@ -211,15 +238,25 @@ export class PixelRenderer {
     r.setClearColor(0x000000, 0);
     r.setRenderTarget(this.gbufHi); r.clear(); r.render(this.scene, this.camera);
 
-    // The shadow mask only needs the static world; moving bits borrow the shadow of
-    // whatever surface sits behind them, which is what a small tuft or puff would get.
+    // The shadow mask comes from the static world: small moving bits (tufts, puffs) borrow the shadow of whatever
+    // surface sits behind them. Rigid moving parts (sails, wheels, signs) are big enough that borrowing shows the
+    // shadow pattern of the ground behind them, so they get their own mask at their posed position.
     if (this.shadowDirty) { r.shadowMap.needsUpdate = true; this.shadowDirty = false; }
     r.setClearColor(0xffffff, 1);
-    this.dynMesh.visible = false;
-    this.scene.overrideMaterial = this.shadowMat;
-    r.setRenderTarget(this.shadowHi); r.clear(); r.render(this.scene, this.camera);
-    this.scene.overrideMaterial = null;
-    this.dynMesh.visible = true;
+    const autoClear = r.autoClear;
+    try {
+      this.dynMesh.visible = false;
+      this.scene.overrideMaterial = this.shadowMat;
+      r.setRenderTarget(this.shadowHi); r.clear(); r.render(this.scene, this.camera);
+      if (this.hasRigidParts) {
+        // Then the rigid moving parts over it, depth-tested against the static world (no clear in between).
+        this.dynMesh.visible = true; this.staticMesh.visible = false; this.scene.overrideMaterial = this.dynShadowMat;
+        r.autoClear = false; r.render(this.scene, this.camera);
+      }
+    } finally {
+      r.autoClear = autoClear; this.scene.overrideMaterial = null;
+      this.staticMesh.visible = true; this.dynMesh.visible = true;
+    }
 
     const ru = this.resolveMat.uniforms;
     ru.tAlbedo.value = this.gbufHi.textures[0]; ru.tNormal.value = this.gbufHi.textures[1]; ru.tShadow.value = this.shadowHi.texture;
@@ -268,7 +305,7 @@ export class PixelRenderer {
     for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised]) t?.dispose();
     this.light.shadow.map?.dispose(); this.lampShadows.dispose();
     for (const m of [this.staticMesh, this.dynMesh, this.quad]) m.geometry.dispose();
-    for (const m of [this.staticMat, this.dynMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat]) (m as THREE.Material).dispose();
+    for (const m of [this.staticMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat]) (m as THREE.Material).dispose();
     this.renderer.dispose();
   }
 }

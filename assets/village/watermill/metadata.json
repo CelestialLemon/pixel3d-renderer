@@ -1,7 +1,7 @@
 {
   "id": "watermill",
-  "description": "Fieldstone and tarred-timber mill with red hipped roof, a top-fed flume and a separately pivoted 24-paddle overshot wheel on +X.",
-  "triangles": 7496,
+  "description": "Fieldstone and tarred-timber mill with red hipped roof and a separately pivoted 24-paddle undershot wheel on +X.",
+  "triangles": 7412,
   "triangleBudget": 10000,
   "footprintMetres": [
     8,
