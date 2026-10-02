@@ -3,7 +3,7 @@ import { DEFAULT_PALETTE_SIZE, GeometryCollector, LIMITS, quantizePalette, type 
 import { mulberry32 } from '../shared/random';
 import type { SceneDefinition } from '../types';
 import { buildGround } from './ground';
-import { FOUNTAIN, STAIRS } from './layout';
+import { CANAL_RIPPLES, FOUNTAIN, STAIRS, SUN_SHADOW } from './layout';
 import { buildLife } from './life';
 import { placeModels } from './models';
 import { buildTrees } from './trees';
@@ -30,8 +30,8 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize);
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
   return {
-    staticGeometry, dynamicGeometry, lamps, ripples: [[FOUNTAIN.x + 0.6, FOUNTAIN.z + 0.4], [-4.5, 7.3], [5.5, 7.8]], grooves: null,
-    shadow: { center: new THREE.Vector3(0, 0, 0), radius: 22 },
+    staticGeometry, dynamicGeometry, lamps, ripples: [[FOUNTAIN.x + 0.6, FOUNTAIN.z + 0.4], ...CANAL_RIPPLES], grooves: null,
+    shadow: { center: new THREE.Vector3(0, 0, 0), radius: SUN_SHADOW.radius },
     stats: { triangles, paletteColors },
   };
 }

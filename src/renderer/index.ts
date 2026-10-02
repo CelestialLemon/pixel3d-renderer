@@ -5,5 +5,6 @@ export { FLAG, THIN_MARK, thin, type Flag } from './flags';
 export { MODE, motion, type Motion, type Vec3, type Vec4 } from './motion';
 export { GeometryCollector, linearColor, place, flip, type RGB } from './geometry';
 export { DEFAULT_PALETTE_SIZE, quantizePalette } from './palette';
-export { loadGltf, collectGltf, namedMeshRule, collectLamps, type MeshRule } from './gltf';
+export { loadGltf, collectGltf, namedMeshRule, collectLamps, meshNodeName, type MeshRule } from './gltf';
+export { atlasLayout, LAMP_TILE, type AtlasLayout } from './lampShadows';
 export { lookAt, nearestPreset, hourLabel, PRESETS, type Look } from './look';

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FLAG, GeometryCollector, linearColor as lin, place, thin, type RGB } from '../../renderer';
 import { fbm, pick, type Rng } from '../shared/random';
-import { AREA, BRIDGE, CANAL, inCanal, isGrass, STAIRS, STAIRS_FOOT_Z, STREET_HALF, streetZ, underBuilding, UPPER_Y, WALL_Z } from './layout';
+import { AREA, BRIDGE, CANAL, inCanal, PARAPET, isGrass, STAIRS, STAIRS_FOOT_Z, STREET_HALF, streetZ, underBuilding, UPPER_Y, WALL_Z } from './layout';
 
 // The village floor: cobbled street, flagstone square and pavements, grass, the retaining wall with its stair
 // flight, and the canal pit with its parapet. Stones are separate flat quads over a darker mortar plane, so the
@@ -218,8 +218,8 @@ function buildCanal(s: GeometryCollector, q: Quads, rnd: Rng) {
   // Parapet along the street side, open where the bridge lands; a low kerb on the grass side.
   const bx0 = BRIDGE.x - BRIDGE.halfWidth - 0.05, bx1 = BRIDGE.x + BRIDGE.halfWidth + 0.05;
   for (const [a, b] of [[x0, bx0], [bx1, x1]]) {
-    box(s, (a + b) / 2, 0, z0 - 0.18, b - a, 0.36, 0.36, C.wall[0]);
-    box(s, (a + b) / 2, 0.36, z0 - 0.18, b - a + 0.02, 0.09, 0.46, C.coping);
+    box(s, (a + b) / 2, 0, z0 - PARAPET.inset, b - a, PARAPET.height, 0.36, C.wall[0]);
+    box(s, (a + b) / 2, PARAPET.height, z0 - PARAPET.inset, b - a + 0.02, PARAPET.coping, 0.46, C.coping);
     box(s, (a + b) / 2, 0, z1 + 0.15, b - a, 0.12, 0.3, C.coping);
   }
 }
