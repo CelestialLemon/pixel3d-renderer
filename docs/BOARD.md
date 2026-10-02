@@ -2,13 +2,13 @@
 
 The shared scratchpad for the two agents working in this repo. The user reads it too.
 
-This file is a **template**. Each new piece of joint work starts from this header with no posts below it, and the posts are
-working notes that never get committed. Reset the file to this template only after the work's PR has been merged (see
-**Finishing a piece of work** below). Lasting results belong in
+This file is a **template**. Each new piece of joint work starts from this header with no posts below it. The posts are working
+notes, and this file is never committed with posts in it. Once the work's PR has been merged, the whole board is saved to
+`docs/board-history/` and this file goes back to the template (see **Finishing a piece of work** below). Lasting results belong in
 `docs/ROADMAP.md`, `docs/ASSET_BRIEF.md`, the code or the commit messages, not here.
 
 - **Opus** (Claude): writes clean, scalable code and is usually better at user-facing work like the frontend and visuals. I think
-  of Opus as the clean software engineer.
+  of Opus as the clean software engineer. Also really great at discerning the user's intent from the prompt and making initial plans.
 - **Sol** (Codex): very good at diving deep into anything, and at reviewing and verifying things. I think of Sol as the very smart
   researcher/scientist. It also builds the Blender props per `docs/ASSET_BRIEF.md`.
 - Who owns which files is agreed on the board at the start of each piece of work, before anyone edits.
@@ -35,7 +35,8 @@ and communication are what get good results.
 8. **Git and goldens.** While the work is in progress, nobody commits or pushes; that happens only in the finishing steps below,
    or earlier if the user says so. Either agent may run `golden:update` for a deliberate visual change on the work's branch without
    asking first; the new baselines reach `main` only through the PR, where the user reviews them. Never update or commit golden
-   images directly on `main`. Agree on the board which agent owns commits, the push and the PR. Never commit this board's posts.
+   images directly on `main`. Agree on the board which agent owns commits, the push and the PR. Never commit `docs/BOARD.md` with
+   posts in it; posts reach git only as a saved board in `docs/board-history/` (finishing step 6).
 9. **Banter is welcome.** Keep it light and keep it from burying the work.
 10. **Communicate often.** Don't work silently. Reply to the other agent's posts before acting on them, especially a proposed split or
     an "agree or amend". Post a short `status` when you start something, when something lands and when you change course, and read
@@ -69,7 +70,7 @@ Start these steps only once **both** agents have agreed on the board that the wo
    - Give the reviewers minimal context: what the change is meant to do and where it lives (e.g. the diff against `main`), but not
      the reasoning or history behind the decisions. They are a fresh pair of eyes, and the less they know about why things were
      done, the less their review is biased by it.
-   - Tell each reviewer explicitly **not to read `docs/BOARD.md`**.
+   - Tell each reviewer explicitly **not to read `docs/BOARD.md` or `docs/board-history/`**.
 3. **Fix what matters.** When both reviews are in, post them (or a summary with a link) on the board, then work together again,
    as peers, to triage and fix the findings. Fix every real issue. Skip extremely minor nits that are very unlikely ever to cause
    a problem and would only add code. If you're unsure whether something is real, discuss it on the board.
@@ -80,6 +81,10 @@ Start these steps only once **both** agents have agreed on the board that the wo
      URL, which scene or view to open, what to look for).
    - Include screenshots (renders, before/after) wherever they help the user understand the change.
 5. **Keep the board until the PR is merged.** The user or review bots may leave comments that need more work. Handle them as part
-   of the same piece of work, using this board. Reset the board to the template only after the PR has been approved and merged.
+   of the same piece of work, using this board.
+6. **Save the board, then reset it.** Once the PR has been approved and merged, copy the whole board, header included, to
+   `docs/board-history/YYYY-MM-DD-N-<slug>.md`: the date of the last post, the next number in the folder and a short name for the work
+   (e.g. `2026-10-03-5-canal-town.md`). Never edit a saved board. Then reset `docs/BOARD.md` to the template. Because `main` only
+   changes through PRs, the saved board stays uncommitted until the next piece of work commits it on that work's branch.
 
 ---

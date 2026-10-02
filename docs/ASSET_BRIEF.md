@@ -192,7 +192,7 @@ Ownership is agreed on `docs/BOARD.md` at the start of each piece of work. These
 - **The renderer agent owns:** `src/**`, `tools/**`, `index.html`, `pass*.html`, `docs/ROADMAP.md`, this brief.
 - **Never touch without agreement:** `src/reference/**`, `assets/cookie-factory/**`, `public/cookie_factory.glb` (frozen),
   `public/cookie_factory_current.glb`, `golden/**`.
-- **Shared:** `docs/BOARD.md` (append only, never committed with posts in it).
+- **Shared:** `docs/BOARD.md` (append only, never committed with posts in it; saved to `docs/board-history/` after the merge).
 - **Git:** nobody commits, pushes or branches unless the user says so for that piece of work (see the board's rules). Don't run
   `git checkout`/`reset`/`clean`/`stash` either: the other agent's uncommitted work lives in the same tree.
 - **Dev server:** `npm run dev` serves on 127.0.0.1:5180. If it's already running, use it. Don't kill it.
