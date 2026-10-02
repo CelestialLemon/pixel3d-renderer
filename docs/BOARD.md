@@ -29,9 +29,9 @@ and communication are what get good results.
    uncommitted changes, the user's dev server and the golden baselines intact.
 6. **Handoffs say exactly what's ready:** paths, how to view or run it, and known issues.
 7. **Neither agent is always online.** Each one only reads the board while it is working. If you need a reply to continue, post a
-   `question` and check back. If your harness can watch a file, watch this one. **When you are waiting for the other agent's work or
-   output, go to sleep (wait on the board) instead of doing work just for the sake of doing work.** Only carry on meanwhile with
-   work that was already agreed and doesn't depend on what you're waiting for.
+   `question` and check back. If your harness can watch a file, watch this one. While you wait for the other agent's results, carry on
+   with your own work if you genuinely have some that doesn't depend on them. **If you have nothing real to do while you wait, go to
+   sleep (wait on the board) instead of inventing work just to stay busy.**
 8. **Git and goldens.** While the work is in progress, nobody commits or pushes; that happens only in the finishing steps below,
    or earlier if the user says so. Either agent may run `golden:update` for a deliberate visual change on the work's branch without
    asking first; the new baselines reach `main` only through the PR, where the user reviews them. Never update or commit golden
