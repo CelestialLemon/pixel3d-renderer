@@ -3,12 +3,19 @@
 The shared scratchpad for the two agents working in this repo. The user reads it too.
 
 This file is a **template**. Each new piece of joint work starts from this header with no posts below it, and the posts are
-working notes that never get committed. When the work is done, reset the file to this template. Lasting results belong in
+working notes that never get committed. Reset the file to this template only after the work's PR has been merged (see
+**Finishing a piece of work** below). Lasting results belong in
 `docs/ROADMAP.md`, `docs/ASSET_BRIEF.md`, the code or the commit messages, not here.
 
-- **Opus** (Claude): the renderer agent.
-- **Sol** (Codex): the partner agent. It co-fixes renderer issues, reviews changes and builds Blender props per `docs/ASSET_BRIEF.md`.
+- **Opus** (Claude): writes clean, scalable code and is usually better at user-facing work like the frontend and visuals. I think
+  of Opus as the clean software engineer.
+- **Sol** (Codex): very good at diving deep into anything, and at reviewing and verifying things. I think of Sol as the very smart
+  researcher/scientist. It also builds the Blender props per `docs/ASSET_BRIEF.md`.
 - Who owns which files is agreed on the board at the start of each piece of work, before anyone edits.
+
+This is not a hierarchy. Neither Opus nor Sol is a sub-agent: you are peers on the same level, collaborating to get the work done.
+One of you being strong at something doesn't stop the other from reviewing, questioning or critiquing that work. Good collaboration
+and communication are what get good results.
 
 ## Rules
 
@@ -23,8 +30,50 @@ working notes that never get committed. When the work is done, reset the file to
 6. **Handoffs say exactly what's ready:** paths, how to view or run it, and known issues.
 7. **Neither agent is always online.** Each one only reads the board while it is working. If you need a reply to continue, post a
    `question`, carry on with something else, and check back. If your harness can watch a file, watch this one.
-8. **Git and goldens.** Nobody commits, pushes or runs `golden:update` unless the user says so for this piece of work. When they do,
-   one agent is named as the owner of commits. Never commit this board's posts.
+8. **Git and goldens.** While the work is in progress, nobody commits or pushes; that happens only in the finishing steps below,
+   or earlier if the user says so. Nobody runs `golden:update` unless the user says so for this piece of work. Agree on the board
+   which agent owns commits, the push and the PR. Never commit this board's posts.
 9. **Banter is welcome.** Keep it light and keep it from burying the work.
+
+## When to stop
+
+Keep working until one of these is true, then stop:
+
+- **The whole scope is done.** Every part of the agreed work is complete and the finishing steps below have been carried through
+  to an open PR. Don't stop part-way through the scope, and don't stretch the scope beyond what was asked.
+- **You are both stuck.** You and the other agent have both tried and cannot resolve an issue. Stop rather than going round in
+  circles.
+- **You need the user.** Something can't go further without the user's input, such as a decision, access, or a clarification only
+  they can give.
+
+When you stop, post a `status` on the board that says which of these applies and, if it's one of the last two, exactly what is
+blocking you and what you need from the user. Tell the user the same thing in your reply.
+
+## Finishing a piece of work
+
+Start these steps only once **both** agents have agreed on the board that the work is complete. Do them in order.
+
+1. **Clean the working tree.** Remove scratch files, probes, debug renders and anything else that won't go into the PR. Leave only
+   the changes the work actually needs (plus this board, which stays uncommitted).
+2. **Independent review by sub-agents.** Each agent spins up its own reviewer sub-agent, so there are two reviews in total. Use
+   exactly these models for the reviewers:
+   - Opus's reviewer: **Sonnet 5.5**.
+   - Sol's reviewer: **GPT 6.1 Sol**.
+   - Each reviewer reviews **all** of the work, not just the split its parent agent owned.
+   - Give the reviewers minimal context: what the change is meant to do and where it lives (e.g. the diff against `main`), but not
+     the reasoning or history behind the decisions. They are a fresh pair of eyes, and the less they know about why things were
+     done, the less their review is biased by it.
+   - Tell each reviewer explicitly **not to read `docs/BOARD.md`**.
+3. **Fix what matters.** When both reviews are in, post them (or a summary with a link) on the board, then work together again,
+   as peers, to triage and fix the findings. Fix every real issue. Skip extremely minor nits that are very unlikely ever to cause
+   a problem and would only add code. If you're unsure whether something is real, discuss it on the board.
+4. **Push and open the PR.** Only after the review findings are addressed: commit, push the branch and open a PR. The base is
+   `main` unless the user has said otherwise. The PR description is for the user, who will review it:
+   - Start with a concise summary of what was done.
+   - If there is anything the user should check by hand, give clear step-by-step instructions for running it locally (commands,
+     URL, which scene or view to open, what to look for).
+   - Include screenshots (renders, before/after) wherever they help the user understand the change.
+5. **Keep the board until the PR is merged.** The user or review bots may leave comments that need more work. Handle them as part
+   of the same piece of work, using this board. Reset the board to the template only after the PR has been approved and merged.
 
 ---
