@@ -1,0 +1,56 @@
+{
+  "id": "cottage_thatch",
+  "description": "Low fieldstone cottage with a thick rounded reed roof, deep eaves and small recessed shuttered windows",
+  "triangles": 3228,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    5,
+    4
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0,
+    -1.525,
+    0
+  ],
+  "maxHeightMetres": 5,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -2.39660382270813,
+      -1.9250000715255737,
+      0.0
+    ],
+    "max": [
+      2.39660382270813,
+      1.8600000143051147,
+      4.754500389099121
+    ]
+  },
+  "dimensionsMetres": [
+    4.79320764541626,
+    3.7850000858306885,
+    4.754500389099121
+  ],
+  "lamps": [
+    {
+      "name": "lamp_cottage_thatch_door_lantern",
+      "positionBlender": [
+        0.7200000286102295,
+        -1.6950000524520874,
+        1.9700000286102295
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.0,
+      "clearance": 0.28
+    }
+  ]
+}

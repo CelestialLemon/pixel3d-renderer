@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FLAG, thin } from './flags';
 import type { GeometryCollector, RGB } from './geometry';
-import type { Motion } from './motion';
+import { motion, type Motion } from './motion';
 import type { Lamp } from './scene';
 
 /** How one glTF mesh enters the scene. Anything left out uses the default. */
@@ -28,8 +28,8 @@ const nodeName = meshNodeName;
 
 /**
  * Behaviour from object-name prefixes, the asset naming convention in docs/ASSET_BRIEF.md: `glass_` is skipped,
- * `water_` and `decor_` get their flags, `thin_` gets the thin mark. `move_*` is recognised but changes nothing yet (there is no
- * spin motion mode). Pass to `collectGltf`, or call it first inside a scene's own rule.
+ * `water_` and `decor_` get their flags, `thin_` gets the thin mark. `move_*` parts stay static here; a scene that wants them to move
+ * adds `movingPartMotion`. Pass to `collectGltf`, or call it first inside a scene's own rule.
  */
 export function namedMeshRule(mesh: THREE.Mesh): MeshRule | void {
   const n = nodeName(mesh).toLowerCase();
@@ -37,6 +37,23 @@ export function namedMeshRule(mesh: THREE.Mesh): MeshRule | void {
   if (n.startsWith('water_')) return { flag: FLAG.WATER };
   if (n.startsWith('decor_')) return { flag: FLAG.DECOR };
   if (n.startsWith('thin_')) return { thin: true };
+}
+
+/**
+ * Motion for a mesh under a `move_spin_*` or `move_sway_*` node (itself or its nearest such ancestor): the part turns about
+ * that node's own local X axis through its origin, a steady spin or a gentle swing. The node's custom properties `speed`
+ * (radians per second, default 0.6) and `amplitude` (radians, default 0.1) tune it. World matrices must be current.
+ * Not part of `namedMeshRule`: a scene opts in, since moving parts change its frames over time.
+ */
+export function movingPartMotion(mesh: THREE.Mesh): Motion | undefined {
+  for (let o: THREE.Object3D | null = mesh; o; o = o.parent) {
+    const m = /^move_(spin|sway)_/i.exec(o.name);
+    if (!m) continue;
+    const pivot = o.getWorldPosition(new THREE.Vector3()).toArray();
+    const axis = new THREE.Vector3().setFromMatrixColumn(o.matrixWorld, 0).normalize().toArray();
+    const { speed = 0.6, amplitude = 0.1 } = o.userData as { speed?: number; amplitude?: number };
+    return m[1].toLowerCase() === 'spin' ? motion.spin(pivot, axis, speed) : motion.swing(pivot, axis, amplitude);
+  }
 }
 
 /** Lamps from `lamp_*` empties: world position, plus `color` (linear RGB), `radius` and `clearance` from the node's custom properties. */

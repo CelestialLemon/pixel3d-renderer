@@ -1,7 +1,7 @@
 // Check the actual exported model using the runtime's GLTFLoader and ray geometry.
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { Box3, Raycaster, Vector3 } from 'three';
+import { Box3, Mesh, MeshBasicMaterial, PlaneGeometry, Raycaster, Vector3 } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const root = new URL('../../', import.meta.url);
@@ -49,9 +49,13 @@ for (const name of names) {
       if (mat.emissive.r+mat.emissive.g+mat.emissive.b>.05) emissive++;
   });
   const bounds=new Box3().setFromObject(scene);
-  assert(bounds.min.y>=-.001, `${name}: ground`);
-  assert(Math.max(Math.abs(bounds.min.x),Math.abs(bounds.max.x))<=metadata.footprintMetres[0]/2+.001);
-  assert(Math.max(Math.abs(bounds.min.z),Math.abs(bounds.max.z))<=metadata.footprintMetres[1]/2+.001);
+  assert(bounds.min.y>=(metadata.minHeightMetres??0)-.001, `${name}: agreed minimum height`);
+  const xy=metadata.footprintBoundsBlender??[
+    [-metadata.footprintMetres[0]/2,-metadata.footprintMetres[1]/2],
+    [metadata.footprintMetres[0]/2,metadata.footprintMetres[1]/2]];
+  // Blender -Y becomes GLTF +Z. Quay-origin props deliberately have asymmetric bounds.
+  assert(bounds.min.x>=xy[0][0]-.001 && bounds.max.x<=xy[1][0]+.001, `${name}: X envelope`);
+  assert(bounds.min.z>=-xy[1][1]-.001 && bounds.max.z<=-xy[0][1]+.001, `${name}: Y envelope`);
   assert(triangles>0 && triangles<=metadata.triangleBudget);
   assert.equal(triangles,metadata.triangles);
   assert.equal(lamps,metadata.lamps.length);
@@ -111,6 +115,120 @@ for (const name of names) {
     }
     assert(new Raycaster(new Vector3(0,3.60,1),new Vector3(0,0,-1),0,2).intersectObjects(opaque,false).length>0,
       'Gateway solid arch crown above opening');
+  }
+  if(name==='bridge_stone' || name==='footbridge') {
+    // Sample the ENTIRE navigable centre; a high crown alone is insufficient.
+    for (let z=-1.5;z<=1.501;z+=.125) for (const x of [-.6,0,.6]) {
+      const hit=new Raycaster(new Vector3(x,-1,z),new Vector3(0,1,0),0,4).intersectObjects(opaque,false)[0];
+      assert(hit && hit.point.y>=.6-1e-5,`${name}: 1.6 m boat headroom at (${x},${z})`);
+    }
+    if(name==='bridge_stone') {
+      assert.equal(lamps,2);
+      for (const z of [-2.575,2.575]) {
+        assert.equal(new Raycaster(new Vector3(-3,-.25,z),new Vector3(1,0,0),0,6).intersectObjects(opaque,false).length,0,
+          'Stone bridge side arches are real clear openings');
+      }
+      for (const z of [-6.499,6.499]) {
+        const hit=new Raycaster(new Vector3(0,2,z),new Vector3(0,-1,0),0,4).intersectObjects(opaque,false)[0];
+        assert(hit && Math.abs(hit.point.y)<.01,'Bridge ramps land at quay level');
+      }
+    }
+  }
+  if(name==='watermill') {
+    const wheel=scene.getObjectByName('move_spin_wheel');
+    assert(wheel,'Watermill wheel is independently pivoted');
+    let wheelMeshes=0;
+    wheel.traverse(o=>{if(o.isMesh) wheelMeshes++;});
+    assert(wheelMeshes>0,'Wheel root contains exported material primitives');
+    const axle=wheel.getWorldPosition(new Vector3());
+    assert(Math.abs(axle.y-.5)<1e-5 && axle.x>2.5,'Wheel axle at agreed quay-relative height on +X');
+    const wb=new Box3().setFromObject(wheel);
+    assert(wb.min.y<-1 && wb.min.y>=-1.3,'Wheel dips below canal surface');
+    assert.equal(lamps,1);
+  }
+  if(name==='rowboat' || name==='barge') {
+    assert.equal(metadata.origin,'waterline at footprint centre');
+    assert(bounds.min.y<-.2 && bounds.max.y>.2,'Boat straddles its waterline');
+    // Include the scene's flat water: a hollow asset alone can pass while its interior floods.
+    const water=new Mesh(new PlaneGeometry(20,20),new MeshBasicMaterial());
+    water.rotation.x=-Math.PI/2;
+    water.updateMatrixWorld(true);
+    for(const z of name==='rowboat'?[.45,.95]:[.6,1.0]) for(const x of [-.12,0,.12]) {
+      const hit=new Raycaster(new Vector3(x,2,z),new Vector3(0,-1,0),0,3)
+        .intersectObjects([...opaque,water],false)[0];
+      assert(hit && hit.object.name.endsWith('_hollow_hull') && hit.point.y>.01 && hit.point.y<.20,
+        `${name}: dry hollow interior at (${x},${z}) over continuous canal water`);
+    }
+    water.geometry.dispose();
+    water.material.dispose();
+    if(name==='barge') {
+      // The beam becomes bridge-local Z when a boat travels along the canal.
+      for(const bridgeName of ['bridge_stone','footbridge']) {
+        const b=await readFile(new URL(`public/village/${bridgeName}.glb`,root));
+        const {scene:bridge}=await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
+        bridge.updateMatrixWorld(true);
+        const bridgeMeshes=[];
+        bridge.traverse(o=>{if(o.isMesh && !o.name.startsWith('glass_')) bridgeMeshes.push(o);});
+        for(let i=0;i<=48;i++) {
+          const z=bounds.min.x+(bounds.max.x-bounds.min.x)*i/48;
+          const hit=new Raycaster(new Vector3(0,-1,z),new Vector3(0,1,0),0,4).intersectObjects(bridgeMeshes,false)[0];
+          assert(hit && bounds.max.y+.05<=hit.point.y+1,
+            `Barge air draft clears ${bridgeName} over its entire beam with 5 cm margin at ${z}`);
+        }
+      }
+    }
+    assert.equal(lamps,name==='barge'?1:0);
+  }
+  if(name==='jetty') {
+    const hit=new Raycaster(new Vector3(1,1,1.4),new Vector3(0,-1,0),0,3).intersectObjects(opaque,false)[0];
+    assert(hit && Math.abs(hit.point.y+.55)<1e-5,'Jetty deck is .55 m below quay');
+    assert(bounds.min.z>=-.001 && bounds.max.z<=2.501,'Jetty projects entirely from quay into -Y');
+    assert(Math.abs(bounds.min.y+1.5)<1e-5,'Jetty piles reach bed');
+  }
+  const authoredLampCounts={town_hall:2,chapel:1,watch_tower:1,smithy:1,cottage_thatch:1,cottage_long:1,
+    barn:0,market_hall:2,guardian_statue:1,wardstone:1,ruins:0,hay_bales:0,woodpile:0,
+    laundry_line:0,notice_board:0,market_stall_lit:1,mooring_bollard:0,windmill_large:0};
+  if(name in authoredLampCounts) assert.equal(lamps,authoredLampCounts[name],`${name}: authored lamp budget`);
+  if(name==='town_hall') {
+    for(const x of [-2.95,0,2.95]) {
+      assert.equal(new Raycaster(new Vector3(x,1.2,4),new Vector3(0,0,-1),0,2.2).intersectObjects(opaque,false).length,0,
+        'Town hall front arcades remain open to the interior');
+    }
+  }
+  if(name==='smithy') {
+    const p=new Vector3(.95,1.31,3);
+    const hit=new Raycaster(p,new Vector3(0,0,-1),0,5).intersectObjects(opaque,false)[0];
+    assert(hit && hit.object.material.emissive.r>.5,'Forge glow is visible through the open workshop front');
+    assert(opaque.some(o=>/chimney_mouth/.test(o.name)),'Smithy smoke mouth exported');
+  }
+  if(name==='chapel') {
+    const stained=new Set();
+    for(const obj of opaque) if(/coloured_pane|gold_point/.test(obj.name)) stained.add(obj.material.name);
+    assert.equal(stained.size,3,'Chapel exports three stained-glass colours');
+  }
+  if(name==='guardian_statue') {
+    const light=scene.getObjectByName('lamp_Guardian_crystal');
+    const p=light.getWorldPosition(new Vector3());
+    // From inside, a one-sided surface is invisible: shoot from outside toward the lamp instead.
+    const shell=new Raycaster(p.clone().add(new Vector3(0,1,0)),new Vector3(0,-1,0),0,1).intersectObjects(opaque,false)[0];
+    assert(shell && shell.object.name==='Guardian_luminous_crystal','Guardian lamp contained by crystal');
+    assert(shell.point.distanceTo(p)<light.userData.clearance,'Crystal fixture clears its own lamp');
+  }
+  if(name==='laundry_line') {
+    const cloths=scene.children.filter(o=>o.name.startsWith('move_sway_Laundry_cloth'));
+    assert.equal(cloths.length,4,'All four cloths keep independent motion roots');
+    for(const cloth of cloths) {
+      const cb=new Box3().setFromObject(cloth),p=cloth.getWorldPosition(new Vector3());
+      assert(Math.abs(cb.max.y-p.y)<1e-5,'Laundry pivot sits at upper cloth edge');
+    }
+  }
+  if(name==='windmill_large') {
+    const sails=scene.getObjectByName('move_spin_Windmill_large_sails');
+    assert(sails,'Windmill sails have a shared motion root');
+    const axis=new Vector3(1,0,0).transformDirection(sails.matrixWorld);
+    assert(axis.z>.999,'Windmill root local X points along its exported shaft');
+    assert(sails.children.some(o=>o.name.startsWith('thin_Windmill_lattice')),'Thin lattice remains named under sail root');
+    assert(bounds.max.y>12 && metadata.attachmentsBlender.capHeightMetres>=10,'Full-size tower mill height');
   }
   console.log(`${name}: ${triangles} triangles, ${meshes} meshes, ${lamps} lamps, ${emissive} emissive primitives; valid`);
 }

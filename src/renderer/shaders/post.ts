@@ -16,7 +16,7 @@ uniform int uOutline; uniform int uDither; uniform int uClouds; uniform int uCon
 uniform float uSunI; uniform float uAmbient; uniform float uExpo; uniform float uChroma; uniform float uNight; uniform float uLampOn;
 uniform vec2 uLitTint; uniform vec2 uShadeTint;
 uniform vec3 uSkyTop; uniform vec3 uSkyBot;
-uniform int uLampCount; uniform vec3 uLampPos[MAX_LAMPS]; uniform vec3 uLampCol[MAX_LAMPS]; uniform float uLampRad[MAX_LAMPS];
+uniform int uLampCount; uniform vec4 uLamp[MAX_LAMPS]; uniform vec3 uLampCol[MAX_LAMPS];   // uLamp: position, radius
 uniform sampler2D tLampShadow; uniform vec3 uLampAtlas;   // atlas width, height, face tile size
 uniform int uRippleCount; uniform vec2 uRipples[MAX_RIPPLES];
 uniform int uGrooveCount; uniform float uGrooves[MAX_GROOVES]; uniform vec3 uGrooveAxis; uniform vec2 uGrooveY;
@@ -114,7 +114,7 @@ float shadeAt(ivec2 q){
 // Is the segment lamp i -> wp blocked? The lamp's distance cube map (see lampShadows.ts) holds the
 // nearest solid surface in each direction; 0 means nothing there. Face table matches FACES in lampShadows.ts.
 float lampVisible(int i, vec3 wp, vec3 n){
-  vec3 v = wp + n * 0.03 - uLampPos[i];          // nudge off the surface against self-shadowing
+  vec3 v = wp + n * 0.03 - uLamp[i].xyz;          // nudge off the surface against self-shadowing
   vec3 av = abs(v);
   int face; vec3 F, U;
   if (av.x >= av.y && av.x >= av.z) { face = v.x > 0.0 ? 0 : 1; F = vec3(sign(v.x), 0, 0); U = vec3(0, 1, 0); }
@@ -142,8 +142,8 @@ vec4 lampAt(vec3 wp, vec3 n, float jit){
   float best = 0.0;
   for (int i = 0; i < MAX_LAMPS; i++) {
     if (i >= uLampCount) break;
-    vec3 dv = uLampPos[i] - wp; float dist = length(dv);
-    float att = 1.0 - clamp(length(dv * vec3(1.0, dv.y > 0.0 ? 0.5 : 1.0, 1.0)) / uLampRad[i], 0.0, 1.0);
+    vec3 dv = uLamp[i].xyz - wp; float dist = length(dv);
+    float att = 1.0 - clamp(length(dv * vec3(1.0, dv.y > 0.0 ? 0.5 : 1.0, 1.0)) / uLamp[i].w, 0.0, 1.0);
     if (att <= 0.0) continue;
     float ndl = dot(n, dv / max(dist, 1e-3));         // surfaces facing away from the lamp get nothing
     float k = ndl > 0.0 ? att * att * (0.3 + 0.7 * ndl) : 0.0;
@@ -256,6 +256,32 @@ void main(){
     // reflect the lit sky a little: a lighter water in the sun's direction
     wc = mix(wc, uSkyBot, 0.06 * clamp(uSunI, 0.0, 1.0));
     wc *= mix(1.0, wb == 4 ? 1.0 : 0.5, uNight);
+    if (uLampOn > 0.01) {
+      // Lamp light on the water: a pool of lit ripples around each nearby lamp.
+      vec4 L = lampAt(wp, vec3(0.0, 1.0, 0.0), uDither == 1 ? (bayer4(p) - 0.5) * 0.6 : 0.0);
+      if (L.a > 0.18) wc = mix(wc, ramp(a.rgb, min(wb + 1, 3), 2, L.rgb), uLampOn * (L.a > 0.45 ? 0.75 : 0.45));
+      // Reflections: in an orthographic view the water shows the mirrored world straight along the view ray, so a lamp's
+      // reflection sits where its mirror image (as far below the water as the lamp is above) projects onto the screen.
+      // Ripples break it into a column of horizontal dashes that shiver sideways, longer the higher the lamp.
+      for (int i = 0; i < MAX_LAMPS; i++) {
+        if (i >= uLampCount) break;
+        vec3 lp = uLamp[i].xyz;
+        float hgt = lp.y - wp.y;
+        if (hgt <= 0.0 || length(lp.xz - wp.xz) > hgt * 2.2 + uLamp[i].w) continue;
+        vec3 dv = vec3(lp.x, wp.y - hgt, lp.z) - wp;
+        float sx = dot(dv, uRight), sy = dot(dv, uUp), rows = floor(sy / uTexel * 0.5);
+        float ry = max(0.3 + 0.22 * hgt, 3.0 * uTexel), taper = 1.0 - abs(sy) / ry;
+        if (taper <= 0.0) continue;
+        float shiver = (h21(vec2(rows, floor(uTime * 3.0) + float(i))) - 0.5) * 0.2;
+        float gap = h21(vec2(rows * 1.7 + float(i), floor(uTime * 2.0)));
+        bool dash = mod(rows, 2.0) < 0.5 || gap > 0.75 * (1.0 - taper);
+        if (!dash || abs(sx + shiver) > max(0.04 + 0.13 * taper * taper, 0.5 * uTexel)) continue;   // never under an art pixel
+        if (lampVisible(i, wp, vec3(0.0, 1.0, 0.0)) < 0.5) continue;
+        vec3 c = uLampCol[i] / max(max(uLampCol[i].r, uLampCol[i].g), max(uLampCol[i].b, 1e-3));
+        wc = mix(wc, ramp(c * 0.7, taper > 0.6 ? 3 : 2, 1), uLampOn * (taper > 0.3 ? 1.0 : 0.6));
+        break;
+      }
+    }
     outColor = vec4(toSRGB(finish(wc, p)), 1.0);
     return;
   }

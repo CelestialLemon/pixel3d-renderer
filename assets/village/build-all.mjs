@@ -5,8 +5,14 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 const root=fileURLToPath(new URL('../../',import.meta.url));
-const names=['house_A','house_B','tavern','clock_tower','house_C','house_D','stair_arch','bakery','house_E',
+const batch2=['house_A','house_B','tavern','clock_tower','house_C','house_D','stair_arch','bakery','house_E',
   'fountain','barrel','crate','bench','flower_box','signpost','closed_stall','festoon'];
+const batch3=['bridge_stone','footbridge','watermill','rowboat','barge','jetty','town_hall','chapel','watch_tower',
+  'smithy','cottage_thatch','cottage_long','barn','market_hall','guardian_statue','wardstone','ruins',
+  'hay_bales','woodpile','laundry_line','notice_board','market_stall_lit','mooring_bollard','windmill_large'];
+const requested=process.argv.slice(2).filter(arg=>!arg.startsWith('--'));
+const names=requested.length?requested:process.argv.includes('--batch3')?batch3:[...batch2,...batch3];
+for(const name of names) assert([...batch2,...batch3].includes(name),`Unknown village model: ${name}`);
 const verify=process.argv.includes('--verify');
 const digest=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
 mkdirSync(`${root}assets/village/review`,{recursive:true});

@@ -1,0 +1,67 @@
+{
+  "id": "market_hall",
+  "description": "Open timber market hall on six stone posts, red hipped roof, trestles with fruit, cloth bolts and pottery, two hanging warm lanterns.",
+  "triangles": 4292,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    7,
+    4.5
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 5,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -3.372847557067871,
+      -2.0900003910064697,
+      0.0
+    ],
+    "max": [
+      3.372847557067871,
+      2.0900003910064697,
+      4.580000400543213
+    ]
+  },
+  "dimensionsMetres": [
+    6.745695114135742,
+    4.1800007820129395,
+    4.580000400543213
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Market_hall_lantern",
+      "positionBlender": [
+        -1.399999976158142,
+        -0.6499999761581421,
+        2.490000009536743
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.8,
+      "clearance": 0.28
+    },
+    {
+      "name": "lamp_Market_hall_lantern.001",
+      "positionBlender": [
+        1.399999976158142,
+        -0.6499999761581421,
+        2.490000009536743
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.8,
+      "clearance": 0.28
+    }
+  ]
+}

@@ -125,9 +125,9 @@ export class PixelRenderer {
         uSkyTop: { value: new THREE.Color(0x79b6dc) }, uSkyBot: { value: new THREE.Color(0xf6e6c2) },
         uLampCount: { value: lamps.length },
         tLampShadow: { value: this.lampShadows.target.texture }, uLampAtlas: { value: new THREE.Vector3(this.lampShadows.size.x, this.lampShadows.size.y, this.lampShadows.tile) },
-        uLampPos: { value: padded(lamps.map((l) => l.position.clone()), LIMITS.lamps, () => new THREE.Vector3()) },
+        // Position and radius share one vec4 per lamp, to keep the fragment uniform count low at LIMITS.lamps.
+        uLamp: { value: padded(lamps.map((l) => new THREE.Vector4(l.position.x, l.position.y, l.position.z, l.radius)), LIMITS.lamps, () => new THREE.Vector4(0, 0, 0, 1)) },
         uLampCol: { value: padded(lamps.map((l) => new THREE.Vector3(...l.color)), LIMITS.lamps, () => new THREE.Vector3()) },
-        uLampRad: { value: padded(lamps.map((l) => l.radius), LIMITS.lamps, () => 1) },
         uRippleCount: { value: ripples.length },
         uRipples: { value: padded(ripples.map(([x, z]) => new THREE.Vector2(x, z)), LIMITS.ripples, () => new THREE.Vector2()) },
         uGrooveCount: { value: grooves?.positions.length ?? 0 },

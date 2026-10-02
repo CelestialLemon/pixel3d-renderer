@@ -1,0 +1,71 @@
+{
+  "id": "barge",
+  "description": "Working canal barge with hollow cargo hold, boarded deck, low lit cabin, crates, stovepipe and one warm lantern; bow -Y.",
+  "triangles": 1944,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    2.2,
+    8
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 1.6,
+  "attachmentsBlender": {
+    "waterlineMetres": 0,
+    "bowAxisBlender": [
+      0,
+      -1,
+      0
+    ]
+  },
+  "boundsBlender": {
+    "min": [
+      -1.0849885940551758,
+      -3.9600000381469727,
+      -0.38999998569488525
+    ],
+    "max": [
+      1.0849885940551758,
+      3.9497127532958984,
+      1.5950000286102295
+    ]
+  },
+  "dimensionsMetres": [
+    2.1699771881103516,
+    7.909712791442871,
+    1.9850000143051147
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Barge_lantern",
+      "positionBlender": [
+        -0.699999988079071,
+        0.3100000023841858,
+        0.8999999761581421
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 3.0,
+      "clearance": 0.28
+    }
+  ],
+  "minHeightMetres": -0.4,
+  "footprintBoundsBlender": [
+    [
+      -1.1,
+      -4.0
+    ],
+    [
+      1.1,
+      4.0
+    ]
+  ],
+  "origin": "waterline at footprint centre"
+}

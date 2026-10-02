@@ -1,0 +1,36 @@
+{
+  "id": "laundry_line",
+  "description": "Four contrasting cloths pivoted on a thin sagging rope between stout wooden posts.",
+  "triangles": 334,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    5.1,
+    0.5
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 2.8,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -2.455000162124634,
+      -0.07500000298023224,
+      0.0
+    ],
+    "max": [
+      2.455000162124634,
+      0.07500000298023224,
+      2.640000104904175
+    ]
+  },
+  "dimensionsMetres": [
+    4.910000324249268,
+    0.15000000596046448,
+    2.640000104904175
+  ],
+  "lamps": []
+}

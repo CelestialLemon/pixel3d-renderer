@@ -1,0 +1,36 @@
+{
+  "id": "mooring_bollard",
+  "description": "Small flanged mushroom-headed cast-iron mooring bollard.",
+  "triangles": 180,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    0.25,
+    0.25
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 0.32,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -0.11999999731779099,
+      -0.11999999731779099,
+      0.0
+    ],
+    "max": [
+      0.11999999731779099,
+      0.11999999731779099,
+      0.2874999940395355
+    ]
+  },
+  "dimensionsMetres": [
+    0.23999999463558197,
+    0.23999999463558197,
+    0.2874999940395355
+  ],
+  "lamps": []
+}

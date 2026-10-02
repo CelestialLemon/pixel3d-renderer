@@ -50,6 +50,14 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    - The Golden Hour look carries over to a night street and a dense town without changes to the renderer.
    - Warm lamp light on grass and bushes turns olive (lamp colour multiplies green albedo). Natural, but less pretty than on stone.
    - Side-wall window mullions break up at oblique angles (thin features, section 2).
+5. **Done (2026-10-02): Lantern Row v2, the canal town.** The user found v1 monotonous and cramped, so the scene was rebuilt at about
+   68 × 62 m around a 6 m canal: quays, a 3-arch stone bridge and a footbridge, boats, a jetty, a watermill with a turning wheel, a
+   market square with a town hall, market hall and a glowing guardian statue, a chapel, a watch tower, overgrown ruins with a wardstone,
+   thatched cottages, a smithy, a barn, gardens, an orchard, a pond, fields with a windmill, and gentle terrain (`groundY` is a height
+   field that stays flat under paths, water and buildings). Sol built 24 new models (batch 3 in `docs/ASSET_BRIEF.md`). Renderer
+   additions: `move_spin_`/`move_sway_` motion (`movingPartMotion`, opt-in per scene), lamp light and broken lamp reflections on water,
+   and `LIMITS.lamps` 64 (44 used). **Open:** about 500k triangles, and the lamp-shadow pass redraws the static mesh once per cube
+   face (264 times). Culling DECOR ground from that pass or using coarser slope cells would cut startup cost.
    - The tavern's hanging sign (`move_sway_`) is static: the loader has no motion for `move_*` parts yet (section 3, animation hook).
 
 ## 2. Sub-pixel stability (found 2026-10-01)

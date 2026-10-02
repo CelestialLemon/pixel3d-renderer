@@ -1,0 +1,103 @@
+{
+  "id": "bridge_stone",
+  "description": "Three real stone arches, cutwaters, solid coping and a curved road landing at quay height; 1.6 m boat headroom across the central 3 m.",
+  "triangles": 4768,
+  "triangleBudget": 5000,
+  "footprintMetres": [
+    4.5,
+    13
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": null,
+  "maxHeightMetres": 3.3,
+  "attachmentsBlender": {
+    "spanAxisBlender": [
+      0,
+      1,
+      0
+    ],
+    "waterEdgesBlenderY": [
+      -3,
+      3
+    ],
+    "landingPositionsBlender": [
+      [
+        0,
+        -6.5,
+        0
+      ],
+      [
+        0,
+        6.5,
+        0
+      ]
+    ],
+    "navigableWidthMetres": 3,
+    "minimumSoffitMetres": 0.6
+  },
+  "boundsBlender": {
+    "min": [
+      -2.250000238418579,
+      -6.5,
+      -1.5
+    ],
+    "max": [
+      2.250000238418579,
+      6.5,
+      3.2950000762939453
+    ]
+  },
+  "dimensionsMetres": [
+    4.500000476837158,
+    13.0,
+    4.795000076293945
+  ],
+  "lamps": [
+    {
+      "name": "lamp_Bridge_crown_lantern",
+      "positionBlender": [
+        -2.0399999618530273,
+        0.0,
+        3.0
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 4.8,
+      "clearance": 0.28
+    },
+    {
+      "name": "lamp_Bridge_crown_lantern.001",
+      "positionBlender": [
+        2.0399999618530273,
+        0.0,
+        3.0
+      ],
+      "colorLinear": [
+        1.0,
+        0.55,
+        0.22
+      ],
+      "radius": 4.8,
+      "clearance": 0.28
+    }
+  ],
+  "minHeightMetres": -1.5,
+  "footprintBoundsBlender": [
+    [
+      -2.25,
+      -6.5
+    ],
+    [
+      2.25,
+      6.5
+    ]
+  ],
+  "origin": "footprint centre at ground"
+}

@@ -3,14 +3,15 @@ import { DEFAULT_PALETTE_SIZE, GeometryCollector, LIMITS, quantizePalette, type 
 import { mulberry32 } from '../shared/random';
 import type { SceneDefinition } from '../types';
 import { buildGround } from './ground';
-import { CANAL_RIPPLES, FOUNTAIN, STAIRS, SUN_SHADOW } from './layout';
+import { BRIDGE, CANAL_RIPPLES, FOUNTAIN, STAIRS, STATUE, SUN_SHADOW } from './layout';
 import { buildLife } from './life';
 import { placeModels } from './models';
 import { buildTrees } from './trees';
 
-// Lantern Row: a night village street on two levels, with a square, a fountain, a stair up to the upper lane and a
-// canal on the camera side. The buildings are modelled in Blender (assets/village/, built to the
-// footprints in layout.ts); everything that depends on the layout (paving, walls, stairs, canal, trees) is built here.
+// Lantern Row: a night canal town. A canal with quays, two bridges, boats and a mill runs through the middle; the market
+// square, town hall and chapel stand on the north bank, with an upper level holding the watch tower and old ruins; cottages,
+// gardens, a smithy, a barn and an orchard fill the south bank. The buildings are modelled in Blender (assets/village/, built
+// to the footprints in layout.ts); everything that depends on the layout (paving, quays, walls, stairs, water, plants) is built here.
 
 async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   // One generator for the whole build, consumed in a fixed order: the scene is reproducible.
@@ -43,17 +44,20 @@ export const village: SceneDefinition = {
   hour: 22,
   build,
   view: {
-    target: { x: 0, z: 1, height: 1.2 },
+    target: { x: BRIDGE.x + 2, z: BRIDGE.z - 2, height: 1.2 },
     groundY: 0,
-    pan: { minX: -16, maxX: 16, minZ: -12, maxZ: 12 },
+    pan: { minX: -34, maxX: 34, minZ: -36, maxZ: 24 },
     azimuth: 30,
     presets: [
-      { name: 'Street', size: 17, el: 34, tx: 0, tz: 1 },
-      { name: 'Overview', size: 40, el: 40, tx: 0, tz: -1 },
-      { name: 'Square', size: 10, el: 34, tx: 2, tz: -2, az: -20 },
-      { name: 'Stairs', size: 8, el: 30, tx: STAIRS.x, tz: -3 },
-      { name: 'Canal', size: 9, el: 38, tx: 0, tz: 7.2 },
-      { name: 'Tavern', size: 11, el: 32, tx: 9, tz: -1, az: -35 },
+      { name: 'Street', size: 22, el: 34, tx: BRIDGE.x + 2, tz: BRIDGE.z - 2 },
+      { name: 'Overview', size: 66, el: 42, tx: 0, tz: -6 },
+      { name: 'Square', size: 14, el: 34, tx: STATUE.x + 1, tz: STATUE.z, az: -20 },
+      { name: 'Stairs', size: 9, el: 30, tx: STAIRS.x, tz: -21, az: -30 },
+      { name: 'Canal', size: 13, el: 38, tx: BRIDGE.x + 3, tz: BRIDGE.z },
+      { name: 'Mill', size: 13, el: 34, tx: -22, tz: 7, az: 15 },
+      { name: 'Ruins', size: 14, el: 36, tx: -13, tz: -29, az: -30 },
+      { name: 'Gardens', size: 16, el: 36, tx: 6, tz: 16, az: 40 },
+      { name: 'Tavern', size: 11, el: 32, tx: 27, tz: -4, az: -35 },
     ],
   },
 };

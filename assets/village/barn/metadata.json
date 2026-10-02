@@ -1,0 +1,40 @@
+{
+  "id": "barn",
+  "description": "Red vertical-board barn with blue gambrel roof, one double-door leaf ajar onto a dim interior and an open hayloft.",
+  "triangles": 2220,
+  "triangleBudget": 10000,
+  "footprintMetres": [
+    8,
+    6
+  ],
+  "frontBlender": [
+    0,
+    -1,
+    0
+  ],
+  "doorPositionBlender": [
+    0,
+    -2.35,
+    0
+  ],
+  "maxHeightMetres": 7,
+  "attachmentsBlender": {},
+  "boundsBlender": {
+    "min": [
+      -3.867283582687378,
+      -2.999246120452881,
+      0.0
+    ],
+    "max": [
+      3.867283582687378,
+      2.8550002574920654,
+      6.485000133514404
+    ]
+  },
+  "dimensionsMetres": [
+    7.734567165374756,
+    5.854246139526367,
+    6.485000133514404
+  ],
+  "lamps": []
+}

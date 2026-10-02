@@ -32,8 +32,8 @@ try {
     let tooMany = null;
     try { atlasLayout(1000, 2048); } catch (e) { tooMany = e.message; }
     const layouts = {
-      old16: atlasLayout(16, 16384), village22: atlasLayout(22, 16384), max32: atlasLayout(32, 16384),
-      min32: atlasLayout(32, 2048), min22: atlasLayout(22, 2048), tiny1: atlasLayout(1, 512), tooMany,
+      old16: atlasLayout(16, 16384), village22: atlasLayout(22, 16384), max32: atlasLayout(32, 16384), max64: atlasLayout(64, 16384),
+      min32: atlasLayout(32, 2048), min64: atlasLayout(64, 2048), min22: atlasLayout(22, 2048), tiny1: atlasLayout(1, 512), tooMany,
     };
     try {
       const shell = sample(solid(new THREE.BoxGeometry(4, 4, 4)));
@@ -63,7 +63,8 @@ try {
   assert.deepEqual(L.old16, { tile: 256, cols: 12, width: 3072, height: 2048 }, 'Default layout unchanged for 16 lamps');
   assert.deepEqual(L.village22, { tile: 256, cols: 12, width: 3072, height: 2816 }, 'Default layout for 22 lamps');
   assert.deepEqual(L.max32, { tile: 256, cols: 12, width: 3072, height: 4096 }, 'Default layout for 32 lamps');
-  for (const [name, l, lamps, limit] of [['min32', L.min32, 32, 2048], ['min22', L.min22, 22, 2048], ['tiny1', L.tiny1, 1, 512]]) {
+  assert.deepEqual(L.max64, { tile: 256, cols: 12, width: 3072, height: 8192 }, 'Default layout for 64 lamps (LIMITS.lamps) fits 8192');
+  for (const [name, l, lamps, limit] of [['min32', L.min32, 32, 2048], ['min64', L.min64, 64, 2048], ['min22', L.min22, 22, 2048], ['tiny1', L.tiny1, 1, 512]]) {
     assert.ok(l.width <= limit && l.height <= limit, `${name}: ${l.width}x${l.height} fits ${limit}`);
     assert.ok((l.width / l.tile) * (l.height / l.tile) >= lamps * 6, `${name}: room for all ${lamps * 6} faces`);
   }
