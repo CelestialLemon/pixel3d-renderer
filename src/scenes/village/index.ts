@@ -3,7 +3,7 @@ import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, LIMITS, MODE, 
 import { mulberry32 } from '../shared/random';
 import type { SceneDefinition } from '../types';
 import { buildGround, CANAL_FLOW } from './ground';
-import { BRIDGE, CANAL, CANAL_RIPPLES, FOUNTAIN, STAIRS, STATUE, SUN_SHADOW } from './layout';
+import { BRIDGE, CANAL, CANAL_RIPPLES, FOUNTAIN, POND, STAIRS, STATUE, SUN_SHADOW } from './layout';
 import { buildLife } from './life';
 import { placeModels } from './models';
 import { buildTrees } from './trees';
@@ -26,8 +26,11 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   s.pushPrepared(ms.build()); d.pushPrepared(modelDyn);
   buildLife(d, rnd, placed.chimneys);
   // Drips and rising fish on the canal, the basin and the pond, and the churn at the foot of the mill wheel.
-  for (const [x, z] of CANAL_RIPPLES) f.source(x, z, { radius: 0.5, strength: 0.35 });
-  if (wheel) f.source(wheel.x, wheel.z, { radius: 1.8, strength: 1, rings: false });
+  for (const [x, z] of CANAL_RIPPLES) {
+    const y = Math.hypot(x - POND.x, z - POND.z) < POND.r ? POND.waterY : CANAL.waterY;
+    f.source(x, z, { y, radius: 0.5, strength: 0.35 });
+  }
+  if (wheel) f.source(wheel.x, wheel.z, { y: CANAL.waterY, radius: 1.8, strength: 1, rings: false });
   let lamps = placed.lamps;
   if (lamps.length > LIMITS.lamps) {
     console.warn(`village: ${lamps.length} lamps, the renderer supports ${LIMITS.lamps}; the rest are dropped`);

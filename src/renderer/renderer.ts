@@ -198,6 +198,7 @@ ${POSE}`);
         uFluidD: { value: fluidVec((m) => [m.waveScale, m.foamAmount, m.emission, 0]) },
         uSourceCount: { value: src.length },
         uSources: { value: padded(src.map((o) => new THREE.Vector4(o.x, o.z, o.rings ? o.radius : -o.radius, o.strength)), LIMITS.fluidSources, () => new THREE.Vector4()) },
+        uSourceY: { value: padded(src.map((o) => o.y ?? -1e4), LIMITS.fluidSources, () => -1e4) },
         uGrooveCount: { value: grooves?.positions.length ?? 0 },
         uGrooves: { value: padded(grooves?.positions ?? [], LIMITS.grooves, () => 0) },
         uGrooveAxis: { value: new THREE.Vector3(...(grooves?.axis ?? [1, 0, 0])) },

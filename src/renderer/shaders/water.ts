@@ -47,6 +47,7 @@ uniform sampler2D tFluidMap; uniform sampler2D tFluidHeight; uniform vec4 uFluid
 // (shallow, clarity), (deep, reflectivity), (foam, roughness), (wave scale, foam amount, emission, -).
 uniform vec4 uFluidA[MAX_FLUIDS]; uniform vec4 uFluidB[MAX_FLUIDS]; uniform vec4 uFluidC[MAX_FLUIDS]; uniform vec4 uFluidD[MAX_FLUIDS];
 uniform int uSourceCount; uniform vec4 uSources[MAX_SOURCES];   // x, z, radius (negative: no rings), strength
+uniform float uSourceY[MAX_SOURCES];                            // the surface height each stirs (-1e4: any)
 
 vec3 imageAt(ivec2 q){ return texelFetch(tImage, clampP(q), 0).rgb; }
 bool fluidAt(ivec2 q){ return texelFetch(tFluidF, clampP(q), 0).a > 0.5; }
@@ -105,12 +106,13 @@ void water(ivec2 p){
   float ring = 0.0;
   for (int k = 0; k < MAX_SOURCES; k++) {
     if (k >= uSourceCount) break;
+    if (!pool || (uSourceY[k] > -9e3 && abs(wp.y - uSourceY[k]) > 0.05)) continue;   // pools at its height only
     vec4 s = uSources[k];
     bool rings = s.z > 0.0;
     s.z = abs(s.z);
     float r = length(wp.xz - s.xy);
     turb = max(turb, s.w * (1.0 - smoothstep(0.0, s.z, r)));
-    if (rings && pool) {   // rings expanding from the source, evenly out of phase
+    if (rings) {   // rings expanding from the source, evenly out of phase
       float ph = fract(uTime * 0.45 + float(k) * 0.37), R = s.z * 2.6 * ph;
       ring = max(ring, (1.0 - smoothstep(0.0, 0.07, abs(r - R))) * (1.0 - ph) * s.w);
     }
@@ -208,7 +210,7 @@ void water(ivec2 p){
   // projects: a compact spot on calm water that ripples stretch into a broken column of dashes running towards the
   // viewer, shivering sideways. Only where the lamp really lights this point (its shadow map): a lamp behind a quay wall
   // shows none. Drawn even where the lantern itself is hidden from the mirror, since its glow lights the water.
-  if (uLampOn > 0.01 && opt.y > 0.0) {
+  if (pool && uLampOn > 0.01 && opt.y > 0.0) {   // mirrored across a level surface: pools only
     float stretch = smoothstep(0.08, 0.6, rough);
     for (int i = 0; i < MAX_LAMPS; i++) {
       if (i >= uLampCount) break;

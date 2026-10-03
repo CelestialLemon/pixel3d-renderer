@@ -139,7 +139,8 @@ groove set per scene is supported. Passes 0–1 are frozen and still flicker. `n
 
 - Tune the foliage and lamp look further; add a night moon and stars if the camera ever sees the sky.
 - A transparency policy beyond ordered-dither discard (particles) if a scene needs it. Fluids have their own layer (section 1, item 7).
-- Fluids, later: moving obstacles in the flow map (today a moving part needs a `FluidSource`); gently sloped rivers (a fluid surface
+- Fluids, later: moving obstacles in the flow map (today a moving part needs a `FluidSource`); sources tied to one body of water
+  (a `FluidSource` stirs every pool surface at its height within its radius, so a separate basin alongside is stirred too); gently sloped rivers (a fluid surface
   steeper than ~18° counts as falling water and runs straight down its slope, ignoring any authored flow, and the flow map covers
   only flat pools); splashes as particles, wet shore darkening, underwater fog for a camera below the surface, and a fluid casting
   light (lava lighting its surroundings needs scene lamps today).

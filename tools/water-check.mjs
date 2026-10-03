@@ -76,6 +76,14 @@ export async function waterChecks() {
   submergedFluid.add(new T.PlaneGeometry(.2, .2).rotateX(-Math.PI / 2).translate(1, 2, 0), null, FLUIDS.water);
   const submerged = build(submergedFluid);
   const stackedFluid = pool(); stackedFluid.add(new T.PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0, 2, 0), null, FLUIDS.water); const stacked = build(stackedFluid);
+  const scopedFluid = pool();
+  scopedFluid.add(new T.PlaneGeometry(2, 2).rotateX(-Math.PI / 2).translate(0, .2, 0), null, FLUIDS.water);
+  scopedFluid.source(0, 0, { y: 0, radius: 2, strength: 1 });
+  const scoped = build(scopedFluid);
+  const unscopedFluid = pool();
+  unscopedFluid.add(new T.PlaneGeometry(2, 2).rotateX(-Math.PI / 2).translate(0, .2, 0), null, FLUIDS.water);
+  unscopedFluid.source(0, 0, { radius: 2, strength: 1 });
+  const unscoped = build(unscopedFluid);
   const empty = build(new FluidCollector()), big = build(pool([1, 0], 2000, 2));
   const separatedFluid = pool([1, 0], 2, 2);
   separatedFluid.add(new T.PlaneGeometry(2, 2).rotateX(-Math.PI / 2).translate(2.4, 0, 0), null, FLUIDS.water);
@@ -124,6 +132,7 @@ export async function waterChecks() {
     submerged: sample(submerged, 1.4, 0), aboveSubmerged: sample(submerged, 1, 0),
     calmTurbulence: Math.max(...decoded(calm).filter((_, i) => i % 4 === 2)),
     source: sample(source, 1, 0), fall: sample(fall, 1, 0), upper: sample(stacked, 0, 0), lower: sample(stacked, 1, 0),
+    scopedUpper: sample(scoped, 0, 0), scopedLower: sample(scoped, 1.2, 0), unscopedUpper: sample(unscoped, 0, 0),
     empty: { size: [empty.texture.image.width, empty.texture.image.height], data: decoded(empty), heights: [...empty.height.image.data] },
     high: sample(high, 0, 0), gpuWithoutFloatLinear: [...gpuPixel], stillNeighbourTurbulence,
     big: [big.texture.image.width, big.texture.image.height],
@@ -167,10 +176,12 @@ export async function waterChecks() {
     const markerHeight = options.markerHeight ?? 1, markerZ = options.markerZ ?? -2;
     if (withMarker) s.add(new T.PlaneGeometry(.6, markerHeight).translate(0, 2, markerZ), rotation, [1, .01, .01], FLAG.EMISSIVE);
     if (options.occluder) s.add(new T.BoxGeometry(1.2, .8, 2).translate(0, .2, -2 + 2 / Math.tan(el)), rotation, [.3, .3, .3]);
-    f.add(new T.PlaneGeometry(12, 12).rotateX(-Math.PI / 2), null,
+    const surface = new T.PlaneGeometry(12, 12); if (!options.sheet) surface.rotateX(-Math.PI / 2);
+    surface.translate(0, options.poolY ?? 0, 0);
+    f.add(surface, null,
       { ...FLUIDS.water, shallow: 0x101820, deep: 0x101820, roughness, reflectivity: options.reflectivity ?? 1,
         clarity: options.clarity ?? .01, foamAmount: options.foamAmount ?? 0, foam: 0xff0000 }, flow);
-    if (options.sourceStrength) f.source(0, 0, { radius: 1.5, strength: options.sourceStrength, rings: options.sourceRings ?? false });
+    if (options.sourceStrength) f.source(0, 0, { radius: 1.5, strength: options.sourceStrength, rings: options.sourceRings ?? false, y: options.sourceY });
     const scene = { staticGeometry: s.build(), dynamicGeometry: new GeometryCollector(true).build(), fluids: f.build(), lamps: [], grooves: null,
       shadow: { center: new T.Vector3(), radius: 8 }, stats: { triangles: 0, paletteColors: 2 } };
     const pr = new PixelRenderer(document.createElement('canvas'), scene);
@@ -213,6 +224,15 @@ export async function waterChecks() {
   const ringsOn = render(0, 0, .6, 2.5, [0, 0], false, { ...ringOptions, sourceRings: true });
   const ringsOff = render(0, 0, .6, 2.5, [0, 0], false, { ...ringOptions, sourceRings: false });
   const sourceRings = { changed: diff(ringsOn, ringsOff) }; delete ringsOn.pixels; delete ringsOff.pixels;
+  const upperOptions = { reflectivity: 0, foamAmount: .6, poolY: .2, sourceRings: true };
+  const upperControl = render(0, 0, .6, 2.5, [0, 0], false, upperOptions);
+  const upperWrongSource = render(0, 0, .6, 2.5, [0, 0], false, { ...upperOptions, sourceY: 0, sourceStrength: 1 });
+  const upperRightSource = render(0, 0, .6, 2.5, [0, 0], false, { ...upperOptions, sourceY: .2, sourceStrength: 1 });
+  const sheetOptions = { reflectivity: 0, foamAmount: .6, sheet: true, sourceRings: true };
+  const sheetControl = render(0, 0, .6, 2.5, [0, 0], false, sheetOptions);
+  const sheetSource = render(0, 0, .6, 2.5, [0, 0], false, { ...sheetOptions, sourceY: 0, sourceStrength: 1 });
+  const sourceScope = { wrongHeight: diff(upperControl, upperWrongSource), rightHeight: diff(upperControl, upperRightSource), sheet: diff(sheetControl, sheetSource) };
+  for (const r of [upperControl, upperWrongSource, upperRightSource, sheetControl, sheetSource]) delete r.pixels;
   const advection = (first, second) => {
     const shifts = [];
     for (let shift = -10; shift <= 10; shift++) {
@@ -229,7 +249,7 @@ export async function waterChecks() {
   const reverseA = render(.3, 0, .6, 8, [-.5, 0], false), reverseB = render(.3, 0, .6, 8.5, [-.5, 0], false);
   animation.reverse = advection(reverseA, reverseB);
   for (const r of [rough, mirror, thin, miss, occluded, foaming, noFoam, clear, opaque, movingA, movingB, movingAgain, reverseA, reverseB]) delete r.pixels;
-  return { mapStats, materialStats, propsStats, sourceRings, ringsOn, ringsOff, pondBed, reflections, rough, mirror, thin, miss, occluded, foaming, noFoam, clear, opaque, animation };
+  return { mapStats, materialStats, propsStats, sourceScope, sourceRings, ringsOn, ringsOff, pondBed, reflections, rough, mirror, thin, miss, occluded, foaming, noFoam, clear, opaque, animation };
 }
 
 async function main() {
@@ -265,6 +285,8 @@ async function main() {
     assert.equal(m.aboveSubmerged.rgba[2], 0, 'A submerged impact cannot disturb a pool above the sheet');
     assert.equal(m.calmTurbulence, 0, 'Still water does not foam from shore distance alone');
     assert.ok(m.source.rgba[2] > .5 && m.fall.rgba[2] > .5, 'Sources and falling sheets disturb their receiving pool');
+    assert.equal(m.scopedUpper.rgba[2], 0, 'Source for a lower pool leaves a pool only 0.2m above unstirred');
+    assert.ok(m.scopedLower.rgba[2] > .2 && m.unscopedUpper.rgba[2] > .8, 'Scoped source reaches its own height; unspecified height preserves local broadcast');
     assert.equal(m.upper.height, 2, 'Highest overlapping pool owns the map');
     assert.ok(Math.abs(m.lower.height) < 1e-5, 'Lower pool retains its height away from overlap');
     assert.deepEqual(m.empty, { size: [1, 1], data: [0, 0, 0, 0], heights: [-10000] }, 'Empty fluids return valid textures');
@@ -293,6 +315,9 @@ async function main() {
     assert.ok(result.clear.centerPixel[0] > result.opaque.centerPixel[0] + 50, 'Clear fluid reveals the bed; opaque fluid absorbs it');
     assert.ok(result.animation.changed > 100 && result.animation.repeat === 0, 'Flowing ripples animate deterministically');
     assert.ok(result.sourceRings.changed > 10, 'Source ring flag changes visible rings without disabling the disturbance');
+    assert.equal(result.sourceScope.wrongHeight, 0, 'Lower source adds no rings, turbulence or foam to an upper rendered pool');
+    assert.ok(result.sourceScope.rightHeight > 100, 'Source still visibly stirs a matching rendered pool');
+    assert.equal(result.sourceScope.sheet, 0, 'Pool sources cannot alter a falling sheet at the same XZ');
     assert.ok(Math.abs(result.animation.advection[0].shift - 5) <= 2, 'Ripple patterns travel downstream at their authored current');
     assert.ok(Math.abs(result.animation.reverse[0].shift + 5) <= 2, 'Reversing the current reverses ripple travel');
     for (const key of ['rough', 'mirror', 'thin', 'miss', 'occluded', 'foaming', 'noFoam', 'clear', 'opaque', 'ringsOn', 'ringsOff']) { await writePng(`${output}/${key}.png`, result[key].png); delete result[key].png; }

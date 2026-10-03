@@ -18,7 +18,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector();
   addFactory(root, s, d);
   const flowerSpots = buildMeadow(s, d, f, rnd);
-  for (const [x, z] of RIPPLES) f.source(x, z, { radius: 0.4, strength: 0.4 });
+  for (const [x, z] of RIPPLES) f.source(x, z, { y: GROUND_Y - 0.07, radius: 0.4, strength: 0.4 });   // the pond's surface (meadow.ts)
   buildTrees(s, rnd);
   buildPond(s, d, rnd);
   buildLife(d, rnd, flowerSpots);

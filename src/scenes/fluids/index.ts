@@ -59,7 +59,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
       box(s, x + 1.2, rim, back - 0.2, 0.5, 0.25, 0.5, stone);
       f.add(new THREE.PlaneGeometry(0.34, rim + 0.2 - level).translate(x + 1.2, (rim + 0.2 + level) / 2, back + 0.07), null, material);
     }
-    if (material === FLUIDS.acid) f.source(x + 0.4, z + 0.3, { radius: 0.5, strength: 0.8 });
+    if (material === FLUIDS.acid) f.source(x + 0.4, z + 0.3, { y: level, radius: 0.5, strength: 0.8 });
   });
 
   const staticGeometry = s.build(), dynamicGeometry = d.build();

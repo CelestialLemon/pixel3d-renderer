@@ -281,7 +281,8 @@ export function buildFluidMap(fluids: SceneFluids, staticGeometry: THREE.BufferG
   for (const w of wakes) for (let t = 0.3; t <= 3; t += 0.3)
     splat(w.x + w.vx * t, w.z + w.vz * t, 0.18 + t * 0.22, w.strength * (1 - t / 3.3), (i) => component[i] === w.component);
   for (const p of impacts) splat(p.x, p.z, 0.5, 0.9, (i) => p.y - heights[i] >= -0.05 && p.y - heights[i] <= 0.4);
-  for (const s of fluids.sources) splat(s.x, s.z, s.radius, s.strength, () => true);
+  for (const s of fluids.sources) splat(s.x, s.z, s.radius, s.strength,
+    (i) => s.y === undefined || Math.abs(heights[i] - s.y) < 0.05);
 
   // One-texel padding copies the nearest wet texel's height/current, keeping bilinear shoreline taps
   // meaningful. Read only original wet coverage; never propagate padding across the map or to a lower pool.

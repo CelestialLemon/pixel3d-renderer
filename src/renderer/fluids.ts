@@ -46,9 +46,12 @@ export type FluidPreset = keyof typeof FLUIDS;
 
 /**
  * A spot that keeps a fluid stirred: a drip, the foot of a jet, a mill wheel. It adds turbulence (rougher surface, foam)
- * within `radius` m, scaled by `strength` (0..1); `rings` also sends expanding rings out from it.
+ * within `radius` m, scaled by `strength` (0..1); `rings` also sends expanding rings out from it. It stirs pools only, never
+ * falling sheets. With `y` (the height of the water surface it stirs) it touches only pool surfaces within 5 cm of that
+ * height, so a drip in a lower basin leaves a pool above it alone; without `y` it stirs pools at any height. It is not tied
+ * to one body of water: a separate pool at the same height within `radius` is stirred too.
  */
-export interface FluidSource { x: number; z: number; radius: number; strength: number; rings: boolean }
+export interface FluidSource { x: number; z: number; y?: number; radius: number; strength: number; rings: boolean }
 
 /** A scene's fluids, as the renderer takes them (FluidCollector builds this). */
 export interface SceneFluids {
@@ -105,9 +108,9 @@ export class FluidCollector {
   }
 
   /** Add a stirred spot (see FluidSource). */
-  source(x: number, z: number, { radius = 0.6, strength = 1, rings = true }: Partial<Omit<FluidSource, 'x' | 'z'>> = {}) {
+  source(x: number, z: number, { y, radius = 0.6, strength = 1, rings = true }: Partial<Omit<FluidSource, 'x' | 'z'>> = {}) {
     if (this.sources.length >= LIMITS.fluidSources) throw new Error(`At most ${LIMITS.fluidSources} fluid sources per scene`);
-    this.sources.push({ x, z, radius, strength, rings });
+    this.sources.push({ x, z, y, radius, strength, rings });
   }
 
   build(): SceneFluids {
