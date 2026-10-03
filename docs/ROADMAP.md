@@ -58,6 +58,12 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    additions: `move_spin_`/`move_sway_` motion (`movingPartMotion`, opt-in per scene), lamp light and broken lamp reflections on water,
    and `LIMITS.lamps` 64 (44 used). **Open:** about 500k triangles, and the lamp-shadow pass redraws the static mesh once per cube
    face (264 times). Culling DECOR ground from that pass or using coarser slope cells would cut startup cost.
+6. **Done (2026-10-03): night lighting.** The night grade drains colour under moonlight (greens most, via `uNight` in the post shader's
+   `ramp`), with neutral blue night tints in `look.ts`, so the canal town reads as night rather than dark green; lamp-lit greens lose
+   some chroma too, so warm pools on grass go ochre instead of lime. Lit windows cast small warm pools on the ground, quay or wall below
+   them from a top-down window light map (`windowLight.ts`): panes are found from EMISSIVE geometry at build time and splatted once,
+   so they add no lamps and no shadow cube maps. Pool-band dithering is now gated like the sun's: only where the light is a smooth
+   gradient on one plane. Window pools have no shadows; a pane with an obstacle right in front of it can still light past it.
    - The tavern's hanging sign (`move_sway_`) is static: the loader has no motion for `move_*` parts yet (section 3, animation hook).
 
 ## 2. Sub-pixel stability (found 2026-10-01)

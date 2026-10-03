@@ -5,7 +5,7 @@ export const FLAG = {
   NORMAL: 0,
   /** Self-lit (lit windows): always the lit tone, ignores exposure, glows after dusk. */
   EMISSIVE: 1,
-  /** Ground cover and small plants: never casts ink or creases, never dithered. */
+  /** Ground cover and small plants: never casts ink or creases, no sun dithering (smooth lamp pools on it still dither). */
   DECOR: 2,
   /** Smoke and steam: soft ink, three tones from the sun angle, no lamp light. */
   STEAM: 3,

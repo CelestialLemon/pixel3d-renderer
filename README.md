@@ -96,7 +96,7 @@ iteration side by side with the current one, add an entry there. The pages, layo
 - **Pass 3 — Golden Hour:** the current renderer, `src/renderer/` + `src/scenes/cookie-co/`. It adds a living world (swaying grass,
   flowers and reeds; chimney smoke; belt cookies; butterflies; fireflies at night; a rippling pond), time of day (keyframed sun path,
   warm/cool band tints, exposure, sky, lamps; presets Morning, Noon, Golden hour, Dusk, Night), lamp light that multiplies the surface
-  colour after dusk, scalloped leaf-clump foliage, and quieter finishing (cloud shadows darken by one band, two hard corner rings, no depth haze).
+  colour after dusk, a moonlit night grade, warm light pools below lit windows, scalloped leaf-clump foliage, and quieter finishing (cloud shadows darken by one band, two hard corner rings, no depth haze).
 
 Passes 0–1 draw their own static world without the pond, leaf-clump trees and motion, so the comparison mixes renderer and content changes.
 
