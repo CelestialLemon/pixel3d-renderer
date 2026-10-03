@@ -158,7 +158,8 @@ node tools/timelapse.mjs my-clip.json --keep-frames         # your own clip file
   (`app3.capture`, this version onwards), `legacy` (the `app3` view, `setHour` and `renderGeometry`/`renderStyle` that every version of
   the viewer has had, so camera paths and hour sweeps work too) or `url` (reload the page per frame with the camera, hour and clock
   in the URL, which is slow). `--tier` forces one. Old pages ignore parameters they don't know (no `?scene=` before PR #1, no canal
-  town before PR #8), so they show their own default scene.
+  town before PR #8), so they show their own default scene; a clip's `view` keys are then skipped with a warning and the camera starts
+  from the page's own view. On the requested scene, an unknown view is still an error.
 - **Output.** `out/timelapse/<name>.mp4` (H.264, BT.709, `--crf`, default 12), `<name>.camera.json` (the camera, hour and clock of
   every frame, and the driver used) and, with `--keep-frames`, the upscaled frames in `<name>-frames/`.
 - **Checking a video.** `node tools/video-check.mjs out/timelapse/<name>.mp4 --log out/timelapse/<name>.camera.json

@@ -70,6 +70,7 @@ clip.scene ??= 'village';
 for (const k of clip.keys) if (k.at === Infinity || k.at > clip.seconds) k.at = clip.seconds;
 clip.keys.sort((p, q) => p.at - q.at);
 
+if (opts.tier !== undefined && !['hook', 'legacy', 'url'].includes(opts.tier)) fail(`--tier must be hook, legacy or url, not "${opts.tier}"`);
 const still = !!opts.still;
 const fps = still ? 1 : +(opts.fps ?? 30);
 if (!(fps > 0)) fail(`bad --fps "${opts.fps}"`);
@@ -101,20 +102,28 @@ const pageQuery = (extra = {}) => {
 };
 
 // ---- keyframes -> per-frame camera and hour ----
-/** Resolve keys into per-channel point lists. `start` is the page's own camera and hour; `presets` the scene's views. */
-function tracks(start, presets) {
+/**
+ * Resolve keys into per-channel point lists. `start` is the page's own camera and hour, `presets` the scene's views and
+ * `sceneShown` whether the page shows the clip's scene (old pages ignore `?scene=` and show their own).
+ */
+function tracks(start, presets, sceneShown, pageScene) {
   const points = Object.fromEntries(CHANNELS.map((c) => [c, []]));
   const last = { ...start };
   for (const key of clip.keys) {
     const values = {};
     if (key.view) {
       const p = presets.find((v) => v.name.toLowerCase() === String(key.view).toLowerCase());
-      if (!p) fail(`scene has no view "${key.view}" (views: ${presets.map((v) => v.name).join(', ') || 'none'})`);
-      Object.assign(values, { el: p.el, zoom: p.size });
-      if (p.tx !== undefined) values.tx = p.tx;
-      if (p.tz !== undefined) values.tz = p.tz;
-      // A preset's azimuth is a direction, so take the turn nearest to where the camera already is.
-      if (p.az !== undefined) values.az = p.az + 360 * Math.round((last.az - p.az) / 360);
+      const views = presets.map((v) => v.name).join(', ') || 'none';
+      if (!p && sceneShown) fail(`scene has no view "${key.view}" (views: ${views})`);
+      // On a page showing another scene the view can't exist, so only the key's own channels apply.
+      if (!p) console.warn(`timelapse: the page shows ${pageScene ? `scene "${pageScene}"` : 'its own scene'}, not "${clip.scene}", so view "${key.view}" is skipped (its views: ${views})`);
+      else {
+        Object.assign(values, { el: p.el, zoom: p.size });
+        if (p.tx !== undefined) values.tx = p.tx;
+        if (p.tz !== undefined) values.tz = p.tz;
+        // A preset's azimuth is a direction, so take the turn nearest to where the camera already is.
+        if (p.az !== undefined) values.az = p.az + 360 * Math.round((last.az - p.az) / 360);
+      }
     }
     for (const c of CHANNELS) if (key[c] !== undefined) values[c] = key[c];
     for (const [c, v] of Object.entries(values)) {
@@ -149,8 +158,8 @@ function sample(pts, t, linear) {
   return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * m1;
 }
 
-function plan(start, presets) {
-  const pts = tracks(start, presets), linear = new Set(clip.linear ?? []);
+function plan(start, presets, sceneShown, pageScene) {
+  const pts = tracks(start, presets, sceneShown, pageScene), linear = new Set(clip.linear ?? []);
   // Zoom eases in log space, so zooming in and out feel equally fast.
   pts.zoom = pts.zoom.map(([t, v]) => [t, Math.log(v)]);
   return Array.from({ length: frameCount }, (_, i) => {
@@ -186,7 +195,7 @@ const probe = (page) => page.evaluate(() => {
   const tier = typeof a?.capture === 'function' ? 'hook' : a?.p3?.renderGeometry && o?.view && o?.target && a.setHour ? 'legacy' : 'url';
   const v = o?.view;
   return {
-    tier, presets: (a?.orbit?.scene ?? a?.scene?.view)?.presets?.map(({ name, size, el, az, tx, tz }) => ({ name, size, el, az, tx, tz })) ?? [],
+    tier, sceneId: a?.scene?.id ?? null, presets: (a?.orbit?.scene ?? a?.scene?.view)?.presets?.map(({ name, size, el, az, tx, tz }) => ({ name, size, el, az, tx, tz })) ?? [],
     start: v ? { az: v.az / DEG, el: v.el / DEG, zoom: v.size, tx: v.tx, tz: v.tz, hour: a.hour ?? (hourEl ? +hourEl.value : 17.5) } : null,
   };
 });
@@ -251,7 +260,7 @@ try {
   if (tier !== 'url' && !info.start) fail(`the page has no app3 view, so it can only use --tier url`);
   // Without a view to read, the url tier starts from the scene's first preset, or the keys must give every channel.
   const start = info.start ?? { az: 30, el: 38, zoom: 22, tx: 0, tz: 0, hour: 17.5, ...(info.presets[0] && { el: info.presets[0].el, zoom: info.presets[0].size }) };
-  const frames = plan(start, info.presets);
+  const frames = plan(start, info.presets, info.sceneId === clip.scene, info.sceneId);
   console.log(`${name}: ${frameCount} frame${frameCount > 1 ? 's' : ''} at ${fps} fps, art ${artW}x${artH} x${scale} = ${outW}x${outH}, driver ${tier}, ${workers} worker${workers > 1 ? 's' : ''}`);
   await writeFile(`${outDir}/${name}.camera.json`, JSON.stringify({
     name, tier, url: pageQuery(), fps, art: [artW, artH], scale, output: [outW, outH], seconds: clip.seconds, startTime, clip,
