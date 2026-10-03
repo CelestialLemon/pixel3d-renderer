@@ -17,8 +17,7 @@
 // camera, hour and clock in the URL: slow, but it needs nothing from the page beyond its URL parameters.
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { GL_ARGS, CHROME } from './lib.mjs';
-import puppeteer from 'puppeteer-core';
+import { launch } from './lib.mjs';
 import { PRESETS } from './timelapse-presets.mjs';
 
 const FFMPEG = process.env.FFMPEG_PATH || '/opt/homebrew/bin/ffmpeg';
@@ -243,7 +242,7 @@ function encoder() {
 await mkdir(outDir, { recursive: true });
 if (opts['keep-frames'] && !still) { await rm(framesDir, { recursive: true, force: true }); await mkdir(framesDir, { recursive: true }); }
 
-const browsers = await Promise.all(Array.from({ length: workers }, () => puppeteer.launch({ executablePath: CHROME, headless: true, args: GL_ARGS })));
+const browsers = await Promise.all(Array.from({ length: workers }, launch));
 try {
   const t0 = Date.now();
   const pages = await Promise.all(browsers.map((b) => openPage(b, pageQuery())));

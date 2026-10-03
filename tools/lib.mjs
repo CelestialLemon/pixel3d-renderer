@@ -8,7 +8,9 @@ export const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.ap
 // Headless Chrome only gets WebGL2 through SwiftShader.
 export const GL_ARGS = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--mute-audio'];
 
-export const launch = () => puppeteer.launch({ executablePath: CHROME, headless: true, args: GL_ARGS });
+// `pipe` talks to Chrome over a pipe instead of a port, so Chrome exits as soon as this process dies, even when it is
+// killed outright; with a port, a killed run leaves a headless Chrome animating its page at full CPU.
+export const launch = () => puppeteer.launch({ executablePath: CHROME, headless: true, args: GL_ARGS, pipe: true });
 
 /** New page that records page errors and console errors into `errors`. */
 export async function newPage(browser, { width = 1440, height = 900, scale = 1 } = {}) {
