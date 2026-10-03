@@ -159,7 +159,8 @@ ${POSE}`);
         // Position and radius share one vec4 per lamp, to keep the fragment uniform count low at LIMITS.lamps.
         uLamp: { value: padded(lamps.map((l) => new THREE.Vector4(l.position.x, l.position.y, l.position.z, l.radius)), LIMITS.lamps, () => new THREE.Vector4(0, 0, 0, 1)) },
         uLampCol: { value: padded(lamps.map((l) => new THREE.Vector3(...l.color)), LIMITS.lamps, () => new THREE.Vector3()) },
-        tWindow: { value: this.windowLight.texture }, uWindowBounds: { value: new THREE.Vector4(...this.windowLight.bounds) },
+        tWindow: { value: this.windowLight.texture }, tWindowSource: { value: this.windowLight.source },
+        uWindowBounds: { value: new THREE.Vector4(...this.windowLight.bounds) },
         uRippleCount: { value: ripples.length },
         uRipples: { value: padded(ripples.map(([x, z]) => new THREE.Vector2(x, z)), LIMITS.ripples, () => new THREE.Vector2()) },
         uGrooveCount: { value: grooves?.positions.length ?? 0 },
@@ -308,7 +309,7 @@ ${POSE}`);
   /** Free GPU resources. The scene's geometries are disposed too. */
   dispose() {
     for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised]) t?.dispose();
-    this.light.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose();
+    this.light.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();
     for (const m of [this.staticMesh, this.dynMesh, this.quad]) m.geometry.dispose();
     for (const m of [this.staticMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat]) (m as THREE.Material).dispose();
     this.renderer.dispose();

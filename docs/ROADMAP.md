@@ -63,7 +63,10 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    some chroma too, so warm pools on grass go ochre instead of lime. Lit windows cast small warm pools on the ground, quay or wall below
    them from a top-down window light map (`windowLight.ts`): panes are found from EMISSIVE geometry at build time and splatted once,
    so they add no lamps and no shadow cube maps. Pool-band dithering is now gated like the sun's: only where the light is a smooth
-   gradient on one plane. Window pools have no shadows; a pane with an obstacle right in front of it can still light past it.
+   gradient on one plane. A second map stores each pool's source position, so walls light only on the side facing the window
+   (the builder moves a pane's source just outside the facade around it, keeping the wall below lit). Window pools have no shadows; a
+   pane with an obstacle right in front of it can still light the obstacle's near side, and past it. Each texel keeps one averaged
+   source, so where pools of windows facing each other across a narrow gap overlap, a wall between them can be lit or darkened wrongly.
    - The tavern's hanging sign (`move_sway_`) is static: the loader has no motion for `move_*` parts yet (section 3, animation hook).
 
 ## 2. Sub-pixel stability (found 2026-10-01)

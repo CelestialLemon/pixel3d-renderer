@@ -19,6 +19,7 @@ uniform vec3 uSkyTop; uniform vec3 uSkyBot;
 uniform int uLampCount; uniform vec4 uLamp[MAX_LAMPS]; uniform vec3 uLampCol[MAX_LAMPS];   // uLamp: position, radius
 uniform sampler2D tLampShadow; uniform vec3 uLampAtlas;   // atlas width, height, face tile size
 uniform sampler2D tWindow; uniform vec4 uWindowBounds;   // window light map (windowLight.ts): rgb light, a source height; world xz bounds
+uniform sampler2D tWindowSource;   // same grid: rg = weighted window xz minus the texel centre
 uniform int uRippleCount; uniform vec2 uRipples[MAX_RIPPLES];
 uniform int uGrooveCount; uniform float uGrooves[MAX_GROOVES]; uniform vec3 uGrooveAxis; uniform vec2 uGrooveY;
 out vec4 outColor;
@@ -145,7 +146,7 @@ float lampVisible(int i, vec3 wp, vec3 n){
 // below its windows rather than at the pool's clipped back edge; a wall facing away from the pools reads nothing. Fades
 // out above the window (no light on the roof or the floors above); on a wall the pool fades out within ~1.4 m below it.
 vec4 windowAt(vec3 wp, vec3 n){
-  vec2 uv = (wp.xz + n.xz * 0.4 - uWindowBounds.xy) / (uWindowBounds.zw - uWindowBounds.xy);
+  vec2 at = wp.xz + n.xz * 0.4, uv = (at - uWindowBounds.xy) / (uWindowBounds.zw - uWindowBounds.xy);
   if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec4(0.0);
   vec4 w = textureLod(tWindow, uv, 0.0);   // explicit LOD: also called from non-uniform control flow
   float k = max(max(w.r, w.g), w.b);
@@ -153,6 +154,16 @@ vec4 windowAt(vec3 wp, vec3 n){
   float below = w.a - wp.y, up = max(n.y, 0.0);   // how far below the (weighted) window height; 1 on the ground, 0 on a wall
   float reach = mix(1.0 - smoothstep(0.5, 1.4, below), 1.0 - smoothstep(2.2, 4.5, below), up);   // a wall pool stays compact
   k *= 0.4 * (1.0 - smoothstep(-0.6, 0.0, -below)) * reach * mix(0.7, 1.0, up) * smoothstep(-0.35, -0.05, n.y);   // no undersides
+  // A wall lights only if the window is in front of it, so a wall standing in a pool lights on the side facing
+  // the window, not the side facing away. The builder moves the source of a pane set in a facade just outside
+  // that facade, so the wall under it passes. The interpolated offset plus the lookup position gives the
+  // interpolated source exactly.
+  // Only steep receivers are tested: gently sloped ground keeps its whole pool.
+  float wall = 1.0 - smoothstep(0.35, 0.75, n.y), side = length(n.xz);
+  if (wall > 0.0 && side > 0.01) {
+    vec2 src = at + textureLod(tWindowSource, uv, 0.0).rg;
+    k *= mix(1.0, smoothstep(0.0, 0.01, dot(src - wp.xz, n.xz / side)), wall);
+  }
   return vec4(w.rgb / max(max(w.r, w.g), w.b), k);
 }
 

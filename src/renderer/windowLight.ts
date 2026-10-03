@@ -5,6 +5,8 @@ import type { Lamp } from './scene';
 
 export interface WindowPane {
   center: THREE.Vector3;
+  /** Directional source, moved just outside a detected recessed facade; pool placement stays at center. */
+  source: THREE.Vector3;
   normal: THREE.Vector3;
   color: RGB;
   area: number;
@@ -13,6 +15,8 @@ export interface WindowPane {
 export interface WindowLight {
   /** Linear RGB × strength; alpha is the strength-weighted source height, padded one texel beyond coverage. */
   texture: THREE.DataTexture;
+  /** Strength-weighted source XZ offset from the texel centre, padded one texel beyond coverage. */
+  source: THREE.DataTexture;
   /** World XZ edges: UV = (world.xz - bounds.xy) / (bounds.zw - bounds.xy). */
   bounds: [number, number, number, number];
   panes: WindowPane[];
@@ -74,7 +78,7 @@ export function buildWindowLight(geometry: THREE.BufferGeometry, lamps: readonly
     const r = root(i), group = groups.get(r);
     if (group) group.push(i); else groups.set(r, [i]);
   }
-  const candidates: (WindowPane & { probes: THREE.Vector3[] })[] = [];
+  const candidates: (WindowPane & { probes: THREE.Vector3[]; facadeProbes: THREE.Vector3[] })[] = [];
   for (const group of groups.values()) {
     const f = faces[group[0]], center = new THREE.Vector3(), color: RGB = [0, 0, 0];
     let area = 0, y0 = Infinity, y1 = -Infinity, u0 = Infinity, u1 = -Infinity;
@@ -92,7 +96,13 @@ export function buildWindowLight(geometry: THREE.BufferGeometry, lamps: readonly
     if (lamps.some((l) => center.distanceTo(l.position) < (l.clearance ?? 0.45) + 0.12)) continue;
     // Face centroids avoid the crossbar at the pane centre. Probe both ends of its triangulation.
     const probes = [faces[group[0]].center, faces[group[group.length - 1]].center];
-    candidates.push({ center, normal: f.normal, color, area, probes });
+    const tangent = new THREE.Vector3(f.normal.z, 0, -f.normal.x), side = tangent.length();
+    tangent.normalize();
+    const u = center.x * f.normal.z - center.z * f.normal.x;
+    // Separate strips of a mullioned window may still be inside its opening at the first offset.
+    const facadeProbes = [0.06, 0.2, 0.5, 0.9].flatMap((offset) => [u0 - offset, u1 + offset]
+      .map((edge) => center.clone().addScaledVector(tangent, (edge - u) / side)));
+    candidates.push({ center, source: center.clone(), normal: f.normal, color, area, probes, facadeProbes });
   }
 
   // Interior/back faces of solid emissive boxes must not spill through their building's wall. Index only
@@ -100,10 +110,10 @@ export function buildWindowLight(geometry: THREE.BufferGeometry, lamps: readonly
   // This is a build-time face rejection, not a shadow map or a per-texel visibility pass.
   const buckets = new Map<string, number[]>();
   const bucketKey = (x: number, z: number) => `${Math.floor(x)},${Math.floor(z)}`;
-  for (const pane of candidates) for (const p of pane.probes) {
-    const end = p.clone().addScaledVector(pane.normal, 0.65);
-    for (let x = Math.floor(Math.min(p.x, end.x)); x <= Math.floor(Math.max(p.x, end.x)); x++)
-      for (let z = Math.floor(Math.min(p.z, end.z)); z <= Math.floor(Math.max(p.z, end.z)); z++)
+  for (const pane of candidates) for (const p of [...pane.probes, ...pane.facadeProbes]) {
+    const start = p.clone().addScaledVector(pane.normal, -0.06), end = p.clone().addScaledVector(pane.normal, 0.65);
+    for (let x = Math.floor(Math.min(start.x, end.x)); x <= Math.floor(Math.max(start.x, end.x)); x++)
+      for (let z = Math.floor(Math.min(start.z, end.z)); z <= Math.floor(Math.max(start.z, end.z)); z++)
         buckets.set(`${x},${z}`, []);
   }
   if (buckets.size) for (let t = 0; t + 2 < count; t += 3) {
@@ -128,7 +138,35 @@ export function buildWindowLight(geometry: THREE.BufferGeometry, lamps: readonly
       if (ray.intersectTriangle(a, b, c, false, hit) && hit.distanceTo(ray.origin) < 0.635) return false;
     }
     return true;
-  })).map(({ center, normal, color, area }) => ({ center, normal, color, area }));
+  })).map(({ center, source, normal: paneNormal, color, area, facadeProbes }) => {
+    // Recessed panes sit behind their facade, but their light should still spill onto that facade's
+    // outward side. Recognise the wall around the opening, not arbitrary obstacles below it: both
+    // lateral probes at pane height must meet outward-facing solids on the same nearby plane.
+    const depths = facadeProbes.map((p) => {
+      ray.set(p.clone().addScaledVector(paneNormal, -0.06), paneNormal);
+      const end = p.clone().addScaledVector(paneNormal, 0.35);
+      const nearby = new Set<number>();
+      for (let x = Math.floor(Math.min(ray.origin.x, end.x)); x <= Math.floor(Math.max(ray.origin.x, end.x)); x++)
+        for (let z = Math.floor(Math.min(ray.origin.z, end.z)); z <= Math.floor(Math.max(ray.origin.z, end.z)); z++)
+          for (const t of buckets.get(bucketKey(x, z)) ?? []) nearby.add(t);
+      let nearest = Infinity;
+      for (const t of nearby) {
+        a.fromBufferAttribute(pos, vertex(t)); b.fromBufferAttribute(pos, vertex(t + 1)); c.fromBufferAttribute(pos, vertex(t + 2));
+        normal.copy(ab.subVectors(b, a).cross(ac.subVectors(c, a))).normalize();
+        if (normal.dot(paneNormal) < 0.94 || !ray.intersectTriangle(a, b, c, false, hit)) continue;
+        const depth = hit.clone().sub(p).dot(paneNormal);
+        if (depth >= -0.05 && depth <= 0.35) nearest = Math.min(nearest, depth);
+      }
+      return nearest;
+    });
+    for (let i = 0; i < depths.length; i += 2) {
+      if (Number.isFinite(depths[i]) && Number.isFinite(depths[i + 1]) && Math.abs(depths[i] - depths[i + 1]) < 0.03) {
+        source.addScaledVector(paneNormal, Math.max(0, Math.max(depths[i], depths[i + 1]) + 0.02));
+        break;
+      }
+    }
+    return { center, source, normal: paneNormal, color, area };
+  });
 
   // Bounds cover each complete pool, rather than potentially enormous empty terrain. Reject outside UVs
   // in the shader; a 1x1 zero map handles scenes without panes at negligible cost.
@@ -144,6 +182,7 @@ export function buildWindowLight(geometry: THREE.BufferGeometry, lamps: readonly
   const height = panes.length ? Math.min(MAX_SIZE, Math.ceil((z1 - z0) / TEXEL)) : 1;
   const dx = (x1 - x0) / width, dz = (z1 - z0) / height;
   const values = new Float32Array(width * height * 4), weights = new Float32Array(width * height);
+  const sources = new Float32Array(width * height * 2);
   for (const pane of panes) {
     const r = radius(pane), cx = pane.center.x + pane.normal.x * OFFSET, cz = pane.center.z + pane.normal.z * OFFSET;
     const maxColor = Math.max(...pane.color), strength = Math.min(0.8, 0.35 + 0.28 * Math.sqrt(pane.area));
@@ -157,16 +196,21 @@ export function buildWindowLight(geometry: THREE.BufferGeometry, lamps: readonly
         const texel = z * width + x, k = texel * 4;
         for (let c = 0; c < 3; c++) values[k + c] += w * pane.color[c] / maxColor;
         values[k + 3] += w * pane.center.y; weights[texel] += w;
+        // Small local offsets retain half-float precision even far from the world origin.
+        sources[texel * 2] += w * (pane.source.x - wx);
+        sources[texel * 2 + 1] += w * (pane.source.z - wz);
       }
   }
   const data = new Uint16Array(values.length);
+  const sourceData = new Uint16Array(sources.length);
   for (let i = 0; i < weights.length; i++) {
     const k = i * 4, peak = Math.max(1, values[k], values[k + 1], values[k + 2]);
     for (let c = 0; c < 3; c++) data[k + c] = THREE.DataUtils.toHalfFloat(values[k + c] / peak);
     data[k + 3] = THREE.DataUtils.toHalfFloat(weights[i] > 0 ? values[k + 3] / weights[i] : 0);
+    for (let c = 0; c < 2; c++) sourceData[i * 2 + c] = THREE.DataUtils.toHalfFloat(weights[i] > 0 ? sources[i * 2 + c] / weights[i] : 0);
   }
-  // Linear filtering touches empty neighbours at a pool rim. Pad only the height, so a 3 m window's
-  // height stays 3 m as its RGB fades to zero, instead of being blended with a fictitious 0 m source.
+  // Linear filtering touches empty neighbours at a pool rim. Pad the source height and position so
+  // they stay at the pane as RGB fades to zero, instead of blending toward a fictitious source.
   // Consult the original coverage mask, never the padded data: dilation stops after one texel.
   for (let z = 0; z < height; z++) for (let x = 0; x < width; x++) {
     const i = z * width + x;
@@ -180,11 +224,20 @@ export function buildWindowLight(geometry: THREE.BufferGeometry, lamps: readonly
         nearest = j; distance = d; strongest = weights[j];
       }
     }
-    if (nearest >= 0) data[i * 4 + 3] = data[nearest * 4 + 3];
+    if (nearest >= 0) {
+      data[i * 4 + 3] = data[nearest * 4 + 3];
+      // Copy the same absolute source, expressed relative to this empty texel's centre.
+      sourceData[i * 2] = THREE.DataUtils.toHalfFloat(sources[nearest * 2] / weights[nearest] + (nearest % width - x) * dx);
+      sourceData[i * 2 + 1] = THREE.DataUtils.toHalfFloat(sources[nearest * 2 + 1] / weights[nearest] + (Math.floor(nearest / width) - z) * dz);
+    }
   }
   const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.HalfFloatType);
   texture.minFilter = texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
   texture.needsUpdate = true;
-  return { texture, bounds: [x0, z0, x1, z1], panes };
+  const source = new THREE.DataTexture(sourceData, width, height, THREE.RGFormat, THREE.HalfFloatType);
+  source.minFilter = source.magFilter = THREE.LinearFilter;
+  source.generateMipmaps = false;
+  source.needsUpdate = true;
+  return { texture, source, bounds: [x0, z0, x1, z1], panes };
 }
