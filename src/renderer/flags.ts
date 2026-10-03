@@ -9,8 +9,7 @@ export const FLAG = {
   DECOR: 2,
   /** Smoke and steam: soft ink, three tones from the sun angle, no lamp light. */
   STEAM: 3,
-  /** Water: animated ripples, sparkles and drip rings (see PixelScene.ripples). */
-  WATER: 4,
+  // 4 was WATER: fluids are now their own layer (see fluids.ts), never part of the opaque geometry.
   /** Tiny self-lit sparks (fireflies). */
   GLOW: 5,
   /** Flat panel with shader-drawn groove lines (see PixelScene.grooves); no dither or contact speckle. */

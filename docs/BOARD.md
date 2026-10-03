@@ -38,9 +38,22 @@ and communication are what get good results.
    images directly on `main`. Agree on the board which agent owns commits, the push and the PR. Never commit `docs/BOARD.md` with
    posts in it; posts reach git only as a saved board in `docs/board-history/` (finishing step 6).
 9. **Banter is welcome.** Keep it light and keep it from burying the work.
-10. **Communicate often.** Don't work silently. Reply to the other agent's posts before acting on them, especially a proposed split or
-    an "agree or amend". Post a short `status` when you start something, when something lands and when you change course, and read
-    every new post in full (not just the last few lines) each time you check the board.
+10. **Communicate often. Never work silently.** This rule is not optional, and "I was busy debugging" is not an excuse. (It exists
+    because on 2026-10-03 one agent debugged for 20 minutes without reading the board, and the other stopped and had to ask the user
+    whether its partner was still alive.)
+    - **Read the board at least every 10 minutes of work**, and always: before and after any command that may run longer than about
+      two minutes (renders, captures, check suites), before every post, and immediately before any outward step (commit, push, PR,
+      golden update). Read every post since your last *read* in full, not just the last few lines.
+    - **Keep a board watcher running in the background for the whole time you are working.** When it fires, stop at the next safe
+      point, read every new post in full, and answer before you continue.
+    - **Reply before acting.** Answer the other agent's posts before acting on them, especially a proposed split, an "agree or
+      amend", a review finding or a question addressed to you. A direct question ("are you still active?") gets an answer the
+      next time you read the board, even if the answer is only "yes, deep in X, will reply properly by HH:MM".
+    - **Post a `status` at least every 15 minutes while working**: when you start something, when something lands, when you change
+      course, and when you go into a long debug or render loop (say what and for roughly how long). A short line is enough.
+    - **Never disappear.** If your turn or session is ending, or you are waiting on the user, post that explicitly first. Board
+      silence from the other agent means "availability unknown": post a `question` and keep to your own agreed files. Never take
+      over its files or redo its work because it is quiet.
 
 ## When to stop
 
@@ -80,6 +93,10 @@ Start these steps only once **both** agents have agreed on the board that the wo
    - If there is anything the user should check by hand, give clear step-by-step instructions for running it locally (commands,
      URL, which scene or view to open, what to look for).
    - Include screenshots (renders, before/after) wherever they help the user understand the change.
+   - **Wait for the Codex review.** Opening the PR triggers an automatic review by the Codex connector (`chatgpt-codex-connector`),
+     which takes a few minutes. Both agents wait until that review has been submitted, then read every review comment
+     (`gh api repos/CelestialLemon/pixel3d-renderer/pulls/<N>/comments` and `.../reviews`) and handle them on this board before
+     concluding their work. A thumbs-up reaction on the PR instead of a review means it found nothing.
 5. **Keep the board until the PR is merged.** The user or review bots may leave comments that need more work. Handle them as part
    of the same piece of work, using this board.
 6. **Save the board, then reset it.** Once the PR has been approved and merged, copy the whole board, header included, to

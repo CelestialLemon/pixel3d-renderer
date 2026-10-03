@@ -68,6 +68,18 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    pane with an obstacle right in front of it can still light the obstacle's near side, and past it. Each texel keeps one averaged
    source, so where pools of windows facing each other across a narrow gap overlap, a wall between them can be lit or darkened wrongly.
    - The tavern's hanging sign (`move_sway_`) is static: the loader has no motion for `move_*` parts yet (section 3, animation hook).
+7. **Done (2026-10-03): fluids.** Water is no longer an opaque flagged floor. `src/renderer/fluids.ts` defines a `FluidMaterial`
+   (colours, clarity, reflectivity, roughness, ripple size, foam, emission) with `FLUIDS` presets (water, canal, pond, swamp, acid,
+   lava) and a `FluidCollector`; `PixelScene.fluids` replaces `ripples`, and `water_` assets become fluids (`water_<preset>_` picks a
+   preset). Fluid surfaces are drawn into their own small G-buffer after the opaque one, then composited in a second run of the post
+   shader (`shaders/water.ts`): the bed shows through by depth and clarity; flow-mapped ripples travel with the current and stretch
+   along it; reflections come from a screen-space march that is exact for flat water under our orthographic camera (a plane hit
+   inside the sampled pixel's footprint); lamps draw their mirror image, spot-like on calm water and a broken dashed column on rough
+   water; roughness (material + flow speed + turbulence) breaks and weakens the mirror; foam forms where the water is stirred. Sloped
+   and upright fluid (spills, waterfalls) falls down its own slope and froths. A top-down map baked once (`fluidMap.ts`) deflects the
+   current round piers, hulls and banks, slows it at the edges, and holds turbulence from sources, wakes and falls. The village canal
+   flows with the mill wheel, the basin and pond lie still, the fountain spills; `?scene=fluids` shows every preset side by side.
+   `tools/water-check.mjs` checks the map, the mirror's projected position, rough reflections, misses and the flow direction.
 
 ## 2. Sub-pixel stability (found 2026-10-01)
 
@@ -125,7 +137,12 @@ groove set per scene is supported. Passes 0–1 are frozen and still flicker. `n
 
 ## 5. Visual and art ideas not yet done
 
-- Tune the foliage, water and lamp look further; add a night moon and stars if the camera ever sees the sky.
-- A transparency policy beyond ordered-dither discard (water depth, particles) if the scene needs it.
+- Tune the foliage and lamp look further; add a night moon and stars if the camera ever sees the sky.
+- A transparency policy beyond ordered-dither discard (particles) if a scene needs it. Fluids have their own layer (section 1, item 7).
+- Fluids, later: moving obstacles in the flow map (today a moving part needs a `FluidSource`); sources tied to one body of water
+  (a `FluidSource` stirs every pool surface at its height within its radius, so a separate basin alongside is stirred too); gently sloped rivers (a fluid surface
+  steeper than ~18° counts as falling water and runs straight down its slope, ignoring any authored flow, and the flow map covers
+  only flat pools); splashes as particles, wet shore darkening, underwater fog for a camera below the surface, and a fluid casting
+  light (lava lighting its surroundings needs scene lamps today).
 - Depth cues: Pass 2's screen-wide haze was disliked (it washes everything out, see `archive/pass2-atmosphere/`), and a constant-depth
   step shows as a seam on flat ground, so any future depth cue needs a different approach.

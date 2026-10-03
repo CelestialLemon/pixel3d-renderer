@@ -8,6 +8,9 @@ import { CLEAN_FRAG } from './shaders/cleanup';
 import { RESOLVE_FRAG } from './shaders/resolve';
 import { LampShadows } from './lampShadows';
 import { buildWindowLight, type WindowLight } from './windowLight';
+import { FLUID_FRAG, FLUID_VERT } from './shaders/water';
+import { linearColor } from './geometry';
+import { buildFluidMap, type FluidMap } from './fluidMap';
 
 /** Stylisation switches. All on is the intended look; the toggles exist for comparison and debugging. */
 export interface RenderSettings {
@@ -45,6 +48,19 @@ export class PixelRenderer {
   /** Resolved to art resolution: albedo+flag, normal+depth, shadow (alpha). What the post shader reads. */
   private gbuf!: THREE.WebGLRenderTarget;
   private stylised!: THREE.WebGLRenderTarget;
+  /** The fluid G-buffer (normal + depth, velocity + material slot) at art resolution, and the image with the fluids drawn in. */
+  private fluidBuf?: THREE.WebGLRenderTarget;
+  private withFluids?: THREE.WebGLRenderTarget;
+  /** Pass 0's image when fluids follow: linear and unclipped, so the final grade in pass 1 sees the true colour. */
+  private linearImage?: THREE.WebGLRenderTarget;
+  /** Stands in for the fluid G-buffer in a scene without fluids, whose fluid targets are never allocated. */
+  private noFluid = Object.assign(new THREE.DataTexture(new Float32Array(4), 1, 1, THREE.RGBAFormat, THREE.FloatType), { needsUpdate: true });
+  private fluidMesh: THREE.Mesh;
+  private fluidMat: THREE.ShaderMaterial;
+  private fluidScene = new THREE.Scene();
+  private hasFluids: boolean;
+  /** Flow, turbulence and shore distance over the fluid pools, baked once (see fluidMap.ts). */
+  readonly fluidMap: FluidMap;
   private staticMesh: THREE.Mesh;
   private staticMat: THREE.ShaderMaterial;
   private resolveMat: THREE.ShaderMaterial;
@@ -137,7 +153,19 @@ ${POSE}`);
     const modes = pixelScene.dynamicGeometry.getAttribute('aMode')?.array ?? [];
     this.hasRigidParts = Array.from(modes).some((m) => m > 5.5);
 
-    const { lamps, ripples, grooves } = pixelScene;
+    const { lamps, grooves, fluids } = pixelScene;
+    this.fluidMat = new THREE.ShaderMaterial({
+      vertexShader: FLUID_VERT, fragmentShader: FLUID_FRAG, glslVersion: THREE.GLSL3, side: THREE.DoubleSide,
+      uniforms: { tAlbedo: { value: null }, tNormal: { value: null }, uFwd: { value: new THREE.Vector3() } },
+    });
+    this.fluidMesh = new THREE.Mesh(fluids.geometry, this.fluidMat);
+    this.fluidMesh.frustumCulled = false;
+    this.fluidScene.add(this.fluidMesh);
+    this.hasFluids = fluids.geometry.attributes.position.count > 0;
+    this.fluidMap = buildFluidMap(fluids, pixelScene.staticGeometry);
+    const mats = fluids.materials, src = fluids.sources;
+    const fluidVec = (pick: (m: typeof mats[number]) => [number, number, number, number]) =>
+      padded(mats.map((m) => new THREE.Vector4(...pick(m))), LIMITS.fluidMaterials, () => new THREE.Vector4());
     const gl = this.renderer.getContext();
     this.lampShadows = new LampShadows(lamps, pixelScene.staticGeometry,
       Math.min(this.renderer.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number));
@@ -161,8 +189,16 @@ ${POSE}`);
         uLampCol: { value: padded(lamps.map((l) => new THREE.Vector3(...l.color)), LIMITS.lamps, () => new THREE.Vector3()) },
         tWindow: { value: this.windowLight.texture }, tWindowSource: { value: this.windowLight.source },
         uWindowBounds: { value: new THREE.Vector4(...this.windowLight.bounds) },
-        uRippleCount: { value: ripples.length },
-        uRipples: { value: padded(ripples.map(([x, z]) => new THREE.Vector2(x, z)), LIMITS.ripples, () => new THREE.Vector2()) },
+        uPass: { value: 0 }, uDeferGrade: { value: 0 }, tImage: { value: null }, tFluidN: { value: null }, tFluidF: { value: null },
+        tFluidMap: { value: this.fluidMap.texture }, tFluidHeight: { value: this.fluidMap.height }, uFluidBounds: { value: new THREE.Vector4(...this.fluidMap.bounds) },
+        // Packed four vec4 per material and one per source (see WATER_GLSL in shaders/water.ts).
+        uFluidA: { value: fluidVec((m) => [...linearColor(m.shallow), m.clarity]) },
+        uFluidB: { value: fluidVec((m) => [...linearColor(m.deep), m.reflectivity]) },
+        uFluidC: { value: fluidVec((m) => [...linearColor(m.foam), m.roughness]) },
+        uFluidD: { value: fluidVec((m) => [m.waveScale, m.foamAmount, m.emission, 0]) },
+        uSourceCount: { value: src.length },
+        uSources: { value: padded(src.map((o) => new THREE.Vector4(o.x, o.z, o.rings ? o.radius : -o.radius, o.strength)), LIMITS.fluidSources, () => new THREE.Vector4()) },
+        uSourceY: { value: padded(src.map((o) => o.y ?? -1e4), LIMITS.fluidSources, () => -1e4) },
         uGrooveCount: { value: grooves?.positions.length ?? 0 },
         uGrooves: { value: padded(grooves?.positions ?? [], LIMITS.grooves, () => 0) },
         uGrooveAxis: { value: new THREE.Vector3(...(grooves?.axis ?? [1, 0, 0])) },
@@ -171,7 +207,7 @@ ${POSE}`);
     });
     this.cleanMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: CLEAN_FRAG,
-      uniforms: { tImage: { value: null }, tAlbedo: { value: null }, tNormal: { value: null }, uRes: { value: new THREE.Vector2() }, uOn: { value: 1 } },
+      uniforms: { tImage: { value: null }, tAlbedo: { value: null }, tNormal: { value: null }, tFluid: { value: null }, uRes: { value: new THREE.Vector2() }, uOn: { value: 1 } },
     });
     this.resolveMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: RESOLVE_FRAG,
@@ -207,12 +243,17 @@ ${POSE}`);
     this.renderer.setSize(w, h, false);
     const S = this.supersample === 3 ? 3 : 1;
     const mk = (opts: THREE.RenderTargetOptions, count = 1, k = 1) => new THREE.WebGLRenderTarget(w * k, h * k, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, generateMipmaps: false, count, ...opts });
-    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised]) t?.dispose();
+    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage]) t?.dispose();
     // Full float depth avoids false depth discontinuities on planar roof/paving edges.
     this.gbufHi = mk({ type: THREE.FloatType }, 2, S);
     this.shadowHi = mk({ type: THREE.UnsignedByteType }, 1, S);
     this.gbuf = mk({ type: THREE.FloatType, depthBuffer: false }, 3);
     this.stylised = mk({ type: THREE.UnsignedByteType, depthBuffer: false });
+    if (this.hasFluids) {   // a scene without fluids never needs these
+      this.fluidBuf = mk({ type: THREE.FloatType }, 2);
+      this.withFluids = mk({ type: THREE.UnsignedByteType, depthBuffer: false });
+      this.linearImage = mk({ type: THREE.FloatType, depthBuffer: false });
+    }
     this.staticMat.uniforms.uSS.value = S; this.dynMat.uniforms.uSS.value = S; this.resolveMat.uniforms.uS.value = S;
     this.postMat.uniforms.uRes.value.set(w, h);
     this.cleanMat.uniforms.uRes.value.set(w, h);
@@ -272,9 +313,19 @@ ${POSE}`);
     ru.uFwd.value.setFromMatrixColumn(this.camera.matrixWorld, 2).negate();
     this.quad.material = this.resolveMat;
     r.setRenderTarget(this.gbuf); r.render(this.quadScene, this.quadCam);
+
+    // The fluids, into their own G-buffer, hidden by hand behind the resolved opaque world.
+    if (this.fluidBuf) {
+      r.setClearColor(0x000000, 0);
+      r.setRenderTarget(this.fluidBuf); r.clear();
+      const fu = this.fluidMat.uniforms;
+      fu.tAlbedo.value = this.gbuf.textures[0]; fu.tNormal.value = this.gbuf.textures[1];
+      fu.uFwd.value.copy(ru.uFwd.value);
+      r.render(this.fluidScene, this.camera);
+    }
   }
 
-  /** Stylise the G-buffer into the final pixel image on the canvas. `time` drives clouds and water. */
+  /** Stylise the G-buffer into the final pixel image on the canvas. `time` drives clouds and the fluids. */
   renderStyle(s: RenderSettings, time: number) {
     const r = this.renderer, cam = this.camera;
     const u = this.postMat.uniforms;
@@ -288,10 +339,21 @@ ${POSE}`);
     u.uContact.value = s.contacts ? 1 : 0; u.uGlow.value = s.glow ? 1 : 0; u.uVignette.value = s.vignette ? 1 : 0;
     u.uOutline.value = s.outlines ? 1 : 0; u.uDither.value = s.dither ? 1 : 0; u.uClouds.value = s.clouds ? 1 : 0;
 
+    const fluidTex = this.fluidBuf?.textures ?? [this.noFluid, this.noFluid];
+    u.tFluidN.value = fluidTex[0]; u.tFluidF.value = fluidTex[1];
     this.quad.material = this.postMat;
-    r.setRenderTarget(this.stylised); r.render(this.quadScene, this.quadCam);
+    u.uPass.value = 0; u.tImage.value = null;   // never sample the target being drawn
+    u.uDeferGrade.value = this.hasFluids ? 1 : 0;   // with fluids, pass 1 grades the composited image once
+    r.setRenderTarget(this.linearImage ?? this.stylised); r.render(this.quadScene, this.quadCam);
+    let image = this.stylised;
+    if (this.linearImage && this.withFluids) {   // pass 1: the fluids over pass 0's image
+      u.uPass.value = 1; u.uDeferGrade.value = 0; u.tImage.value = this.linearImage.texture;
+      r.setRenderTarget(this.withFluids); r.render(this.quadScene, this.quadCam);
+      image = this.withFluids;
+    }
 
-    this.cleanMat.uniforms.tImage.value = this.stylised.texture;
+    this.cleanMat.uniforms.tImage.value = image.texture;
+    this.cleanMat.uniforms.tFluid.value = fluidTex[1];
     this.cleanMat.uniforms.tAlbedo.value = this.gbuf.textures[0];
     this.cleanMat.uniforms.tNormal.value = this.gbuf.textures[1];
     this.cleanMat.uniforms.uOn.value = s.cleanup ? 1 : 0;
@@ -308,10 +370,11 @@ ${POSE}`);
 
   /** Free GPU resources. The scene's geometries are disposed too. */
   dispose() {
-    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised]) t?.dispose();
+    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage]) t?.dispose();
     this.light.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();
-    for (const m of [this.staticMesh, this.dynMesh, this.quad]) m.geometry.dispose();
-    for (const m of [this.staticMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat]) (m as THREE.Material).dispose();
+    this.fluidMap.texture.dispose(); this.fluidMap.height.dispose(); this.noFluid.dispose();
+    for (const m of [this.staticMesh, this.dynMesh, this.fluidMesh, this.quad]) m.geometry.dispose();
+    for (const m of [this.staticMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat]) (m as THREE.Material).dispose();
     this.renderer.dispose();
   }
 }

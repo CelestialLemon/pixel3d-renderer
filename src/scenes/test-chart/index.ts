@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, GeometryCollector, linearColor as lin, place, quantizePalette, type PixelScene } from '../../renderer';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, linearColor as lin, place, quantizePalette, type PixelScene } from '../../renderer';
 import type { SceneDefinition } from '../types';
 import { aoBay, curvesBay, inkBay, lampsBay, paletteBay, thinBay } from './bays';
 import { kerb } from './kit';
@@ -34,7 +34,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize);
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
   return {
-    staticGeometry, dynamicGeometry, lamps, ripples: [], grooves: null,
+    staticGeometry, dynamicGeometry, lamps, fluids: new FluidCollector().build(), grooves: null,
     shadow: { center: new THREE.Vector3(0, 0, 0), radius: 16 },
     stats: { triangles, paletteColors },
   };

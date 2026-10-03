@@ -1,20 +1,27 @@
 import * as THREE from 'three';
-import { FLAG, GeometryCollector, linearColor as lin, motion, place, type RGB } from '../../renderer';
+import { FLAG, FLUIDS, GeometryCollector, linearColor as lin, motion, place, type FluidCollector, type FluidMaterial, type RGB } from '../../renderer';
 import { fbm, pick, type Rng } from '../shared/random';
 import { GROUND_Y, LAWN_CX, lawnSdf, onPath, pathX, pondD } from './layout';
 
-/** Ground tiles (lawn, meadow, path, pond water), swaying grass tufts and wildflowers. Returns the flower cluster centres. */
-export function buildMeadow(s: GeometryCollector, d: GeometryCollector, rnd: Rng) {
+/** The pond: bright, clear and still. */
+const POND_WATER: FluidMaterial = { ...FLUIDS.water, shallow: 0x6cc8e8, deep: 0x2f86c4, roughness: 0.08 };
+
+/**
+ * Ground tiles (lawn, meadow, path, the pond's sandy bed and its water), swaying grass tufts and wildflowers. Returns the
+ * flower cluster centres.
+ */
+export function buildMeadow(s: GeometryCollector, d: GeometryCollector, f: FluidCollector, rnd: Rng) {
   const C = {
     lawnA: lin(0x9ac15a), lawnB: lin(0x8db84f),
     dark: lin(0x6aa440), base: lin(0x79b04a), light: lin(0x89bb53), dry: lin(0x9fb85a), clover: lin(0x62a85a),
     dirt: lin(0xb98550), dirtDark: lin(0x9c6b40),
     bank: lin(0xcdb47c), bankWet: lin(0xa88d5c),
-    deep: lin(0x2f86c4), water: lin(0x4db4e0), foam: lin(0xd2f0f2),
+    sand: lin(0xb89c68), sandDeep: lin(0x8c7a58),
   };
   // One flat quad per 0.25-unit ground cell, coloured by region.
   const R = 30, cs = 0.25, n = Math.round((R * 2) / cs);
-  const pos: number[] = [], nor: number[] = [], col: number[] = [], flag: number[] = [];
+  const pos: number[] = [], nor: number[] = [], col: number[] = [], flag: number[] = [], water: number[] = [];
+  let px0 = Infinity, pz0 = Infinity, px1 = -Infinity, pz1 = -Infinity;   // the pond cells' extent
   const quad = (x: number, z: number, sz: number, color: RGB, y: number, fl: number) => {
     const a = [x, y, z], b = [x, y, z + sz], dd = [x + sz, y, z + sz], e = [x + sz, y, z];
     for (const v of [a, b, dd, a, dd, e]) { pos.push(v[0], v[1], v[2]); nor.push(0, 1, 0); col.push(...color); flag.push(fl); }
@@ -23,8 +30,10 @@ export function buildMeadow(s: GeometryCollector, d: GeometryCollector, rnd: Rng
     const x = -R + i * cs, z = -R + j * cs, cx = x + cs / 2, cz = z + cs / 2;
     const pd = pondD(cx, cz);
     if (pd < 1.0) {
-      const color = pd > 0.86 ? C.foam : pd > 0.55 ? C.water : C.deep;
-      quad(x, z, cs, color, GROUND_Y - 0.07, FLAG.WATER);
+      // The bed shelves down towards the middle, in steps of one cell.
+      quad(x, z, cs, pd > 0.7 ? C.sand : C.sandDeep, GROUND_Y - 0.12 - 0.4 * (1 - pd), FLAG.DECOR);
+      for (const [vx, vz] of [[x, z], [x, z + cs], [x + cs, z + cs], [x, z], [x + cs, z + cs], [x + cs, z]]) water.push(vx, GROUND_Y - 0.07, vz);
+      px0 = Math.min(px0, x); pz0 = Math.min(pz0, z); px1 = Math.max(px1, x + cs); pz1 = Math.max(pz1, z + cs);
       continue;
     }
     let color: RGB;
@@ -45,8 +54,15 @@ export function buildMeadow(s: GeometryCollector, d: GeometryCollector, rnd: Rng
   g.setAttribute('aColor', new THREE.Float32BufferAttribute(col, 3));
   g.setAttribute('aFlag', new THREE.Float32BufferAttribute(flag, 1));
   s.pushPrepared(g);
-  // A huge plane below everything, so the horizon is never sky.
-  s.add(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), place(0, GROUND_Y - 0.1, 0), C.base, FLAG.DECOR);
+  const pond = new THREE.BufferGeometry();
+  pond.setAttribute('position', new THREE.Float32BufferAttribute(water, 3));
+  f.add(pond, null, POND_WATER);
+  // A huge plane below everything, so the horizon is never sky, with a hole round the pond so its bed shows through the
+  // water (the ground cells cover the rest of the hole).
+  const H = 200, under = (a: number, b: number, c: number, d: number) => {
+    if (c > a && d > b) s.add(new THREE.PlaneGeometry(c - a, d - b).rotateX(-Math.PI / 2), place((a + c) / 2, GROUND_Y - 0.1, (b + d) / 2), C.base, FLAG.DECOR);
+  };
+  under(-H, -H, H, pz0); under(-H, pz1, H, H); under(-H, pz0, px0, pz1); under(px1, pz0, H, pz1);
 
   // grass tufts (swaying)
   const blade = new THREE.ConeGeometry(0.045, 1, 3, 1).translate(0, 0.5, 0);

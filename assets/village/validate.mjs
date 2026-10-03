@@ -90,6 +90,16 @@ for (const name of names) {
     assert(normal.y>.999,'Fountain water faces up');
     const hit=new Raycaster(new Vector3(.9,2.5,0),new Vector3(0,-1,0)).intersectObjects(opaque,false)[0];
     assert(hit?.object===water,'Fountain basin is hollow down to water');
+    const upper=scene.getObjectByName('water_Fountain_upper_pool');
+    assert(upper?.isMesh,'Fountain upper bowl has a fluid pool');
+    const upperNormal=new Vector3().fromBufferAttribute(upper.geometry.attributes.normal,0).transformDirection(upper.matrixWorld);
+    assert(upperNormal.y>.999,'Fountain upper pool faces up');
+    const streams=opaque.filter(o=>o.name.startsWith('water_Fountain_spill'));
+    assert.equal(streams.length,4,'All four fountain streams route to fluids');
+    for(const stream of streams){
+      const box=new Box3().setFromObject(stream);
+      assert(box.min.y<.51 && box.max.y>1.2,'Fountain stream reaches from spout to basin');
+    }
   }
   if (name==='festoon') {
     assert.equal(lamps,0,'Festoon does not consume scene lights');

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, GeometryCollector, loadGltf, quantizePalette, type PixelScene } from '../../renderer';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, loadGltf, quantizePalette, type PixelScene } from '../../renderer';
 import { mulberry32 } from '../shared/random';
 import type { SceneDefinition } from '../types';
 import { addFactory } from './factory';
@@ -15,9 +15,10 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const root = await loadGltf('/cookie_factory_current.glb');
   // One generator for the whole build, consumed in a fixed order: the scene is reproducible.
   const rnd = mulberry32(11);
-  const s = new GeometryCollector(false), d = new GeometryCollector(true);
+  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector();
   addFactory(root, s, d);
-  const flowerSpots = buildMeadow(s, d, rnd);
+  const flowerSpots = buildMeadow(s, d, f, rnd);
+  for (const [x, z] of RIPPLES) f.source(x, z, { y: GROUND_Y - 0.07, radius: 0.4, strength: 0.4 });   // the pond's surface (meadow.ts)
   buildTrees(s, rnd);
   buildPond(s, d, rnd);
   buildLife(d, rnd, flowerSpots);
@@ -27,7 +28,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
   return {
     staticGeometry, dynamicGeometry,
-    lamps: LAMPS, ripples: RIPPLES, grooves: DOOR_GROOVES,
+    lamps: LAMPS, fluids: f.build(), grooves: DOOR_GROOVES,
     shadow: { center: new THREE.Vector3(LAWN_CX, 0, 0), radius: 24 },
     stats: { triangles, paletteColors },
   };

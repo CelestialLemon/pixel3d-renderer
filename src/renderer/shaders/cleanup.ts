@@ -1,8 +1,8 @@
 // Clean-up: removes orphan pixels (a pixel unlike 3+ identical neighbours), which is the classic
-// "pixel noise" an artist would hand-fix. Restricted to the interior of flat NORMAL/EMISSIVE surfaces.
+// "pixel noise" an artist would hand-fix. Restricted to the interior of flat NORMAL/EMISSIVE surfaces not under a fluid.
 export const CLEAN_FRAG = /* glsl */ `
 precision highp float;
-uniform sampler2D tImage; uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform vec2 uRes; uniform int uOn;
+uniform sampler2D tImage; uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform sampler2D tFluid; uniform vec2 uRes; uniform int uOn;
 out vec4 outColor;
 vec3 F(ivec2 q){ return texelFetch(tImage, clamp(q, ivec2(0), ivec2(uRes) - 1), 0).rgb; }
 bool same(vec3 a, vec3 b){ return all(lessThan(abs(a - b), vec3(0.002))); }
@@ -13,7 +13,7 @@ void main(){
     vec3 n[4] = vec3[4](F(p + ivec2(1,0)), F(p + ivec2(-1,0)), F(p + ivec2(0,1)), F(p + ivec2(0,-1)));
     vec4 a = texelFetch(tAlbedo, p, 0);
     vec4 nd = texelFetch(tNormal, p, 0);
-    bool interior = a.a > 0.5 && a.a < 2.5;
+    bool interior = a.a > 0.5 && a.a < 2.5 && texelFetch(tFluid, p, 0).a < 0.5;   // not under a fluid
     const ivec2 offsets[4] = ivec2[4](ivec2(1,0), ivec2(-1,0), ivec2(0,1), ivec2(0,-1));
     for (int k = 0; k < 4; k++) {
       ivec2 q = clamp(p + offsets[k], ivec2(0), ivec2(uRes) - 1);

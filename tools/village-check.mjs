@@ -18,7 +18,7 @@ try {
     const THREE = await import('/node_modules/three/build/three.module.js');
     const L = await import('/src/scenes/village/layout.ts');
     const M = await import('/src/scenes/village/models.ts');
-    const { GeometryCollector, collectGltf, THIN_MARK } = await import('/src/renderer/index.ts');
+    const { GeometryCollector, FluidCollector, collectGltf, THIN_MARK } = await import('/src/renderer/index.ts');
     const find = (id) => M.PROPS.filter((p) => p.id === id);
 
     // A stand-in for the villagers model: figure 0 is a body with a badge mesh parented to it; figure 1 is a
@@ -65,7 +65,7 @@ try {
     const { lookAt } = await import('/src/renderer/look.ts');
     const ms = new GeometryCollector(false), md = new GeometryCollector(true);
     buildTrees(ms, mulberry32(1));
-    await placeModels(ms, md);
+    await placeModels(ms, md, new FluidCollector());
     const pos = [ms.build(), md.build()].flatMap((g) => [...g.attributes.position.array]);
     const R = L.SUN_SHADOW.radius, cam = new THREE.OrthographicCamera(-R, R, R, -R, 1, 140), v = new THREE.Vector3();
     let worst = { extent: 0, hour: 0 }, depth = [Infinity, -Infinity];

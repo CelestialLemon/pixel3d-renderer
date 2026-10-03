@@ -30,6 +30,13 @@ const SHOTS = [
   // reflections, the mill wheel, the relic glow, terrain and gardens).
   ...[22, 17.5].map((h) => ({ name: `village-street-hour${h}`, path: `pass3.html?${VIEW}&scene=village&hour=${h}`, canvas: 'p3-view' })),
   ...['overview', 'square', 'canal', 'mill', 'ruins', 'gardens'].map((v) => ({ name: `village-${v}`, path: `pass3.html?${VIEW}&scene=village&view=${v}&hour=22`, canvas: 'p3-view' })),
+  // Water by day and the fountain's falling water, close up.
+  { name: 'village-canal-hour12', path: `pass3.html?${VIEW}&scene=village&view=canal&hour=12`, canvas: 'p3-view' },
+  { name: 'village-fountain', path: `pass3.html?${VIEW}&scene=village&view=fountain&hour=12`, canvas: 'p3-view' },
+  // Fluids (src/scenes/fluids): every preset side by side, by day and at night.
+  ...[12, 22].map((h) => ({ name: `fluids-hour${h}`, path: `pass3.html?${VIEW}&scene=fluids&hour=${h}`, canvas: 'p3-view' })),
+  // The props gallery: every batch-1 prop, so a loader change that breaks a prop shows up here.
+  { name: 'props-overview', path: `pass3.html?${VIEW}&scene=props&hour=12`, canvas: 'p3-view' },
 ];
 
 const args = process.argv.slice(2), update = args.includes('--update'), filter = args.find((a) => !a.startsWith('--'));

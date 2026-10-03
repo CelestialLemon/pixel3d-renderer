@@ -1,18 +1,19 @@
 import { LIMITS } from '../scene';
 import { BAYER4 } from './common';
+import { WATER_GLSL } from './water';
 
 // The pixel-art "brain": turns the G-buffer into a palette-controlled, outlined, dithered image with
 // hue-shifted shading ramps and a time-of-day grade.
 export const POST_FRAG = /* glsl */ `
 precision highp float; precision highp int;
 #define MAX_LAMPS ${LIMITS.lamps}
-#define MAX_RIPPLES ${LIMITS.ripples}
 #define MAX_GROOVES ${LIMITS.grooves}
 uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform sampler2D tShadow;
 uniform vec2 uRes; uniform float uTexel;
 uniform vec3 uRight; uniform vec3 uUp; uniform vec3 uFwd; uniform vec3 uCamPos;
 uniform vec3 uSun; uniform float uTime;
 uniform int uOutline; uniform int uDither; uniform int uClouds; uniform int uContact; uniform int uGlow; uniform int uVignette;
+uniform int uDeferGrade;   // 1: a fluid pass follows: write unclipped linear colour, and let it grade (shaders/water.ts)
 uniform float uSunI; uniform float uAmbient; uniform float uExpo; uniform float uChroma; uniform float uNight; uniform float uLampOn;
 uniform vec2 uLitTint; uniform vec2 uShadeTint;
 uniform vec3 uSkyTop; uniform vec3 uSkyBot;
@@ -20,12 +21,11 @@ uniform int uLampCount; uniform vec4 uLamp[MAX_LAMPS]; uniform vec3 uLampCol[MAX
 uniform sampler2D tLampShadow; uniform vec3 uLampAtlas;   // atlas width, height, face tile size
 uniform sampler2D tWindow; uniform vec4 uWindowBounds;   // window light map (windowLight.ts): rgb light, a source height; world xz bounds
 uniform sampler2D tWindowSource;   // same grid: rg = weighted window xz minus the texel centre
-uniform int uRippleCount; uniform vec2 uRipples[MAX_RIPPLES];
 uniform int uGrooveCount; uniform float uGrooves[MAX_GROOVES]; uniform vec3 uGrooveAxis; uniform vec2 uGrooveY;
 out vec4 outColor;
 
 // flags (alpha = 1 + flag), matching flags.ts
-const int F_NORMAL = 0, F_EMISSIVE = 1, F_DECOR = 2, F_STEAM = 3, F_WATER = 4, F_GLOW = 5, F_GROOVED = 6;
+const int F_NORMAL = 0, F_EMISSIVE = 1, F_DECOR = 2, F_STEAM = 3, F_GLOW = 5, F_GROOVED = 6;   // 4 is unused (was water)
 int flagOf(float a){ return int(floor(a + 0.5)) - 1; }
 bool inkSource(int f){ return f == F_NORMAL || f == F_EMISSIVE || f == F_STEAM || f == F_GROOVED; }
 bool solid(int f){ return f == F_NORMAL || f == F_EMISSIVE || f == F_GROOVED; }
@@ -222,18 +222,36 @@ float contactAt(ivec2 p, vec3 n, float d){
 
 // Final per-pixel grade: only the very corners of the frame step down in brightness (two
 // hard rings, with a one-pixel dither on their edges). There is deliberately no depth
-// haze: a constant-depth step shows up as a seam across flat ground.
+// haze: a constant-depth step shows up as a seam across flat ground. Applied once, to the final image: when a fluid pass
+// follows, pass 0 leaves it out and pass 1 applies it after compositing.
+float vignetteRing(ivec2 p){
+  vec2 q = (gl_FragCoord.xy / uRes - 0.5) * vec2(1.15, 1.0);
+  float vg = length(q) * 1.35 + (bayer4(p) - 0.5) * 0.05;
+  return vg > 0.98 ? 2.0 : vg > 0.80 ? 1.0 : 0.0;
+}
 vec3 finish(vec3 lin, ivec2 p){
   if (uVignette == 0) return lin;
   vec3 lab = toLab(lin);
-  vec2 q = (gl_FragCoord.xy / uRes - 0.5) * vec2(1.15, 1.0);
-  float vg = length(q) * 1.35 + (bayer4(p) - 0.5) * 0.05;
-  lab.x *= 1.0 - 0.055 * (vg > 0.98 ? 2.0 : vg > 0.80 ? 1.0 : 0.0);
+  lab.x *= 1.0 - 0.055 * vignetteRing(p);
   return fromLab(lab);
 }
+// A finished pixel, graded unless it is sky or a spark. With a fluid pass to follow, it stays linear and unclipped, and
+// alpha says whether pass 1 grades it (see passThrough), so the grade still sees the true colour.
+vec4 emitColor(vec3 lin, ivec2 p, bool graded){
+  if (uDeferGrade == 1) return vec4(lin, graded ? 1.0 : 0.5);
+  return vec4(toSRGB(graded ? finish(lin, p) : lin), 1.0);
+}
+
+${WATER_GLSL}
 
 void main(){
   ivec2 p = ivec2(gl_FragCoord.xy);
+  // Pass 1 draws the fluids over pass 0's image (shaders/water.ts); pass 0 draws everything else, and the bed under them.
+  if (uPass == 1) {
+    if (fluidAt(p)) water(p);
+    else outColor = passThrough(p);
+    return;
+  }
   vec4 a = A(p);
   bool sky = a.a < 0.5;
   int fl = sky ? -1 : flagOf(a.a);
@@ -261,7 +279,7 @@ void main(){
     // Softer botanical silhouettes; solid architecture keeps its crisp ink.
     bool foliage = nearColor.g > nearColor.r * 1.25 && nearColor.g > nearColor.b * 1.2;
     vec3 ink = ramp(nearColor, nf == F_STEAM ? 1 : foliage ? 0 : -1, nf == F_STEAM ? 3 : 0);
-    outColor = vec4(toSRGB(finish(ink, p)), 1.0);
+    outColor = emitColor(ink, p, true);
     return;
   }
 
@@ -270,61 +288,14 @@ void main(){
     float t = 1.0 - gl_FragCoord.y / uRes.y;
     float v = t * 6.0 + (uDither == 1 ? (bayer4(p) - 0.5) * 0.55 : 0.0);
     float b = clamp(floor(v), 0.0, 5.0) / 5.0;
-    outColor = vec4(toSRGB(mix(uSkyTop, uSkyBot, b)), 1.0);
+    outColor = emitColor(mix(uSkyTop, uSkyBot, b), p, false);
     return;
   }
 
   vec3 wp = worldAt(vec2(p) + 0.5, d);
 
-  // ---- 3a. animated water: three-tone ripples, sun/moon sparkle, drip rings ---------
-  if (fl == F_WATER) {
-    vec2 uv = wp.xz;
-    float w = 0.7 * vn(uv * 1.15 + vec2(uTime * 0.18, uTime * 0.10)) + 0.3 * vn(uv * 2.6 - vec2(uTime * 0.24, -uTime * 0.13));
-    int wb = w > 0.70 ? 3 : w > 0.36 ? 2 : 1;
-    // rings expanding from the scene's drip points, evenly out of phase
-    for (int k = 0; k < MAX_RIPPLES; k++) {
-      if (k >= uRippleCount) break;
-      vec2 c = uRipples[k];
-      float r = length((uv - c) * vec2(1.0, 1.35)), ph = fract(uTime * 0.18 + float(k) / float(uRippleCount));
-      if (abs(r - ph * 1.7) < 0.06 && ph < 0.9) wb = 3;
-    }
-    if (h21(floor(uv * 6.0) + floor(uTime * 2.0)) > mix(0.994, 0.985, uNight)) wb = 4;
-    vec3 wc = ramp(a.rgb, wb, 0);
-    // reflect the lit sky a little: a lighter water in the sun's direction
-    wc = mix(wc, uSkyBot, 0.06 * clamp(uSunI, 0.0, 1.0));
-    wc *= mix(1.0, wb == 4 ? 1.0 : 0.5, uNight);
-    if (uLampOn > 0.01) {
-      // Lamp light on the water: a pool of lit ripples around each nearby lamp.
-      vec4 L = lampAt(wp, vec3(0.0, 1.0, 0.0), uDither == 1 ? (bayer4(p) - 0.5) * 0.6 : 0.0);
-      if (L.a > 0.18) wc = mix(wc, ramp(a.rgb, min(wb + 1, 3), 2, L.rgb), uLampOn * (L.a > 0.45 ? 0.75 : 0.45));
-      // Reflections: in an orthographic view the water shows the mirrored world straight along the view ray, so a lamp's
-      // reflection sits where its mirror image (as far below the water as the lamp is above) projects onto the screen.
-      // Ripples break it into a column of horizontal dashes that shiver sideways, longer the higher the lamp.
-      for (int i = 0; i < MAX_LAMPS; i++) {
-        if (i >= uLampCount) break;
-        vec3 lp = uLamp[i].xyz;
-        float hgt = lp.y - wp.y;
-        if (hgt <= 0.0 || length(lp.xz - wp.xz) > hgt * 2.2 + uLamp[i].w) continue;
-        vec3 dv = vec3(lp.x, wp.y - hgt, lp.z) - wp;
-        float sx = dot(dv, uRight), sy = dot(dv, uUp), rows = floor(sy / uTexel * 0.5);
-        float ry = max(0.3 + 0.22 * hgt, 3.0 * uTexel), taper = 1.0 - abs(sy) / ry;
-        if (taper <= 0.0) continue;
-        float shiver = (h21(vec2(rows, floor(uTime * 3.0) + float(i))) - 0.5) * 0.2;
-        float gap = h21(vec2(rows * 1.7 + float(i), floor(uTime * 2.0)));
-        bool dash = mod(rows, 2.0) < 0.5 || gap > 0.75 * (1.0 - taper);
-        if (!dash || abs(sx + shiver) > max(0.04 + 0.13 * taper * taper, 0.5 * uTexel)) continue;   // never under an art pixel
-        if (lampVisible(i, wp, vec3(0.0, 1.0, 0.0)) < 0.5) continue;
-        vec3 c = uLampCol[i] / max(max(uLampCol[i].r, uLampCol[i].g), max(uLampCol[i].b, 1e-3));
-        wc = mix(wc, ramp(c * 0.7, taper > 0.6 ? 3 : 2, 1), uLampOn * (taper > 0.3 ? 1.0 : 0.6));
-        break;
-      }
-    }
-    outColor = vec4(toSRGB(finish(wc, p)), 1.0);
-    return;
-  }
-
-  // ---- 3b. fireflies: tiny self-lit sparks -------------------------------------------
-  if (fl == F_GLOW) { outColor = vec4(toSRGB(ramp(a.rgb, 4, 1)), 1.0); return; }
+  // ---- 3. fireflies: tiny self-lit sparks -------------------------------------------
+  if (fl == F_GLOW) { outColor = emitColor(ramp(a.rgb, 4, 1), p, false); return; }
 
   // ---- 4. banded lighting with gradient-aware ordered dithering ---------------------
   float ndl = dot(n, uSun);
@@ -433,5 +404,5 @@ void main(){
   }
 
   vec3 col = ramp(a.rgb, band, mode, lampTint);
-  outColor = vec4(toSRGB(finish(col, p)), 1.0);
+  outColor = emitColor(col, p, true);
 }`;
