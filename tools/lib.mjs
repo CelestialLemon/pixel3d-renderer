@@ -47,13 +47,28 @@ export function goldenSet(renderer) {
 // The GPU model without vendor marks, driver details or backend: "ANGLE (AMD, AMD Radeon RX 570 Series (radeonsi polaris10
 // ACO), OpenGL ES 3.2)" and "ANGLE (AMD, Vulkan 1.4.328 (AMD Radeon RX 570 Series (RADV POLARIS10) (0x000067DF)), radv)" both give
 // "amd-radeon-rx-570"; "ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL ES 3.2)" gives "intel-uhd-620".
+// Some drivers put the Vulkan version in a field of its own: "ANGLE (AMD, Vulkan 1.4.318, AMD Radeon Graphics RADV GFX1151)".
 function gpuName(renderer) {
-  let device = renderer.replace(/^ANGLE \(/, '').split(', ')[1] ?? renderer;
+  const fields = topLevelFields(renderer.replace(/^ANGLE \((.*)\)$/, '$1'));
+  let device = fields.slice(1).find((f) => !/^(Vulkan|OpenGL( ES)?) [\d.]+$/.test(f)) ?? renderer;
   const vulkan = device.match(/^Vulkan [\d.]+ \((.*)\)$/);
   if (vulkan) device = vulkan[1];
   device = device.replace(/\((R|TM)\)/gi, '').replace(/[(/].*$/, '').replace(/^(Mesa |ANGLE Metal Renderer: )/, '')
     .replace(/\b(Series|Graphics)\b/gi, '');
   return device.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown-gpu';
+}
+
+// Splits "a, b (c, d), e" at the commas outside parentheses.
+function topLevelFields(text) {
+  const fields = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '(') depth++;
+    else if (text[i] === ')') depth--;
+    else if (text[i] === ',' && depth === 0) { fields.push(text.slice(start, i).trim()); start = i + 1; }
+  }
+  fields.push(text.slice(start).trim());
+  return fields;
 }
 
 // `pipe` talks to Chrome over a pipe instead of a port, so Chrome exits as soon as this process dies, even when it is
