@@ -1,7 +1,7 @@
 // Runtime captures for modelling QA. Uses the existing dev server without changing its state.
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { launch, newPage, open } from '../../tools/lib.mjs';
+import { launch, newPage, open } from '../../tools/lib.ts';
 const output=new URL('review/',import.meta.url);
 await mkdir(output,{recursive:true});
 const browser=await launch();

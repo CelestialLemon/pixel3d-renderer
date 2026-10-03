@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { launch, newPage, open } from '../../tools/lib.mjs';
+import { launch, newPage, open } from '../../tools/lib.ts';
 
 const names = process.argv.slice(2);
 const all = names.length ? names : (await readdir(new URL('../../public/props/', import.meta.url)))
