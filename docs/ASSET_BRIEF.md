@@ -48,7 +48,7 @@ The loader has a generic name-based rule, so these prefixes on **object names** 
 |---|---|
 | *(none)* | Ordinary solid surface. |
 | `decor_` | Small ground cover or plants: no outlines or creases. |
-| `water_` | Water surface (animated ripples and sparkles). Must be a flat, upward-facing surface. |
+| `water_` | A fluid surface (see `src/renderer/fluids.ts`). An upward-facing surface is a pool: still unless the scene gives it a flow. A sloped or upright one (a spill, a jet, a waterfall) falls down its own slope, so it needs no flow data. `water_<preset>_` (e.g. `water_acid_`, `water_lava_`) picks a `FLUIDS` preset; plain `water_` is clear water. Model what lies under a pool (a bed, steps), since it shows through. |
 | `glass_` | Window glass. For now it is skipped (see-through). Put the lit interior *behind* it. |
 | `thin_` | Deliberately thinner than 0.05 m (wires, spokes, railings): a flicker-test feature. |
 | `move_<kind>_` | A moving part (`move_spin_` sails/wheels, `move_sway_` cloth/signs). Make it a separate object with its **origin at the pivot** and its **local X axis along the axle or hinge**: it turns about that axis (custom props `speed` rad/s, `amplitude` rad). A scene opts in to motion. |
