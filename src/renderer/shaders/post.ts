@@ -18,6 +18,8 @@ uniform vec2 uLitTint; uniform vec2 uShadeTint;
 uniform vec3 uSkyTop; uniform vec3 uSkyBot;
 uniform int uLampCount; uniform vec4 uLamp[MAX_LAMPS]; uniform vec3 uLampCol[MAX_LAMPS];   // uLamp: position, radius
 uniform sampler2D tLampShadow; uniform vec3 uLampAtlas;   // atlas width, height, face tile size
+uniform sampler2D tWindow; uniform vec4 uWindowBounds;   // window light map (windowLight.ts): rgb light, a source height; world xz bounds
+uniform sampler2D tWindowSource;   // same grid: rg = weighted window xz minus the texel centre
 uniform int uRippleCount; uniform vec2 uRipples[MAX_RIPPLES];
 uniform int uGrooveCount; uniform float uGrooves[MAX_GROOVES]; uniform vec3 uGrooveAxis; uniform vec2 uGrooveY;
 out vec4 outColor;
@@ -64,6 +66,12 @@ vec3 ramp(vec3 lin, int band, int mode, vec3 lampTint){   // mode 0 normal, 1 se
   float expo = (mode == 0 || mode == 3) ? uExpo : 1.0;
   lab.x = min(lab.x * LM[i] * expo, 0.98);
   lab.yz = lab.yz * CM[i] * (mode == 0 ? uChroma : 1.0) + TT[i];
+  if ((mode == 0 || mode == 2) && uNight > 0.0) {
+    // Night vision: colour drains out under moonlight, greens most of all, so fields and foliage read as night, not dark
+    // green. Lamp-lit greens keep more colour but lose enough that a warm pool on grass turns ochre rather than lime.
+    float green = smoothstep(0.3, 0.85, dot(lab.yz / max(length(lab.yz), 1e-4), vec2(-0.74, 0.67)));
+    lab.yz *= 1.0 - uNight * (mode == 0 ? 0.32 + 0.40 * green : 0.45 * green);
+  }
   if (mode == 0) lab.yz += mix(uShadeTint, uLitTint, smoothstep(1.0, 3.0, float(band) + 1.0));
   if (mode == 2) { lab.yz *= 1.05; lab.yz += 0.017 * normalize(toLab(lampTint).yz + vec2(1e-4, 0.0)) * min(length(toLab(lampTint).yz) * 8.0, 1.0); }
   return fromLab(lab);
@@ -133,6 +141,32 @@ float lampVisible(int i, vec3 wp, vec3 n){
   return (stored <= 0.0 || dist < stored + 0.02 + texel * 1.5 / cosA) ? 1.0 : 0.0;
 }
 
+// Light from the lit windows: a small pool on the ground, quay or wall below each one, read from the top-down window map.
+// A wall reads the map 0.4 m out along its normal (the pools' offset from their pane, see windowLight.ts), on the line
+// below its windows rather than at the pool's clipped back edge; a wall facing away from the pools reads nothing. Fades
+// out above the window (no light on the roof or the floors above); on a wall the pool fades out within ~1.4 m below it.
+vec4 windowAt(vec3 wp, vec3 n){
+  vec2 at = wp.xz + n.xz * 0.4, uv = (at - uWindowBounds.xy) / (uWindowBounds.zw - uWindowBounds.xy);
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec4(0.0);
+  vec4 w = textureLod(tWindow, uv, 0.0);   // explicit LOD: also called from non-uniform control flow
+  float k = max(max(w.r, w.g), w.b);
+  if (k < 0.01) return vec4(0.0);
+  float below = w.a - wp.y, up = max(n.y, 0.0);   // how far below the (weighted) window height; 1 on the ground, 0 on a wall
+  float reach = mix(1.0 - smoothstep(0.5, 1.4, below), 1.0 - smoothstep(2.2, 4.5, below), up);   // a wall pool stays compact
+  k *= 0.4 * (1.0 - smoothstep(-0.6, 0.0, -below)) * reach * mix(0.7, 1.0, up) * smoothstep(-0.35, -0.05, n.y);   // no undersides
+  // A wall lights only if the window is in front of it, so a wall standing in a pool lights on the side facing
+  // the window, not the side facing away. The builder moves the source of a pane set in a facade just outside
+  // that facade, so the wall under it passes. The interpolated offset plus the lookup position gives the
+  // interpolated source exactly.
+  // Only steep receivers are tested: gently sloped ground keeps its whole pool.
+  float wall = 1.0 - smoothstep(0.35, 0.75, n.y), side = length(n.xz);
+  if (wall > 0.0 && side > 0.01) {
+    vec2 src = at + textureLod(tWindowSource, uv, 0.0).rg;
+    k *= mix(1.0, smoothstep(0.0, 0.01, dot(src - wp.xz, n.xz / side)), wall);
+  }
+  return vec4(w.rgb / max(max(w.r, w.g), w.b), k);
+}
+
 // Light from the scene's lamps: a coloured falloff pool on walls and ground, blocked by solid geometry.
 // Distance below the lamp counts half, so a lamp on a tall post still reaches the ground around it.
 // Returns (colour of the strongest lamp, summed strength): one hue per pool keeps the palette small, and
@@ -154,6 +188,9 @@ vec4 lampAt(vec3 wp, vec3 n, float jit){
     if (score > best) { best = score; L.rgb = c / max(max(c.r, c.g), max(c.b, 1e-3)); }
     L.a += k;
   }
+  vec4 W = windowAt(wp, n);
+  if (W.a * (1.0 + jit * 0.3) > best) L.rgb = W.rgb;
+  L.a += W.a;
   L.a *= uLampOn;
   return L;
 }
@@ -296,12 +333,15 @@ void main(){
 
   // Dither only where the light really forms a smooth gradient (round shapes, bevels,
   // cloud edges). Flat surfaces and hard shadow edges stay clean, as an artist would.
+  // Neighbours on the same plane with the same flag: only across these can a light gradient be smooth. The sun gradient
+  // also asks for the same colour.
+  bool plane[4];
   float g = 0.0;
   for (int i = 0; i < 4; i++) {
     ivec2 q = p + OFF[i];
     vec4 aq = A(q);
-    if (flagOf(aq.a) != fl || distance(aq.rgb, a.rgb) > 0.01 || dot(n, N(q).xyz) < 0.94 || abs(N(q).w - predictDepth(n, d, vec2(OFF[i]))) > THR) continue;
-    g = max(g, abs(shadeAt(q) - s));
+    plane[i] = flagOf(aq.a) == fl && dot(n, N(q).xyz) >= 0.94 && abs(N(q).w - predictDepth(n, d, vec2(OFF[i]))) <= THR;
+    if (plane[i] && distance(aq.rgb, a.rgb) <= 0.01) g = max(g, abs(shadeAt(q) - s));
   }
   float dw = (uDither == 1 && fl != F_DECOR && fl != F_GROOVED && g > 0.003 && g < 0.075) ? 0.045 : 0.0;
   float sd = s + (bayer4(p) - 0.5) * dw;
@@ -341,6 +381,7 @@ void main(){
   vec3 lampTint = vec3(1.0);
   if (uLampOn > 0.01 && fl != F_EMISSIVE) {
     vec4 L = lampAt(wp, n, uDither == 1 ? (bayer4(p) - 0.5) * 0.6 : 0.0);
+    float raw = L.a, h = 0.0;
     if (uGlow == 1) {                       // halo around lit glass, in the glass colour
       float near = 0.0, spark = 0.0;
       vec3 glass = vec3(0.0);
@@ -352,11 +393,26 @@ void main(){
         vec4 ab = A(p + ivec2(round(dir * 2.0)));
         if (ab.a > 0.5 && flagOf(ab.a) == F_GLOW) { spark = 0.45; glass += ab.rgb * 4.0; }
       }
-      float h = 0.7 * near * uLampOn + spark;
+      h = 0.7 * near * uLampOn + spark;
       if (h > L.a) L.rgb = glass / max(max(glass.r, glass.g), max(glass.b, 1e-3));
       L.a += h;
     }
-    float lj = L.a + (uDither == 1 ? (bayer4(p) - 0.5) * 0.14 : 0.0);
+    // Dither the band borders only where the pool is a smooth gradient on one plane, as for sunlight: a hard lamp-shadow
+    // or window-map edge stays crisp. The test costs four more lamp lookups, so only pixels near a band border pay for it.
+    // The glass halo is a stylised screen-space glow and keeps its dithered rings. Unlike sunlight, flat DECOR ground (lawns,
+    // fields) dithers too: its pools are as smooth as any, and the plane test keeps tufts and blades clean.
+    bool dl = uDither == 1 && fl != F_GROOVED;
+    if (dl && h <= 0.0) {
+      float t = L.a, edge = min(min(abs(t - 0.12), abs(t - 0.30)), abs(t - 0.60)), gl = 0.0;
+      dl = edge < 0.07;
+      for (int i = 0; i < 4; i++) {
+        if (!dl || !plane[i]) continue;
+        ivec2 q = p + OFF[i];
+        gl = max(gl, abs(lampAt(worldAt(vec2(q) + 0.5, N(q).w), n, 0.0).a - raw));
+      }
+      dl = dl && gl > 0.003 && gl < 0.14;
+    }
+    float lj = L.a + (dl ? (bayer4(p) - 0.5) * 0.14 : 0.0);
     int lb = lj > 0.60 ? 3 : lj > 0.30 ? 2 : lj > 0.12 ? 1 : 0;
     if (lb > 0 && fl != F_STEAM) {
       band = max(band, lb); mode = 2;
