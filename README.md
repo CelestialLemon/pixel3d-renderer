@@ -7,6 +7,7 @@ Next steps are in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ```sh
 npm install
+npm run browser:install   # the pinned Chromium the check tools use, into .browsers/ (git-ignored)
 npm run dev          # http://127.0.0.1:5180 (pinned: the tools use this address)
 npm run typecheck
 npm run build
@@ -102,11 +103,20 @@ Passes 0–1 draw their own static world without the pond, leaf-clump trees and 
 
 ## Checks and tools
 
-All tools drive headless Chrome with SwiftShader (`tools/lib.mjs`; set `CHROME_PATH` and `DEMO_URL` to override). They need the dev server.
+All tools drive a headless browser (`tools/lib.mjs`) and need the dev server. They use the pinned Chromium from
+`npm run browser:install`; on macOS without it they fall back to the installed Google Chrome. `CHROME_PATH` and `DEMO_URL` override
+the browser and the server.
+
+`GL_BACKEND` picks how the browser renders WebGL:
+- `swiftshader`: on the CPU. It's the default on macOS, where headless Chrome has no GPU.
+- `vulkan`: on the real GPU. It's the default on Linux, and much faster: the golden run takes 1 minute instead of 9 on a Ryzen 5 1600 with a Radeon RX 570.
+- `gl`: also on the GPU, through OpenGL. Linux only.
+
+A tool fails rather than quietly fall back to the CPU when a GPU backend is chosen but not available.
 
 | Command | Checks |
 | --- | --- |
-| `npm run golden` | **Golden images** (`tools/golden.mjs`): 32 fixed views with a frozen clock, compared pixel for pixel with the approved images in `golden/` (tracked, so a PR shows reviewers every view it changes). Any difference fails and writes the new image to `golden/diff/` (git-ignored). Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update` on the work's branch, never directly on `main`: new baselines reach `main` only through a PR, where the reviewer sees each changed view. `node tools/golden.mjs pass3` runs a subset. |
+| `npm run golden` | **Golden images** (`tools/golden.mjs`): 37 fixed views with a frozen clock, compared pixel for pixel with the approved images (tracked, so a PR shows reviewers every view it changes). The output is only identical on the same platform, CPU architecture, backend, GPU and browser, so each combination has its own set, `golden/<set>/`; the run prints which one it uses, with the browser version. Sets made with the pinned Chromium have no browser suffix (e.g. `linux-x64-vulkan-amd-radeon-rx-570`); any other browser adds `-chrome`. `darwin-arm64-swiftshader-chrome` came from an M4 MacBook Air's installed Google Chrome, version not recorded; running `npm run browser:install` on that Mac switches it to a new set, `darwin-arm64-swiftshader`. Any difference fails and writes the new image to `golden/diff/<set>/` (git-ignored). A new machine creates its set with `golden:update` from a known-good commit. A Chrome or graphics driver update can also change the output: if many shots fail after one, check the diffs and regenerate the set from a known-good commit. A deliberate visual change updates every set the team uses, so the PR shows each changed view on each set. Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update` on the work's branch, never directly on `main`: new baselines reach `main` only through a PR, where the reviewer sees each changed view. `node tools/golden.mjs pass3` runs a subset. |
 | `npm run lamp-shadow-check` | Lamp shadow atlas: enclosed shells, back-facing panels, fixture clearance, and fitting small device limits (2048 and 512 px) with smaller faces. |
 | `npm run moving-shadow-check` | Sun-shadow mask on rigid moving parts (`move_spin_`/`move_sway_`): a moving panel at rest, spun 90 degrees and mid-swing gets exactly the mask of the same panel as static geometry at that pose, over striped ground (no borrowing the background) and under a roof (no "always sunlit"), without painting over static geometry in front of it. |
 | `npm run village-check` | Lantern Row: canopies clear every building, backdrop house, street, quay and the water, and buildings don't overlap or stand in the water (`layoutProblems` in `layout.ts`); models tied to layout features follow them; the mill wheel turns across the canal's flow in the main channel; moving parts spin about their node's local X axis; villager splitting keeps nested meshes single and parent prefixes; a missing or corrupt model fails the build visibly. |
@@ -119,7 +129,6 @@ All tools drive headless Chrome with SwiftShader (`tools/lib.mjs`; set `CHROME_P
 | `node tools/comparison-sheet.mjs` | The passes side by side at 2x (`out/passes.png`), from the captures `verify.mjs` writes. |
 
 `out/` holds scratch captures and is git-ignored; it is safe to empty. The approved golden images are tracked in `golden/`.
-Everything so far ran on SwiftShader only, never a real GPU.
 
 ## Videos
 

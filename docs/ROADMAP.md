@@ -123,12 +123,15 @@ groove set per scene is supported. Passes 0–1 are frozen and still flicker. `n
 - **Asset pipeline.** Blender → glTF export → flags by node name or custom property (`collectGltf` rules handle names today) → merge and
   palette as a build step instead of at page load (Cookie Co. takes seconds to build in the browser).
 - **Package it** (npm workspace or published package) with the demo as a consumer, a smaller public API (`src/renderer/index.ts` is the
-  start), unit tests for palette/geometry, and the golden and browser checks in CI. The golden images are already tracked in `golden/`,
-  but CI would render on a different GPU path than the local SwiftShader runs, so expect to regenerate or tolerance-match them there.
+  start), unit tests for palette/geometry, and the golden and browser checks in CI. The golden images are tracked per platform,
+  backend and GPU (`golden/<set>/`), so CI needs its own set, made once from a known-good commit.
 
 ## 4. Performance and fairness
 
-- **Profile on a real GPU.** Everything so far ran in headless Chrome on SwiftShader (software rendering). Pass 3 re-rasterises the G-buffer every
+- **Checks on a real GPU (done 2026-10-03).** On Linux the tools render on the GPU through ANGLE Vulkan (`GL_BACKEND`, `tools/lib.mjs`).
+  The golden run takes 1m00s on a Radeon RX 570, against 8m50s on SwiftShader on the same machine (Ryzen 5 1600) and 4m on a
+  MacBook Air. The GPU output is byte-identical from run to run, so each machine keeps a pixel-exact golden set of its own.
+- **Profile on a real GPU.** Frame times have only been measured in headless Chrome on SwiftShader (software rendering). Pass 3 re-rasterises the G-buffer every
   frame because the world moves, and "Compare all" runs three WebGL contexts with 4096² shadow maps each. Measure frame time, memory and
   mobile behaviour; consider caching static geometry and re-rendering only the dynamic mesh.
 - **Comparison fairness.** Pass 3 uses its own world (pond, leaf-clump trees, motion), so the comparison mixes renderer and content

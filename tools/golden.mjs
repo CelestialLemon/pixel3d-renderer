@@ -1,12 +1,16 @@
 // Golden-image regression check: renders a fixed set of views with a frozen clock and compares them
 // pixel for pixel against images saved earlier.
-//   node tools/golden.mjs --update   save the current output as the reference (golden/)
+//   node tools/golden.mjs --update   save the current output as the reference (golden/<set>/)
 //   node tools/golden.mjs            compare against the reference; exits 1 on any difference
 //   node tools/golden.mjs pass3      only the shots whose name contains "pass3"
-// The new render of each failed shot goes to golden/diff/; each run first removes the diffs of the shots it renders.
+// Output is only pixel-identical on the same platform, CPU architecture, GL backend, GPU and browser, so each combination keeps
+// its own set of references in golden/<set>/ (`goldenSet` in lib.mjs).
+// The new render of each failed shot goes to golden/diff/<set>/; each run first removes the diffs of the shots it renders.
 // Use this to prove a refactor changed nothing, and to see exactly which views a deliberate renderer change affects.
+import { existsSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
-import { launch, newPage, open, canvasPng, writePng, pixelDiff } from './lib.mjs';
+import { fileURLToPath } from 'node:url';
+import { launch, newPage, open, canvasPng, writePng, pixelDiff, glRenderer, goldenSet } from './lib.mjs';
 
 const VIEW = 'auto=0&clean-ui=1&time=8&px=3';
 // Pass 0/1 references must never change; Pass 3 shots cover the times of day and the main camera framings.
@@ -39,17 +43,25 @@ const SHOTS = [
   { name: 'props-overview', path: `pass3.html?${VIEW}&scene=props&hour=12`, canvas: 'p3-view' },
 ];
 
+process.chdir(fileURLToPath(new URL('..', import.meta.url)));   // golden/ paths are relative to the repo root
 const args = process.argv.slice(2), update = args.includes('--update'), filter = args.find((a) => !a.startsWith('--'));
 const shots = SHOTS.filter((s) => !filter || s.name.includes(filter));
 const browser = await launch();
 let failed = 0;
 try {
   const { page, errors } = await newPage(browser);
+  const renderer = await glRenderer(page), set = goldenSet(renderer);
+  console.log(`golden set ${set} (${await browser.version()}, ${renderer})`);
+  const noSet = !update && !existsSync(`golden/${set}`);
+  if (noSet) {
+    console.log(`No golden images for ${set} yet. Create them with \`npm run golden:update\` on a branch, from a commit whose output is known good.`);
+    failed++;
+  }
   let loaded = '';
-  for (const shot of shots) {
+  for (const shot of noSet ? [] : shots) {
     if (shot.path !== loaded) { await open(page, shot.path); loaded = shot.path; }
     const png = await canvasPng(page, shot.canvas);
-    const ref = `golden/${shot.name}.png`, diff = `golden/diff/${shot.name}.png`;
+    const ref = `golden/${set}/${shot.name}.png`, diff = `golden/diff/${set}/${shot.name}.png`;
     await rm(diff, { force: true });   // a stale diff from an earlier run must not outlive a now-identical shot
     if (update) { await writePng(ref, png); console.log('saved', shot.name); continue; }
     const saved = await readFile(ref).catch(() => null);

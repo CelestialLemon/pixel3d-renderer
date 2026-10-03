@@ -7,6 +7,7 @@
     "dev": "vite --port 5180",
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "browser:install": "node tools/install-browser.mjs",
     "golden": "node tools/golden.mjs",
     "golden:update": "node tools/golden.mjs --update",
     "thin-check": "node tools/thin-check.mjs",
@@ -23,6 +24,7 @@
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@puppeteer/browsers": "^3.2.3",
     "@types/three": "^0.180.0",
     "puppeteer-core": "^25.12.0",
     "typescript": "^7.0.2",
