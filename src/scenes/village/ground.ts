@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { FLAG, flip, GeometryCollector, linearColor as lin, place, thin, type RGB } from '../../renderer';
-import { fbm, pick, type Rng } from '../shared/random';
+import { FLAG, flip, FLUIDS, GeometryCollector, linearColor as lin, place, thin, type FluidCollector, type RGB } from '../../renderer';
+import { fbm, mulberry32, pick, type Rng } from '../shared/random';
 import {
   AREA, BASIN, BRIDGE, BUILDINGS, CANAL, DRY_WALLS, FENCES, FOOTBRIDGE, footprintRect, grassEdge, groundY, inWater, JETTY, pavedAt, PLOTS, POND, STAIRS, STAIRS_FOOT_Z,
   WATER_STEPS,
@@ -11,6 +11,9 @@ import {
 // basin, the pond, the retaining wall with its stair flight, garden plots, fences, dry-stone walls and the fields
 // beyond. Stones are separate flat quads over a darker mortar plane, so the joints read as lines without any geometry
 // thinner than about two art pixels.
+
+/** The canal's current (m/s along x; the village sets its sign so the mill wheel turns with it). */
+export const CANAL_FLOW = 0.5;
 
 const C = {
   mortar: lin(0x4a4640),
@@ -24,7 +27,7 @@ const C = {
   step: lin(0xa0978a), stepEdge: lin(0xb4ab9b),
   iron: lin(0x2e2c33),
   dirt: lin(0x6f5d48), dirtDark: lin(0x5e4f3e), mud: lin(0x4b4034),
-  water: lin(0x2a5f86), deep: lin(0x1f4a6e), pond: lin(0x285a6a),
+  bed: lin(0x4f4a3c), bedStone: [lin(0x625c4c), lin(0x57524a), lin(0x6b6450)], weed: lin(0x3c5434),
   picket: lin(0xc9bfa8), post: lin(0x8a7a64),
   dryStone: [lin(0x8c877d), lin(0x77736b), lin(0x9a9488)],
   crop: [lin(0x4e8a3c), lin(0x6a9a40), lin(0x3e7442)], furrow: lin(0x58493a),
@@ -191,7 +194,7 @@ function countryside(q: Quads) {
   }
 }
 
-export function buildGround(s: GeometryCollector, rnd: Rng) {
+export function buildGround(s: GeometryCollector, f: FluidCollector, rnd: Rng, canalFlow = CANAL_FLOW) {
   const q = new Quads();
   const { minX, maxX, minZ, maxZ } = AREA;
   // Mortar under the stones: the main level with holes for the water and the pond, and the upper level.
@@ -214,8 +217,8 @@ export function buildGround(s: GeometryCollector, rnd: Rng) {
 
   buildRetainingWall(s, q, rnd);
   buildStairs(s);
-  buildCanal(s, q, rnd);
-  buildPond(s, q, rnd);
+  buildCanal(s, q, f, rnd, canalFlow);
+  buildPond(s, q, f, rnd);
   buildPlots(s, q, rnd);
   for (const run of FENCES) fence(s, run);
   for (const run of DRY_WALLS) dryWall(s, rnd, run);
@@ -318,10 +321,10 @@ const KERB_GAPS: { bank: 'n' | 's'; x0: number; x1: number }[] = [
 ];
 
 /**
- * The canal and the mill basin: stone quay walls with a dark waterline band, the water (darker along the middle), a kerb
- * along both quay edges, and stone steps down to the water.
+ * The canal and the mill basin: stone quay walls with a dark waterline band, a silty bed with stones and weed, the water
+ * (flowing in the canal, still in the basin), a kerb along both quay edges, and stone steps down to the water.
  */
-function buildCanal(s: GeometryCollector, q: Quads, rnd: Rng) {
+function buildCanal(s: GeometryCollector, q: Quads, f: FluidCollector, rnd: Rng, flow: number) {
   const { x0, x1, z0, z1, waterY, bedY } = CANAL;
   const { minX, maxX } = AREA, lo = waterY + 0.18;
   // North wall (faces +z into the water), the south wall either side of the basin, and the basin's three walls.
@@ -347,10 +350,22 @@ function buildCanal(s: GeometryCollector, q: Quads, rnd: Rng) {
   q.wallX(BASIN.z0, waterY, BASIN.z1, lo, BASIN.x1 - 0.006, C.slime, FLAG.DECOR, true);
   q.wallZ(BASIN.x0, waterY, BASIN.x1, lo, BASIN.z1 - 0.006, C.slime, FLAG.DECOR, true);
 
-  // Water: bands along the canal, darker in the middle; the basin is one band.
-  const n = 8, dz = (z1 - z0) / n;
-  for (let i = 0; i < n; i++) q.flat(x0, z0 + i * dz, x1, z0 + (i + 1) * dz, waterY, Math.abs(i + 0.5 - n / 2) < 2 ? C.deep : C.water, FLAG.WATER);
-  q.flat(BASIN.x0, BASIN.z0, BASIN.x1, BASIN.z1, waterY, C.water, FLAG.WATER);
+  // The bed, seen through the water: silt with scattered stones and weed inside the area. Its own generator, so the
+  // rest of the town keeps its layout.
+  q.flat(x0, z0, x1, z1, bedY, C.bed, FLAG.DECOR);
+  q.flat(BASIN.x0, BASIN.z0, BASIN.x1, BASIN.z1, bedY, C.bed, FLAG.DECOR);
+  const bedRnd = mulberry32(71);
+  for (let i = 0; i < 260; i++) {
+    const x = minX + bedRnd() * (maxX - minX), z = z0 + 0.3 + bedRnd() * (BASIN.z1 - z0 - 0.6), w = 0.25 + bedRnd() * 0.45;
+    if (!inWater(x, z) || !inWater(x + w, z + w)) continue;
+    if (bedRnd() < 0.3) q.flat(x, z, x + w * 0.5, z + w * 1.6, bedY + 0.01, C.weed, FLAG.DECOR);
+    else q.flat(x, z, x + w, z + w * (0.6 + bedRnd() * 0.5), bedY + 0.01, pick(bedRnd, C.bedStone), FLAG.DECOR);
+  }
+
+  // The water: the canal runs, the basin beside it lies still.
+  const sheet = (a: number, b: number, c: number, d: number) => new THREE.PlaneGeometry(c - a, d - b).rotateX(-Math.PI / 2).translate((a + c) / 2, waterY, (b + d) / 2);
+  f.add(sheet(x0, z0, x1, z1), null, FLUIDS.canal, [flow, 0]);
+  f.add(sheet(BASIN.x0, BASIN.z0, BASIN.x1, BASIN.z1), null, FLUIDS.canal);
 
   // The kerb: long coping stones along the quay edges, open where the bridges land.
   const kerb = (a: number, b: number, z: number, along: 'x' | 'z') => {
@@ -380,14 +395,19 @@ function buildCanal(s: GeometryCollector, q: Quads, rnd: Rng) {
   }
 }
 
-/** The pond: a muddy sloping rim, still water, reeds round the edge and lily pads. */
-function buildPond(s: GeometryCollector, q: Quads, rnd: Rng) {
+/** The pond: a muddy bowl, still water, reeds round the edge and lily pads. */
+function buildPond(s: GeometryCollector, q: Quads, f: FluidCollector, rnd: Rng) {
   const { x, z, r, waterY } = POND;
   // The rim: an open cone sloping from the grass down under the water, turned inside out so its inner face shows.
   const rim = new THREE.CylinderGeometry(r + 0.55, r - 0.1, 0.05 - waterY, 28, 1, true).toNonIndexed();
   flip(rim);
   s.add(rim, place(x, (waterY + 0.05) / 2, z), C.mud, FLAG.DECOR, true);
-  q.disc(x, z, r, waterY, C.pond, FLAG.WATER, 28);
+  // Under the water the mud shelves down to a flat bottom.
+  const bowl = new THREE.CylinderGeometry(r - 0.1, r * 0.45, 0.6, 28, 1, true).toNonIndexed();
+  flip(bowl);
+  s.add(bowl, place(x, waterY - 0.3, z), C.mud, FLAG.DECOR, true);
+  q.disc(x, z, r * 0.45 + 0.01, waterY - 0.6, C.mud, FLAG.DECOR, 28);
+  f.add(new THREE.CircleGeometry(r, 28).rotateX(-Math.PI / 2).translate(x, waterY, z), null, FLUIDS.pond);
 
   for (let i = 0; i < 26; i++) {
     const a = rnd() * Math.PI * 2, d = r - 0.15 + rnd() * 0.45;

@@ -16,7 +16,7 @@ try {
   await open(page, 'pass3.html?scene=test-chart&auto=0&anim=0&time=8');
   const results = await page.evaluate(async () => {
     const THREE = await import('/node_modules/three/build/three.module.js');
-    const { PixelRenderer, GeometryCollector, motion, place } = await import('/src/renderer/index.ts');
+    const { PixelRenderer, GeometryCollector, FluidCollector, motion, place } = await import('/src/renderer/index.ts');
     const { lookAt } = await import('/src/renderer/look.ts');
     const BOX = new THREE.BoxGeometry(1, 1, 1);
     const box = (c, x, y, z, w, h, d, color, mo) => c.add(BOX, place(x, y + h / 2, z, 0, 0, 0, w, h, d), color, undefined, false, mo);
@@ -51,7 +51,7 @@ try {
       scenery[name](s);
       if (panel === 'moving') d.add(BOX, place(...PIVOT, 0, 0, 0, 4, 2.4, 0.05), PANEL, undefined, false, poses[pose].motion);
       if (panel === 'static') s.add(BOX, poses[pose].at, PANEL);
-      const scene = { staticGeometry: s.build(), dynamicGeometry: d.build(), lamps: [], ripples: [], grooves: null,
+      const scene = { staticGeometry: s.build(), dynamicGeometry: d.build(), lamps: [], fluids: new FluidCollector().build(), grooves: null,
         shadow: { center: new THREE.Vector3(), radius: 14 }, stats: { triangles: 0, paletteColors: 0 } };
       const pr = new PixelRenderer(document.createElement('canvas'), scene);
       try {

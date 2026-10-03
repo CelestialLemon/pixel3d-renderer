@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FLAG, thin } from './flags';
+import { fluidFromName, type FluidCollector, type FluidMaterial } from './fluids';
 import type { GeometryCollector, RGB } from './geometry';
 import { motion, type Motion } from './motion';
 import type { Lamp } from './scene';
@@ -16,6 +17,10 @@ export interface MeshRule {
   thin?: boolean;
   /** Set to make the mesh move: it goes into the dynamic collector. */
   motion?: Motion;
+  /** Make the mesh a fluid surface of this material: it goes into the fluid collector. */
+  fluid?: FluidMaterial;
+  /** A fluid pool's flow (vx, vz in m/s); sloped and upright fluid parts always run downhill. */
+  flow?: [number, number];
 }
 
 /**
@@ -28,13 +33,13 @@ const nodeName = meshNodeName;
 
 /**
  * Behaviour from object-name prefixes, the asset naming convention in docs/ASSET_BRIEF.md: `glass_` is skipped,
- * `water_` and `decor_` get their flags, `thin_` gets the thin mark. `move_*` parts stay static here; a scene that wants them to move
+ * `water_` becomes a fluid (`water_<preset>_`, e.g. `water_acid_`, picks a FLUIDS preset), `decor_` gets its flag, `thin_` gets the thin mark. `move_*` parts stay static here; a scene that wants them to move
  * adds `movingPartMotion`. Pass to `collectGltf`, or call it first inside a scene's own rule.
  */
 export function namedMeshRule(mesh: THREE.Mesh): MeshRule | void {
   const n = nodeName(mesh).toLowerCase();
   if (n.startsWith('glass_')) return { skip: true };
-  if (n.startsWith('water_')) return { flag: FLAG.WATER };
+  if (n.startsWith('water_')) return { fluid: fluidFromName(n) };
   if (n.startsWith('decor_')) return { flag: FLAG.DECOR };
   if (n.startsWith('thin_')) return { thin: true };
 }
@@ -76,17 +81,22 @@ export async function loadGltf(url: string): Promise<THREE.Group> {
 
 /**
  * Add every mesh under `root` to the collectors, in traversal order, using one flat colour per material.
- * `rule` can skip meshes or override their flag, colour or motion. Note that three.js turns spaces in node
- * names into underscores, so match names with `[ _]`.
+ * `rule` can skip meshes, override their flag, colour or motion, or make them fluids (which go to `fluidOut`).
+ * Note that three.js turns spaces in node names into underscores, so match names with `[ _]`.
  */
 export function collectGltf(root: THREE.Object3D, staticOut: GeometryCollector, dynamicOut: GeometryCollector,
-  rule: (mesh: THREE.Mesh, material: THREE.MeshStandardMaterial) => MeshRule | void = () => {}) {
+  rule: (mesh: THREE.Mesh, material: THREE.MeshStandardMaterial) => MeshRule | void = () => {}, fluidOut?: FluidCollector) {
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
     const mat = mesh.material as THREE.MeshStandardMaterial;
     const r = rule(mesh, mat) ?? {};
     if (r.skip) return;
+    if (r.fluid) {
+      if (!fluidOut) throw new Error(`collectGltf: '${nodeName(mesh)}' is a fluid, but no fluid collector was given`);
+      fluidOut.add(mesh.geometry, mesh.matrixWorld, r.fluid, r.flow);
+      return;
+    }
     const e = mat.emissive;
     const base = r.flag ?? (e && e.r + e.g + e.b > 0.05 ? FLAG.EMISSIVE : FLAG.NORMAL);
     const flag = r.thin ? thin(base) : base;

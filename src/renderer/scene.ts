@@ -1,7 +1,8 @@
 import type * as THREE from 'three';
+import type { SceneFluids } from './fluids';
 
 /** Shader limits on the per-scene arrays below. Keep in sync with shaders/post.ts. */
-export const LIMITS = { lamps: 64, ripples: 4, grooves: 8 } as const;
+export const LIMITS = { lamps: 64, grooves: 8, fluidMaterials: 8, fluidSources: 8 } as const;
 
 /** A light that glows after dusk (window, lantern, oven). Solid static geometry blocks it. */
 export interface Lamp {
@@ -37,8 +38,8 @@ export interface PixelScene {
   /** Moving triangles, also with aMode, aAnchor and aAnim (see motion.ts). Animated on the GPU every frame. */
   dynamicGeometry: THREE.BufferGeometry;
   lamps: Lamp[];
-  /** Centres (world x, z) of expanding drip rings on WATER surfaces. */
-  ripples: [number, number][];
+  /** Water and other fluids: surfaces, their materials and the spots that stir them (see fluids.ts). */
+  fluids: SceneFluids;
   grooves: Grooves | null;
   /** Region the sun's shadow map covers: a square of half-size `radius` around `center`. */
   shadow: { center: THREE.Vector3; radius: number };

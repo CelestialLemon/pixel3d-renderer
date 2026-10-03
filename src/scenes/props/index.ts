@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, collectGltf, collectLamps, GeometryCollector, LIMITS, linearColor as lin, loadGltf, namedMeshRule, place, quantizePalette, type Lamp, type PixelScene } from '../../renderer';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, collectGltf, collectLamps, GeometryCollector, LIMITS, linearColor as lin, loadGltf, namedMeshRule, place, quantizePalette, type Lamp, type PixelScene } from '../../renderer';
 import type { SceneDefinition, SceneView } from '../types';
 
 // Props gallery: every modeled prop in assets/props/<id>/ (built per docs/ASSET_BRIEF.md, exported to
@@ -31,7 +31,7 @@ function layout() {
 const LAYOUT = layout();
 
 async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
-  const s = new GeometryCollector(false), d = new GeometryCollector(true);
+  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector();
   const tile = new THREE.PlaneGeometry(1, 1), tiles = [lin(0x9c9a8e), lin(0xa5a397)];
   const gx = Math.ceil(LAYOUT.hx), gz = Math.ceil(LAYOUT.hz);
   for (let x = -gx; x < gx; x++) for (let z = -gz; z < gz; z++) s.add(tile, place(x + 0.5, 0, z + 0.5, -Math.PI / 2), tiles[(x + z + 1000) % 2]);
@@ -42,7 +42,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
     const root = roots[i];
     root.position.set(slot.x, 0, slot.z);
     root.updateMatrixWorld(true);
-    collectGltf(root, s, d, namedMeshRule);
+    collectGltf(root, s, d, namedMeshRule, f);
     lamps.push(...collectLamps(root));
   });
   if (lamps.length > LIMITS.lamps) {
@@ -54,7 +54,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize);
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
   return {
-    staticGeometry, dynamicGeometry, lamps, ripples: [], grooves: null,
+    staticGeometry, dynamicGeometry, lamps, fluids: f.build(), grooves: null,
     shadow: { center: new THREE.Vector3(0, 0, 0), radius: Math.max(LAYOUT.hx, LAYOUT.hz) + 2 },
     stats: { triangles, paletteColors },
   };

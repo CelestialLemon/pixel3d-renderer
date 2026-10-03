@@ -11,7 +11,7 @@ try {
   await open(page, 'pass3.html?scene=test-chart&auto=0&anim=0&time=8');
   const result = await page.evaluate(async () => {
     const THREE = await import('/node_modules/three/build/three.module.js');
-    const { GeometryCollector, PixelRenderer, FLAG, linearColor } = await import('/src/renderer/index.ts');
+    const { GeometryCollector, FluidCollector, PixelRenderer, FLAG, linearColor } = await import('/src/renderer/index.ts');
     const { lookAt } = await import('/src/renderer/look.ts');
     const { buildWindowLight } = await import('/src/renderer/windowLight.ts');
     const { mergeGeometries } = await import('/node_modules/three/examples/jsm/utils/BufferGeometryUtils.js');
@@ -93,7 +93,7 @@ try {
     panel(-1.25, 2.5, 0, 1.5, 1); panel(1.25, 2.5, 0, 1.5, 1);
     panel(0, 2.5, -0.17, 1, 1, [1, 0.48, 0.15], FLAG.EMISSIVE);
     walls.add(new THREE.PlaneGeometry(4, 1.5).rotateX(Math.PI / 2).translate(0, 1.9, 0.4), null, UNDERSIDE);
-    const scene = { staticGeometry: walls.build(), dynamicGeometry: new GeometryCollector(true).build(), lamps: [], ripples: [], grooves: null,
+    const scene = { staticGeometry: walls.build(), dynamicGeometry: new GeometryCollector(true).build(), lamps: [], fluids: new FluidCollector().build(), grooves: null,
       shadow: { center: new THREE.Vector3(), radius: 6 }, stats: { triangles: 0, paletteColors: 2 } };
     const pr = new PixelRenderer(document.createElement('canvas'), scene);
     const wallRender = { panes: pr.windowLight.panes.length };

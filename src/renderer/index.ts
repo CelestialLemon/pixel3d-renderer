@@ -2,6 +2,8 @@
 export { PixelRenderer, DEFAULT_SETTINGS, type RenderSettings } from './renderer';
 export { LIMITS, type PixelScene, type Lamp, type Grooves } from './scene';
 export { FLAG, THIN_MARK, thin, type Flag } from './flags';
+export { FLUIDS, FluidCollector, fluidFromName, POOL_NORMAL_Y, type FluidMaterial, type FluidPreset, type FluidSource, type SceneFluids } from './fluids';
+export { buildFluidMap, type FluidMap } from './fluidMap';
 export { MODE, motion, type Motion, type Vec3, type Vec4 } from './motion';
 export { GeometryCollector, linearColor, place, flip, type RGB } from './geometry';
 export { DEFAULT_PALETTE_SIZE, quantizePalette } from './palette';

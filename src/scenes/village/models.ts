@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  collectGltf, collectLamps, GeometryCollector, loadGltf, meshNodeName, movingPartMotion, namedMeshRule, type Lamp, type MeshRule, type RGB,
+  collectGltf, collectLamps, GeometryCollector, loadGltf, meshNodeName, movingPartMotion, namedMeshRule, type FluidCollector, type Lamp, type MeshRule, type RGB,
 } from '../../renderer';
 import { BACKDROP, BASIN, BRIDGE, BUILDINGS, CANAL, facingAngle, FOOTBRIDGE, FOUNTAIN, groundY, JETTY, STATUE, type Facing } from './layout';
 
@@ -149,9 +149,10 @@ export const PLACEMENTS: Placement[] = [
 
 /**
  * Load every building and prop (each GLB once, in parallel with the villagers) and add their meshes to the collectors in
- * a fixed order. Rejects if any model fails to load. Returns the lamps, and the chimney tops of the buildings that smoke.
+ * a fixed order (their `water_` surfaces to `f`). Rejects if any model fails to load. Returns the lamps, and the chimney
+ * tops of the buildings that smoke.
  */
-export async function placeModels(s: GeometryCollector, d: GeometryCollector): Promise<{ lamps: Lamp[]; chimneys: THREE.Vector3[] }> {
+export async function placeModels(s: GeometryCollector, d: GeometryCollector, f: FluidCollector): Promise<{ lamps: Lamp[]; chimneys: THREE.Vector3[] }> {
   const urls = [...new Set(PLACEMENTS.map((p) => `/${p.src}/${p.id}.glb`))];
   const [crowd, ...models] = await Promise.all(['/props/villagers.glb', ...urls].map((url) => loadGltf(url)));
   const byUrl = new Map(urls.map((url, i) => [url, models[i]]));
@@ -162,7 +163,7 @@ export async function placeModels(s: GeometryCollector, d: GeometryCollector): P
     root.position.set(p.x, p.y ?? groundY(p.x, p.z), p.z);
     root.rotation.y = facingAngle(p.front);
     root.updateMatrixWorld(true);
-    collectGltf(root, s, d, villageRule(p.look, p.src === 'village'));
+    collectGltf(root, s, d, villageRule(p.look, p.src === 'village'), f);
     if (p.backdrop) continue;
     lamps.push(...collectLamps(root));
     const top = SMOKY.has(p.id) ? chimneyTop(root) : null;
@@ -175,7 +176,7 @@ export async function placeModels(s: GeometryCollector, d: GeometryCollector): P
     root.position.set(v.x, v.y ?? groundY(v.x, v.z), v.z);
     root.rotation.y = facingAngle(v.front);
     root.updateMatrixWorld(true);
-    collectGltf(root, s, d, villageRule());
+    collectGltf(root, s, d, villageRule(), f);
   }
   return { lamps, chimneys };
 }

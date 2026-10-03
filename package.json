@@ -15,8 +15,9 @@
     "moving-shadow-check": "node tools/moving-shadow-check.mjs",
     "resolve-check": "node tools/resolve-check.mjs",
     "window-light-check": "node tools/window-light-check.mjs",
+    "water-check": "node tools/water-check.mjs",
     "verify": "node tools/verify.mjs && node tools/check-viewer.mjs && node tools/anim-check.mjs",
-    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run window-light-check && npm run golden && npm run verify"
+    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run window-light-check && npm run water-check && npm run golden && npm run verify"
   },
   "dependencies": {
     "three": "^0.180.0"
