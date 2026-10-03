@@ -1,13 +1,14 @@
 // Palette diagnostics on unquantised copies of every registered scene.
-// Requires the dev server. DEMO_URL / CHROME_PATH select server/browser (tools/lib.mjs).
+// Requires the dev server. DEMO_URL / CHROME_PATH select server/browser (tools/lib.ts).
 // K=80 REPORT_THRESHOLD=0.05 MAX_ERROR=0.10
 // ΔE_OK is Euclidean OKLab distance on linear RGB, without the quantizer's chroma multiplier.
 // MAX_ERROR limits the worst input -> output error, including gamut clipping. Pair spread
 // measures the widest separation of original colours assigned to the same output colour.
 import assert from 'node:assert/strict';
-import { launch, newPage, open } from './lib.mjs';
+import type { BufferAttribute, InterleavedBufferAttribute } from 'three';
+import { launch, newPage, open } from './lib.ts';
 
-const number = (name, fallback) => {
+const number = (name: string, fallback: number) => {
   const value = Number(process.env[name] ?? fallback);
   assert.ok(Number.isFinite(value) && value >= 0, `${name} must be a finite non-negative number`);
   return value;
@@ -23,7 +24,8 @@ try {
   const reports = await page.evaluate(async ({ K, threshold }) => {
     const { SCENES } = await import('/src/scenes/index.ts');
     const { quantizePalette } = await import('/src/renderer/palette.ts');
-    const lab = ([r, g, b]) => {
+    type Rgb = [number, number, number];
+    const lab = ([r, g, b]: Rgb): Rgb => {
       const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
       const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
       const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
@@ -31,10 +33,10 @@ try {
         1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
         0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
     };
-    const delta = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
-    const rgbAt = (col, i) => [col.getX(i), col.getY(i), col.getZ(i)];
+    const delta = (a: Rgb, b: Rgb) => Math.hypot(...a.map((v, i) => v - b[i]));
+    const rgbAt = (col: BufferAttribute | InterleavedBufferAttribute, i: number): Rgb => [col.getX(i), col.getY(i), col.getZ(i)];
     // Exact sRGB transfer for display labels; never group by these rounded labels.
-    const hex = (rgb) => '#' + rgb.map((v) => {
+    const hex = (rgb: Rgb) => '#' + rgb.map((v) => {
       v = Math.min(1, Math.max(0, v));
       return Math.round(255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055))
         .toString(16).padStart(2, '0');

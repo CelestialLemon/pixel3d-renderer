@@ -1,9 +1,9 @@
 // Render a smooth, deterministic video (or a still) of a scene: camera and hour keyframes, fixed simulated time steps,
 // whole-multiple nearest-neighbour upscaling, encoded with ffmpeg. Writes out/timelapse/<name>.mp4 and <name>.camera.json.
-//   node tools/timelapse.mjs day-to-night                      a preset from tools/timelapse-presets.mjs
-//   node tools/timelapse.mjs my-clip.json                      a clip file in the same format as the presets
-//   node tools/timelapse.mjs --view square --hour 8..22 --seconds 10   an ad-hoc clip (fixed camera, swept hour)
-//   node tools/timelapse.mjs --still --view overview --hour 21  one PNG
+//   node tools/timelapse.ts day-to-night                      a preset from tools/timelapse-presets.ts
+//   node tools/timelapse.ts my-clip.json                      a clip file in the same format as the presets
+//   node tools/timelapse.ts --view square --hour 8..22 --seconds 10   an ad-hoc clip (fixed camera, swept hour)
+//   node tools/timelapse.ts --still --view overview --hour 21  one PNG
 // Options:
 //   --url <base>        dev server (default $DEMO_URL or http://127.0.0.1:5180); --page <file> (default pass3.html)
 //   --scene <id> --view <preset> --hour <h|a..b> --time <s>   ad-hoc clip, or overrides for a preset's scene / start clock
@@ -17,23 +17,24 @@
 // camera, hour and clock in the URL: slow, but it needs nothing from the page beyond its URL parameters.
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { launch } from './lib.mjs';
-import { PRESETS } from './timelapse-presets.mjs';
+import type { Browser, Page } from 'puppeteer-core';
+import { launch } from './lib.ts';
+import { PRESETS, type Channel, type Clip } from './timelapse-presets.ts';
 
 const FFMPEG = process.env.FFMPEG_PATH || '/opt/homebrew/bin/ffmpeg';
-const CHANNELS = ['az', 'el', 'zoom', 'tx', 'tz', 'hour'];
+const CHANNELS: Channel[] = ['az', 'el', 'zoom', 'tx', 'tz', 'hour'];
 const DEG = Math.PI / 180;
 
 // ---- options ----
-const fail = (msg) => { console.error(`timelapse: ${msg}`); process.exit(1); };
+const fail = (msg: string): never => { console.error(`timelapse: ${msg}`); process.exit(1); };
 const FLAGS = ['keep-frames', 'still'];
 const VALUES = ['url', 'page', 'scene', 'view', 'hour', 'time', 'query', 'res', 'scale', 'fps', 'seconds', 'crf', 'name', 'workers', 'tier'];
-const argv = process.argv.slice(2), opts = {}, positional = [];
+const argv = process.argv.slice(2), opts: Record<string, string | undefined> = {}, positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (!a.startsWith('--')) { positional.push(a); continue; }
   const eq = a.indexOf('='), key = a.slice(2, eq < 0 ? undefined : eq);
-  if (FLAGS.includes(key)) opts[key] = true;
+  if (FLAGS.includes(key)) opts[key] = 'true';
   else if (!VALUES.includes(key)) fail(`unknown option --${key}`);
   else if (eq >= 0) opts[key] = a.slice(eq + 1);
   else if (i + 1 < argv.length) opts[key] = argv[++i];
@@ -41,11 +42,11 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 const clipArg = positional[0];
-let clip;
+let clip: Clip;
 if (!clipArg) clip = { keys: [{ at: 0 }] };
 else if (PRESETS[clipArg]) clip = structuredClone(PRESETS[clipArg]);
 else if (clipArg.endsWith('.json')) clip = JSON.parse(await readFile(clipArg, 'utf8'));
-else fail(`unknown preset "${clipArg}" (presets: ${Object.keys(PRESETS).join(', ')})`);
+else clip = fail(`unknown preset "${clipArg}" (presets: ${Object.keys(PRESETS).join(', ')})`);
 clip.keys ??= [{ at: 0 }];
 if (opts.scene) clip.scene = opts.scene;
 if (opts.view) clip.keys[0].view = opts.view;
@@ -102,15 +103,18 @@ const pageQuery = (extra = {}) => {
 };
 
 // ---- keyframes -> per-frame camera and hour ----
+type Start = Record<Channel, number>;
+type Preset = { name: string; size: number; el: number; az?: number; tx?: number; tz?: number };
+
 /**
  * Resolve keys into per-channel point lists. `start` is the page's own camera and hour, `presets` the scene's views and
  * `sceneShown` whether the page shows the clip's scene (old pages ignore `?scene=` and show their own).
  */
-function tracks(start, presets, sceneShown, pageScene) {
-  const points = Object.fromEntries(CHANNELS.map((c) => [c, []]));
+function tracks(start: Start, presets: Preset[], sceneShown: boolean, pageScene: string | null) {
+  const points = Object.fromEntries(CHANNELS.map((c): [Channel, [number, number][]] => [c, []])) as Record<Channel, [number, number][]>;
   const last = { ...start };
   for (const key of clip.keys) {
-    const values = {};
+    const values: Partial<Record<Channel, number>> = {};
     if (key.view) {
       const p = presets.find((v) => v.name.toLowerCase() === String(key.view).toLowerCase());
       const views = presets.map((v) => v.name).join(', ') || 'none';
@@ -126,7 +130,7 @@ function tracks(start, presets, sceneShown, pageScene) {
       }
     }
     for (const c of CHANNELS) if (key[c] !== undefined) values[c] = key[c];
-    for (const [c, v] of Object.entries(values)) {
+    for (const [c, v] of Object.entries(values) as [Channel, number][]) {
       // A later key at the same time replaces the earlier one (a zero-length segment has no slope).
       const list = points[c];
       if (list.length && list[list.length - 1][0] === key.at) list.pop();
@@ -138,7 +142,7 @@ function tracks(start, presets, sceneShown, pageScene) {
 }
 
 /** Piecewise cubic through the points: still at both ends, monotone (no overshoot) through the middle. */
-function sample(pts, t, linear) {
+function sample(pts: [number, number][], t: number, linear: boolean) {
   if (t <= pts[0][0]) return pts[0][1];
   const n = pts.length;
   if (t >= pts[n - 1][0]) return pts[n - 1][1];
@@ -146,8 +150,8 @@ function sample(pts, t, linear) {
   while (t > pts[i + 1][0]) i++;
   const [t0, p0] = pts[i], [t1, p1] = pts[i + 1], h = t1 - t0, u = (t - t0) / h;
   if (linear) return p0 + (p1 - p0) * u;
-  const slope = (j) => (pts[j + 1][1] - pts[j][1]) / (pts[j + 1][0] - pts[j][0]);
-  const tangent = (j) => {
+  const slope = (j: number) => (pts[j + 1][1] - pts[j][1]) / (pts[j + 1][0] - pts[j][0]);
+  const tangent = (j: number) => {
     if (j === 0 || j === n - 1) return 0;
     const a = slope(j - 1), b = slope(j);
     if (a * b <= 0) return 0;
@@ -158,14 +162,14 @@ function sample(pts, t, linear) {
   return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * m1;
 }
 
-function plan(start, presets, sceneShown, pageScene) {
+function plan(start: Start, presets: Preset[], sceneShown: boolean, pageScene: string | null) {
   const pts = tracks(start, presets, sceneShown, pageScene), linear = new Set(clip.linear ?? []);
   // Zoom eases in log space, so zooming in and out feel equally fast.
   pts.zoom = pts.zoom.map(([t, v]) => [t, Math.log(v)]);
   return Array.from({ length: frameCount }, (_, i) => {
     // The camera spans the whole clip (the last frame lands on the last key); the clock steps exactly 1/fps per frame.
-    const at = frameCount > 1 ? i / (frameCount - 1) * clip.seconds : 0;
-    const v = Object.fromEntries(CHANNELS.map((c) => [c, sample(pts[c], at, linear.has(c))]));
+    const at = frameCount > 1 ? i / (frameCount - 1) * clip.seconds! : 0;
+    const v = Object.fromEntries(CHANNELS.map((c) => [c, sample(pts[c], at, linear.has(c))])) as Record<Channel, number>;
     v.zoom = Math.exp(v.zoom);
     v.el = Math.min(Math.max(v.el, 5), 89);
     return { i, at: +at.toFixed(6), time: +(startTime + i / fps).toFixed(6), hour: ((v.hour % 24) + 24) % 24,
@@ -174,13 +178,15 @@ function plan(start, presets, sceneShown, pageScene) {
 }
 
 // ---- page drivers ----
-const toOrbit = (v) => ({ az: v.az * DEG, el: v.el * DEG, size: v.zoom, tx: v.tx, tz: v.tz });
+type View = { az: number; el: number; zoom: number; tx: number; tz: number };
+type Frame = ReturnType<typeof plan>[number];
+const toOrbit = (v: View) => ({ az: v.az * DEG, el: v.el * DEG, size: v.zoom, tx: v.tx, tz: v.tz });
 
-async function openPage(browser, url) {
+async function openPage(browser: Browser, url: string) {
   const page = await browser.newPage();
   await page.setViewport({ width: artW, height: artH, deviceScaleFactor: 1 });
-  const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push((e as Error).message));
   await page.goto(url, { waitUntil: 'load', timeout: 180000 });
   // Every version of the viewer sets appReady; give pages without it a moment to draw instead.
   await page.waitForFunction(() => window.appReady === true, { timeout: 180000 }).catch(() => new Promise((r) => setTimeout(r, 5000)));
@@ -188,21 +194,23 @@ async function openPage(browser, url) {
   return page;
 }
 
+// The page may be any version of the viewer (see Drivers above), so its app3 is probed rather than typed.
+
 /** The page's current camera (degrees), hour, scene views and which driver it supports. */
-const probe = (page) => page.evaluate(() => {
-  const a = window.app3, o = a && (a.orbit ?? a), DEG = Math.PI / 180;
-  const hourEl = document.getElementById('hour');
+const probe = (page: Page) => page.evaluate(() => {
+  const a: any = window.app3, o = a && (a.orbit ?? a), DEG = Math.PI / 180;
+  const hourEl = document.getElementById('hour') as HTMLInputElement | null;
   const tier = typeof a?.capture === 'function' ? 'hook' : a?.p3?.renderGeometry && o?.view && o?.target && a.setHour ? 'legacy' : 'url';
   const v = o?.view;
   return {
-    tier, sceneId: a?.scene?.id ?? null, presets: (a?.orbit?.scene ?? a?.scene?.view)?.presets?.map(({ name, size, el, az, tx, tz }) => ({ name, size, el, az, tx, tz })) ?? [],
-    start: v ? { az: v.az / DEG, el: v.el / DEG, zoom: v.size, tx: v.tx, tz: v.tz, hour: a.hour ?? (hourEl ? +hourEl.value : 17.5) } : null,
+    tier, sceneId: a?.scene?.id ?? null, presets: (a?.orbit?.scene ?? a?.scene?.view)?.presets?.map(({ name, size, el, az, tx, tz }: Preset) => ({ name, size, el, az, tx, tz })) ?? [] as Preset[],
+    start: (v ? { az: v.az / DEG, el: v.el / DEG, zoom: v.size, tx: v.tx, tz: v.tz, hour: a.hour ?? (hourEl ? +hourEl.value : 17.5) } : null) as Start | null,
   };
 });
 
 /** Draw one frame and return its pixels as base64 RGBA at art resolution. */
-const drawFrame = (page, tier, f) => page.evaluate((tier, f) => {
-  const a = window.app3;
+const drawFrame = (page: Page, tier: string, f: Frame) => page.evaluate((tier, f) => {
+  const a: any = window.app3;
   if (tier === 'hook') a.capture({ time: f.time, hour: f.hour, view: f.view });
   else if (tier === 'legacy') {
     const o = a.orbit ?? a;
@@ -212,19 +220,19 @@ const drawFrame = (page, tier, f) => page.evaluate((tier, f) => {
     a.redraw?.(); a.render();
     a.p3.renderGeometry(f.time); a.p3.renderStyle(a.settings, f.time);
   }
-  const c = document.getElementById('p3-view') ?? document.getElementById('pass3-view') ?? document.querySelector('canvas');
+  const c = (document.getElementById('p3-view') ?? document.getElementById('pass3-view') ?? document.querySelector('canvas')) as HTMLCanvasElement;
   const k = document.createElement('canvas'); k.width = c.width; k.height = c.height;
-  const x = k.getContext('2d'); x.drawImage(c, 0, 0);
+  const x = k.getContext('2d')!; x.drawImage(c, 0, 0);
   const bytes = new Uint8Array(x.getImageData(0, 0, c.width, c.height).data.buffer);
   let s = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]);
   return { w: c.width, h: c.height, data: btoa(s) };
 }, tier, { ...f, view: tier === 'url' ? null : toOrbit(f.view) });
 
-const urlForFrame = (f) => pageQuery({ time: f.time, hour: +f.hour.toFixed(4), az: f.view.az, el: f.view.el, zoom: f.view.zoom, tx: f.view.tx, tz: f.view.tz, anim: 1 });
+const urlForFrame = (f: Frame) => pageQuery({ time: f.time, hour: +f.hour.toFixed(4), az: f.view.az, el: f.view.el, zoom: f.view.zoom, tx: f.view.tx, tz: f.view.tz, anim: 1 });
 
 /** RGBA base64 -> RGB buffer, checking the canvas really is art-sized (an old page may ignore ?px=). */
-function toRgb({ w, h, data }) {
+function toRgb({ w, h, data }: { w: number; h: number; data: string }) {
   if (w !== artW || h !== artH) fail(`the page drew ${w}x${h}, expected ${artW}x${artH} (does it support ?px=1?)`);
   const rgba = Buffer.from(data, 'base64'), rgb = Buffer.alloc(w * h * 3);
   for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) { rgb[j] = rgba[i]; rgb[j + 1] = rgba[i + 1]; rgb[j + 2] = rgba[i + 2]; }
@@ -243,7 +251,7 @@ function encoder() {
     if (opts['keep-frames']) args.push('-vf', up, `${framesDir}/%05d.png`);
   }
   const proc = spawn(FFMPEG, args, { stdio: ['pipe', 'inherit', 'inherit'] });
-  const done = new Promise((resolve, reject) => { proc.on('error', reject); proc.on('close', (code) => (code ? reject(new Error(`ffmpeg exited with ${code}`)) : resolve())); });
+  const done = new Promise<void>((resolve, reject) => { proc.on('error', reject); proc.on('close', (code) => (code ? reject(new Error(`ffmpeg exited with ${code}`)) : resolve())); });
   return { stdin: proc.stdin, done };
 }
 
@@ -269,13 +277,15 @@ try {
 
   const enc = encoder();
   // Workers take every n-th frame; frames are written to ffmpeg in order, and a worker that gets too far ahead waits.
-  const pending = new Map();
-  let next = 0, wake = () => {};
+  const pending = new Map<number, Buffer>();
+  let next = 0, wake: () => void = () => {};
   const ahead = 4 * workers;
+  let waiters: (() => void)[] = [];
+  const releaseAll = () => { const w = waiters; waiters = []; w.forEach((r) => r()); };
   const writer = (async () => {
     while (next < frameCount) {
-      if (!pending.has(next)) { await new Promise((r) => (wake = r)); continue; }
-      const buf = pending.get(next); pending.delete(next); next++;
+      if (!pending.has(next)) { await new Promise<void>((r) => (wake = r)); continue; }
+      const buf = pending.get(next)!; pending.delete(next); next++;
       if (!enc.stdin.write(buf)) await new Promise((r) => enc.stdin.once('drain', r));
       if (next % Math.max(1, Math.round(fps)) === 0 || next === frameCount) {
         const s = (Date.now() - t0) / 1000;
@@ -285,11 +295,9 @@ try {
     }
     enc.stdin.end();
   })();
-  let waiters = [];
-  const releaseAll = () => { const w = waiters; waiters = []; w.forEach((r) => r()); };
   await Promise.all(pages.map(async (page, w) => {
     for (let i = w; i < frameCount; i += workers) {
-      while (i >= next + ahead) await new Promise((r) => waiters.push(r));
+      while (i >= next + ahead) await new Promise<void>((r) => waiters.push(r));
       const f = frames[i];
       if (tier === 'url') await page.goto(urlForFrame(f), { waitUntil: 'load' }).then(() => page.waitForFunction(() => window.appReady === true, { timeout: 180000 }).catch(() => {}));
       pending.set(i, toRgb(await drawFrame(page, tier, f)));

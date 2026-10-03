@@ -232,10 +232,11 @@ async function main() {
     const a = document.createElement('a'); a.download = `cookie-co-${mode}${mode === 'compare' ? '-' + layout : ''}.png`; a.href = out.toDataURL('image/png'); a.click();
   };
 
-  (window as any).app = {
+  const app = {
     passes, settings, orbit, assets, setHour, setMode, setLayout, render, redraw: () => (dirty = true),
     get mode() { return mode; }, get layout() { return layout; }, get splits() { return [...splits]; },
   };
+  (window as any).app = app;
   const frame = (now: number) => {
     const dt = Math.min((now - last) / 1000, 0.1); last = now;
     if (settings.animate) time += dt;
@@ -245,5 +246,10 @@ async function main() {
   };
   render(); requestAnimationFrame(frame);
   $('loading').classList.add('done'); (window as any).appReady = true;
+  return app;
 }
+
+/** The page's `window.app`, for the tools that drive this page. */
+export type CompareApp = Awaited<ReturnType<typeof main>>;
+
 main().catch((e) => { console.error(e); $('loading').textContent = 'failed: ' + e.message; });

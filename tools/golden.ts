@@ -1,16 +1,16 @@
 // Golden-image regression check: renders a fixed set of views with a frozen clock and compares them
 // pixel for pixel against images saved earlier.
-//   node tools/golden.mjs --update   save the current output as the reference (golden/<set>/)
-//   node tools/golden.mjs            compare against the reference; exits 1 on any difference
-//   node tools/golden.mjs pass3      only the shots whose name contains "pass3"
+//   node tools/golden.ts --update   save the current output as the reference (golden/<set>/)
+//   node tools/golden.ts            compare against the reference; exits 1 on any difference
+//   node tools/golden.ts pass3      only the shots whose name contains "pass3"
 // Output is only pixel-identical on the same platform, CPU architecture, GL backend, GPU and browser, so each combination keeps
-// its own set of references in golden/<set>/ (`goldenSet` in lib.mjs).
+// its own set of references in golden/<set>/ (`goldenSet` in lib.ts).
 // The new render of each failed shot goes to golden/diff/<set>/; each run first removes the diffs of the shots it renders.
 // Use this to prove a refactor changed nothing, and to see exactly which views a deliberate renderer change affects.
 import { existsSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { launch, newPage, open, canvasPng, writePng, pixelDiff, glRenderer, goldenSet } from './lib.mjs';
+import { launch, newPage, open, canvasPng, writePng, pixelDiff, glRenderer, goldenSet } from './lib.ts';
 
 const VIEW = 'auto=0&clean-ui=1&time=8&px=3';
 // Pass 0/1 references must never change; Pass 3 shots cover the times of day and the main camera framings.

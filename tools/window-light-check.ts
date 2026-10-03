@@ -1,8 +1,12 @@
 // Window extraction / map regressions, plus scene counts, build times and top-down debug PNGs.
-// Requires the dev server: node tools/window-light-check.mjs [output-directory]
+// Requires the dev server: node tools/window-light-check.ts [output-directory]
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { launch, newPage, open, writePng } from './lib.mjs';
+import type { BufferGeometry } from 'three';
+import type { RGB } from '../src/renderer/index.ts';
+import type { Lamp } from '../src/renderer/scene.ts';
+import type { WindowLight } from '../src/renderer/windowLight.ts';
+import { launch, newPage, open, writePng } from './lib.ts';
 
 const output = process.argv[2] ?? 'out/window-light';
 const browser = await launch();
@@ -22,17 +26,17 @@ try {
       g.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array(Array.from({ length: count }, () => [0.7, 0.3, 0.1]).flat()), 3));
       return g;
     };
-    const sample = (map, x, z) => {
+    const sample = (map: WindowLight, x: number, z: number) => {
       const { width, height, data } = map.texture.image, [x0, z0, x1, z1] = map.bounds;
       const ix = Math.max(0, Math.min(width - 1, Math.floor((x - x0) / (x1 - x0) * width)));
       const iz = Math.max(0, Math.min(height - 1, Math.floor((z - z0) / (z1 - z0) * height)));
-      return Array.from(data.slice((iz * width + ix) * 4, (iz * width + ix) * 4 + 4), THREE.DataUtils.fromHalfFloat);
+      return Array.from((data as Uint16Array).slice((iz * width + ix) * 4, (iz * width + ix) * 4 + 4), THREE.DataUtils.fromHalfFloat);
     };
-    const maps = [], geometries = [];
-    const build = (g, lamps = []) => { geometries.push(g); const m = buildWindowLight(g, lamps); maps.push(m); return m; };
+    const maps: WindowLight[] = [], geometries: BufferGeometry[] = [];
+    const build = (g: BufferGeometry, lamps: Lamp[] = []) => { geometries.push(g); const m = buildWindowLight(g, lamps); maps.push(m); return m; };
     const indexed = build(pane());
     const separated = build(mergeGeometries([pane(-2), pane(2)]));
-    const fixture = build(pane(), [{ position: new THREE.Vector3(0, 1, 0), clearance: 0.45 }]);
+    const fixture = build(pane(), [{ position: new THREE.Vector3(0, 1, 0), clearance: 0.45 } as Lamp]);
     const upward = build(pane().rotateX(-Math.PI / 2));
     const tiny = build(pane().scale(0.1, 0.1, 0.1));
     const collector = new GeometryCollector();
@@ -44,15 +48,15 @@ try {
     const translated = build(pane(120.25, 1, -93.75));
     // At a half-texel rim sample, any of the four filter taps may be empty. Height must remain the
     // original source height while RGB fades; test every mixed-coverage footprint on this isolated pane.
-    const rimHeights = [];
-    const rimSourceErrors = [];
-    const { width: mw, height: mh, data: md } = indexed.texture.image;
+    const rimHeights: number[] = [];
+    const rimSourceErrors: number[] = [];
+    const { width: mw, height: mh } = indexed.texture.image, md = indexed.texture.image.data as Uint16Array;
     for (let z = 0; z < mh - 1; z++) for (let x = 0; x < mw - 1; x++) {
       const taps = [z * mw + x, z * mw + x + 1, (z + 1) * mw + x, (z + 1) * mw + x + 1];
       const covered = taps.filter((i) => md[i * 4] > 0).length;
       if (covered > 0 && covered < 4) {
         rimHeights.push(taps.reduce((sum, i) => sum + THREE.DataUtils.fromHalfFloat(md[i * 4 + 3]), 0) / 4);
-        const [x0, z0, x1, z1] = indexed.bounds, sd = indexed.source.image.data;
+        const [x0, z0, x1, z1] = indexed.bounds, sd = indexed.source.image.data as Uint16Array;
         for (const c of [0, 1]) {
           const lo = c === 0 ? x0 : z0, span = c === 0 ? x1 - x0 : z1 - z0, size = c === 0 ? mw : mh;
           const centre = lo + ((c === 0 ? x : z) + 1) * span / size;
@@ -60,8 +64,8 @@ try {
         }
       }
     }
-    const sourceErrors = (map) => {
-      const { width, height, data } = map.source.image, [x0, z0, x1, z1] = map.bounds;
+    const sourceErrors = (map: WindowLight) => {
+      const { width, height } = map.source.image, data = map.source.image.data as Uint16Array, [x0, z0, x1, z1] = map.bounds;
       let error = 0;
       for (let z = 0; z < height; z++) for (let x = 0; x < width; x++) {
         const i = z * width + x;
@@ -86,8 +90,8 @@ try {
     // Actual renderer: a recessed window and the wall around its opening. No lamps, glow or dither can
     // disguise a missing window pool. Compare the same scene with its map enabled and zeroed, preserving
     // emissive geometry and the night look; distant/upper walls and day pixels must remain unchanged.
-    const walls = new GeometryCollector(), WALL = [0.32, 0.4, 0.45], UNDERSIDE = [0.25, 0.33, 0.41], W = 128, H = 128;
-    const panel = (x, y, z, w, h, color = WALL, flag = FLAG.NORMAL) =>
+    const walls = new GeometryCollector(), WALL: RGB = [0.32, 0.4, 0.45], UNDERSIDE: RGB = [0.25, 0.33, 0.41], W = 128, H = 128;
+    const panel = (x: number, y: number, z: number, w: number, h: number, color = WALL, flag: number = FLAG.NORMAL) =>
       walls.add(new THREE.PlaneGeometry(w, h).translate(x, y, z), null, color, flag);
     panel(0, 1, 0, 4, 2); panel(0, 4.5, 0, 4, 3);
     panel(-1.25, 2.5, 0, 1.5, 1); panel(1.25, 2.5, 0, 1.5, 1);
@@ -96,19 +100,23 @@ try {
     const scene = { staticGeometry: walls.build(), dynamicGeometry: new GeometryCollector(true).build(), lamps: [], fluids: new FluidCollector().build(), grooves: null,
       shadow: { center: new THREE.Vector3(), radius: 6 }, stats: { triangles: 0, paletteColors: 2 } };
     const pr = new PixelRenderer(document.createElement('canvas'), scene);
-    const wallRender = { panes: pr.windowLight.panes.length };
+    type Stats = { wallPixels: number; changed: number; below: number; above: number; distant: number; nonWall: number };
+    type Facade = { recess: number; strips: boolean; panes: number; sourceZ: number; pixels: number; changed: number };
+    // Filled in below; the PNGs are deleted once written, to keep stats.json small.
+    const wallRender = { panes: pr.windowLight.panes.length } as { panes: number; night: Stats; day: Stats; onPng?: string; offPng?: string;
+      underside: { pixels: number; changed: number }; facades: Facade[] };
     try {
       pr.supersample = 1; pr.resize(W, H); pr.placeCamera(new THREE.Vector3(0, 3, 0), 0, 0, 6);
       const settings = { outlines: false, dither: false, cleanup: false, clouds: false, contacts: false, glow: false, vignette: false };
-      const mapData = pr.windowLight.texture.image.data, original = mapData.slice();
-      const capture = (on) => {
+      const mapData = pr.windowLight.texture.image.data as Uint16Array, original = mapData.slice();
+      const capture = (on: boolean) => {
         if (on) mapData.set(original); else mapData.fill(0);
         pr.windowLight.texture.needsUpdate = true; pr.renderStyle(settings, 8);
         const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
-        const ctx = canvas.getContext('2d'); ctx.drawImage(pr.canvas, 0, 0);
+        const ctx = canvas.getContext('2d')!; ctx.drawImage(pr.canvas, 0, 0);
         return { pixels: ctx.getImageData(0, 0, W, H).data, png: canvas.toDataURL('image/png') };
       };
-      for (const [name, hour] of [['night', 22], ['day', 12]]) {
+      for (const [name, hour] of [['night', 22], ['day', 12]] as const) {
         pr.setLook(lookAt(hour)); pr.renderGeometry(8);
         const albedo = pr.readAlbedo(), on = capture(true), off = capture(false);
         const stats = { wallPixels: 0, changed: 0, below: 0, above: 0, distant: 0, nonWall: 0 };
@@ -144,9 +152,9 @@ try {
     // Two sides of an obstacle in front of the pane: the away face must stay dark even in the pool
     // core, while the side facing the pane must retain useful light. Rotate the whole arrangement to
     // catch axis assumptions. Receivers stop below the emissive pane, avoiding extraction blockers.
-    const facing = [];
-    for (const [distance, angle, away, slope = false] of [[0.05, 0, true], [0.12, 0, true], [0.35, 0, true], [0.55, 0, true], [0.9, 0, false], [0.12, Math.PI / 4, true], [0.9, Math.PI / 2, false], [0.7, 0, true, true]]) {
-      const g = new GeometryCollector(), RECEIVER = [0.29, 0.37, 0.43];
+    const facing: { distance: number; angle: number; away: boolean; slope: boolean; panes: number; pixels: number; changed: number; controlChanged: number; controlDiff: number }[] = [];
+    for (const [distance, angle, away, slope = false] of [[0.05, 0, true], [0.12, 0, true], [0.35, 0, true], [0.55, 0, true], [0.9, 0, false], [0.12, Math.PI / 4, true], [0.9, Math.PI / 2, false], [0.7, 0, true, true]] as [number, number, boolean, boolean?][]) {
+      const g = new GeometryCollector(), RECEIVER: RGB = [0.29, 0.37, 0.43];
       const transform = new THREE.Matrix4().makeRotationY(angle);
       g.add(new THREE.PlaneGeometry(1, 1).translate(0, 2.5, 0), transform, [1, 0.48, 0.15], FLAG.EMISSIVE);
       const receiver = new THREE.PlaneGeometry(1.2, 1);
@@ -159,19 +167,19 @@ try {
         renderer.supersample = 1; renderer.resize(W, H); renderer.setLook(lookAt(22));
         const target = new THREE.Vector3(0, slope ? 1.4 : 1.8, distance).applyMatrix4(transform);
         renderer.placeCamera(target, angle + (away ? 0 : Math.PI), slope ? 0.6 : 0, 3); renderer.renderGeometry(8);
-        const albedo = renderer.readAlbedo(), mapData = renderer.windowLight.texture.image.data, original = mapData.slice();
-        const capture = (on) => {
+        const albedo = renderer.readAlbedo(), mapData = renderer.windowLight.texture.image.data as Uint16Array, original = mapData.slice();
+        const capture = (on: boolean) => {
           if (on) mapData.set(original); else mapData.fill(0);
           renderer.windowLight.texture.needsUpdate = true;
           renderer.renderStyle({ outlines: false, dither: false, cleanup: false, clouds: false, contacts: false, glow: false, vignette: false }, 8);
           const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
-          const ctx = canvas.getContext('2d'); ctx.drawImage(renderer.canvas, 0, 0);
+          const ctx = canvas.getContext('2d')!; ctx.drawImage(renderer.canvas, 0, 0);
           return ctx.getImageData(0, 0, W, H).data;
         };
         const on = capture(true), off = capture(false);
         // Positive control: move the directional source in front of this receiver while keeping the
         // colour/height map identical. This permits the full pool, equivalent to disabling the gate.
-        const sourceData = renderer.windowLight.source.image.data, sourceOriginal = sourceData.slice();
+        const sourceData = renderer.windowLight.source.image.data as Uint16Array, sourceOriginal = sourceData.slice();
         const front = new THREE.Vector3(0, 0, away ? 10 : -10).applyMatrix4(transform);
         for (let i = 0; i < sourceData.length; i += 2) {
           sourceData[i] = THREE.DataUtils.toHalfFloat(front.x); sourceData[i + 1] = THREE.DataUtils.toHalfFloat(front.z);
@@ -193,13 +201,13 @@ try {
     }
     // Thick, flush and slightly proud panes must still light their actual facade with strict facing.
     wallRender.facades = [];
-    for (const [recess, strips = false] of [[0.30], [0], [-0.03], [0.12, true]]) {
+    for (const [recess, strips = false] of [[0.30], [0], [-0.03], [0.12, true]] as [number, boolean?][]) {
       const thickGeometry = scene.staticGeometry.clone(), positions = thickGeometry.attributes.position, flags = thickGeometry.attributes.aFlag;
       for (let i = 0; i < positions.count; i++) if (Math.round(flags.getX(i)) === FLAG.EMISSIVE) positions.setZ(i, -recess);
       let geometry = thickGeometry;
       if (strips) {
         // Keep only the surrounding walls/canopy; replace the full pane with disconnected glass strips.
-        const keep = [];
+        const keep: number[] = [];
         for (let i = 0; i < positions.count; i++) if (Math.round(flags.getX(i)) !== FLAG.EMISSIVE) keep.push(i);
         geometry = new THREE.BufferGeometry();
         for (const [name, attr] of Object.entries(thickGeometry.attributes)) {
@@ -214,11 +222,11 @@ try {
       const thick = new PixelRenderer(document.createElement('canvas'), { ...scene, staticGeometry: geometry, dynamicGeometry: new GeometryCollector(true).build() });
       try {
         thick.supersample = 1; thick.resize(W, H); thick.setLook(lookAt(22)); thick.placeCamera(new THREE.Vector3(0, 3, 0), 0, 0, 6); thick.renderGeometry(8);
-        const albedo = thick.readAlbedo(), data = thick.windowLight.texture.image.data;
+        const albedo = thick.readAlbedo(), data = thick.windowLight.texture.image.data as Uint16Array;
         const read = () => {
           thick.renderStyle({ outlines: false, dither: false, cleanup: false, clouds: false, contacts: false, glow: false, vignette: false }, 8);
           const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
-          const ctx = canvas.getContext('2d'); ctx.drawImage(thick.canvas, 0, 0); return ctx.getImageData(0, 0, W, H).data;
+          const ctx = canvas.getContext('2d')!; ctx.drawImage(thick.canvas, 0, 0); return ctx.getImageData(0, 0, W, H).data;
         };
         const on = read(); data.fill(0); thick.windowLight.texture.needsUpdate = true; const off = read();
         const stats = { recess, strips, panes: thick.windowLight.panes.length, sourceZ: thick.windowLight.panes[0]?.source.z, pixels: 0, changed: 0 };
@@ -231,18 +239,19 @@ try {
         wallRender.facades.push(stats);
       } finally { thick.dispose(); }
     }
-    const scenes = [];
+    const scenes: { scene: string; panes: number; ms: number; width: number; height: number; bounds: number[]; before: number; after: number; finite: boolean;
+      peak: number; litTexels: number; sourceFinite: boolean; sourceSize: number[]; debugPng?: string }[] = [];
     for (const [path, key] of [['cookie-co', 'cookieCo'], ['test-chart', 'testChart'], ['village', 'village']]) {
       const scene = await (await import(`/src/scenes/${path}/index.ts`))[key].build();
       const before = scene.lamps.length, start = performance.now();
       const map = buildWindowLight(scene.staticGeometry, scene.lamps), ms = performance.now() - start;
       const { width, height, data } = map.texture.image;
       const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
-      const ctx = canvas.getContext('2d'), img = ctx.createImageData(width, height);
+      const ctx = canvas.getContext('2d')!, img = ctx.createImageData(width, height);
       let finite = true, peak = 0, litTexels = 0;
       for (let z = 0; z < height; z++) for (let x = 0; x < width; x++) {
         const i = (z * width + x) * 4, dest = ((height - 1 - z) * width + x) * 4;
-        const rgba = Array.from(data.slice(i, i + 4), THREE.DataUtils.fromHalfFloat);
+        const rgba = Array.from((data as Uint16Array).slice(i, i + 4), THREE.DataUtils.fromHalfFloat);
         finite &&= rgba.every(Number.isFinite);
         const strength = Math.max(...rgba.slice(0, 3)); peak = Math.max(peak, strength);
         if (strength > 0) litTexels++;
@@ -251,7 +260,7 @@ try {
       }
       ctx.putImageData(img, 0, 0);
       scenes.push({ scene: path, panes: map.panes.length, ms, width, height, bounds: map.bounds, before, after: scene.lamps.length,
-        finite, peak, litTexels, sourceFinite: Array.from(map.source.image.data, THREE.DataUtils.fromHalfFloat).every(Number.isFinite),
+        finite, peak, litTexels, sourceFinite: Array.from(map.source.image.data as Uint16Array, THREE.DataUtils.fromHalfFloat).every(Number.isFinite),
         sourceSize: [map.source.image.width, map.source.image.height], debugPng: canvas.toDataURL('image/png') });
       map.texture.dispose(); map.source.dispose(); scene.staticGeometry.dispose(); scene.dynamicGeometry.dispose();
     }
@@ -260,7 +269,7 @@ try {
   const s = result.synthetic;
   assert.equal(s.indexed, 1, 'Indexed triangles form one pane');
   assert.equal(s.separated, 2, 'Disconnected coplanar windows stay separate');
-  for (const key of ['fixture', 'upward', 'tiny', 'blocked']) assert.equal(s[key], 0, `${key} does not emit a window pool`);
+  for (const key of ['fixture', 'upward', 'tiny', 'blocked'] as const) assert.equal(s[key], 0, `${key} does not emit a window pool`);
   assert.ok(s.outward[0] > 0.3 && s.outward[0] > s.outward[1] && s.outward[1] > s.outward[2], 'Outward pool preserves warm linear colour');
   assert.equal(s.outward[3], 1, 'Source height survives half-float encoding');
   assert.deepEqual(s.inward, [0, 0, 0, 0], 'Window pools do not cross the inward half-plane');
@@ -295,7 +304,7 @@ try {
     assert.ok(Math.abs(r.sourceZ - Math.max(0.02, -r.recess)) < 0.001, 'Directional source sits outside the facade and never behind the pane');
   }
   await mkdir(output, { recursive: true });
-  await writePng(`${output}/isolated-wall-on.png`, wr.onPng); await writePng(`${output}/isolated-wall-off.png`, wr.offPng);
+  await writePng(`${output}/isolated-wall-on.png`, wr.onPng!); await writePng(`${output}/isolated-wall-off.png`, wr.offPng!);
   delete wr.onPng; delete wr.offPng;
   for (const r of result.scenes) {
     assert.equal(r.before, r.after, `${r.scene}: no lamps added`);
@@ -304,7 +313,7 @@ try {
     assert.deepEqual(r.sourceSize, [r.width, r.height], `${r.scene}: source map uses the light map grid`);
     assert.ok(r.width <= 1024 && r.height <= 1024, `${r.scene}: bounded texture dimensions`);
     if (r.scene === 'village') assert.ok(r.panes > 50 && r.litTexels > 0, 'Village has substantial window coverage');
-    await writePng(`${output}/${r.scene}.png`, r.debugPng); delete r.debugPng;
+    await writePng(`${output}/${r.scene}.png`, r.debugPng!); delete r.debugPng;
     console.log(`${r.scene}: ${r.panes} panes, ${r.width}×${r.height}, ${r.ms.toFixed(1)} ms, ${r.before} lamps unchanged`);
   }
   assert.deepEqual(errors, [], 'No browser or shader errors');

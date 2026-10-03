@@ -103,9 +103,14 @@ Passes 0–1 draw their own static world without the pond, leaf-clump trees and 
 
 ## Checks and tools
 
-All tools drive a headless browser (`tools/lib.mjs`) and need the dev server. They use the pinned Chromium from
+All tools drive a headless browser (`tools/lib.ts`) and need the dev server. They use the pinned Chromium from
 `npm run browser:install`; on macOS without it they fall back to the installed Google Chrome. `CHROME_PATH` and `DEMO_URL` override
 the browser and the server.
+
+The tools are TypeScript that Node runs as is, by stripping the types (Node 22.18 or later), so there is no build step.
+`npm run typecheck` checks them with `tools/tsconfig.json`; the code they run in the page gets the app's own types. Node
+only strips types, so the tools can't use enums, namespaces, constructor parameter properties or `<T>value` casts (write
+`value as T`).
 
 `GL_BACKEND` picks how the browser renders WebGL:
 - `swiftshader`: on the CPU. It's the default on macOS, where headless Chrome has no GPU.
@@ -116,31 +121,31 @@ A tool fails rather than quietly fall back to the CPU when a GPU backend is chos
 
 | Command | Checks |
 | --- | --- |
-| `npm run golden` | **Golden images** (`tools/golden.mjs`): 37 fixed views with a frozen clock, compared pixel for pixel with the approved images (tracked, so a PR shows reviewers every view it changes). The output is only identical on the same platform, CPU architecture, backend, GPU and browser, so each combination has its own set, `golden/<set>/`; the run prints which one it uses, with the browser version. Sets made with the pinned Chromium have no browser suffix (e.g. `linux-x64-vulkan-amd-radeon-rx-570`); any other browser adds `-chrome`. `darwin-arm64-swiftshader-chrome` came from an M4 MacBook Air's installed Google Chrome, version not recorded; running `npm run browser:install` on that Mac switches it to a new set, `darwin-arm64-swiftshader`. Any difference fails and writes the new image to `golden/diff/<set>/` (git-ignored). A new machine creates its set with `golden:update` from a known-good commit. A Chrome or graphics driver update can also change the output: if many shots fail after one, check the diffs and regenerate the set from a known-good commit. A deliberate visual change updates every set the team uses, so the PR shows each changed view on each set. Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update` on the work's branch, never directly on `main`: new baselines reach `main` only through a PR, where the reviewer sees each changed view. `node tools/golden.mjs pass3` runs a subset. |
+| `npm run golden` | **Golden images** (`tools/golden.ts`): 37 fixed views with a frozen clock, compared pixel for pixel with the approved images (tracked, so a PR shows reviewers every view it changes). The output is only identical on the same platform, CPU architecture, backend, GPU and browser, so each combination has its own set, `golden/<set>/`; the run prints which one it uses, with the browser version. Sets made with the pinned Chromium have no browser suffix (e.g. `linux-x64-vulkan-amd-radeon-rx-570`); any other browser adds `-chrome`. `darwin-arm64-swiftshader-chrome` came from an M4 MacBook Air's installed Google Chrome, version not recorded; running `npm run browser:install` on that Mac switches it to a new set, `darwin-arm64-swiftshader`. Any difference fails and writes the new image to `golden/diff/<set>/` (git-ignored). A new machine creates its set with `golden:update` from a known-good commit. A Chrome or graphics driver update can also change the output: if many shots fail after one, check the diffs and regenerate the set from a known-good commit. A deliberate visual change updates every set the team uses, so the PR shows each changed view on each set. Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update` on the work's branch, never directly on `main`: new baselines reach `main` only through a PR, where the reviewer sees each changed view. `node tools/golden.ts pass3` runs a subset. |
 | `npm run lamp-shadow-check` | Lamp shadow atlas: enclosed shells, back-facing panels, fixture clearance, and fitting small device limits (2048 and 512 px) with smaller faces. |
 | `npm run moving-shadow-check` | Sun-shadow mask on rigid moving parts (`move_spin_`/`move_sway_`): a moving panel at rest, spun 90 degrees and mid-swing gets exactly the mask of the same panel as static geometry at that pose, over striped ground (no borrowing the background) and under a roof (no "always sunlit"), without painting over static geometry in front of it. |
 | `npm run village-check` | Lantern Row: canopies clear every building, backdrop house, street, quay and the water, and buildings don't overlap or stand in the water (`layoutProblems` in `layout.ts`); models tied to layout features follow them; the mill wheel turns across the canal's flow in the main channel; moving parts spin about their node's local X axis; villager splitting keeps nested meshes single and parent prefixes; a missing or corrupt model fails the build visibly. |
-| `node tools/verify.mjs` | Comparison page: Pass 0 matches its standalone page; modes; ordered wipe dividers; shared camera, sun and resolution; layouts; PNG export sizes; mobile; time of day; animation toggle; no browser or shader errors. |
-| `node tools/check-viewer.mjs` | The viewer page's controls, compare wipe and mobile layout. |
-| `node tools/anim-check.mjs` | The world moves between two clock times and renders identically at the same time. |
-| `node tools/door-strip.mjs [px] [name]` | Sub-pixel flicker contact sheet: the door at 8 tiny camera steps (`out/<name>.png`). |
-| `node tools/shot.mjs <name> "<query>" [WxH]` | Screenshot of `/pass3.html` (`PAGE=index.html` for the comparison page) plus the art resolution and colour count. |
-| `node tools/palette-check.mjs` | Palette quality per scene: worst shift of any input colour, and each merged group whose worst shift or widest input pair is at least `REPORT_THRESHOLD` (default 0.05) (`K`, `MAX_ERROR`). Fails over `MAX_ERROR` (default 0.10). |
-| `node tools/comparison-sheet.mjs` | The passes side by side at 2x (`out/passes.png`), from the captures `verify.mjs` writes. |
+| `node tools/verify.ts` | Comparison page: Pass 0 matches its standalone page; modes; ordered wipe dividers; shared camera, sun and resolution; layouts; PNG export sizes; mobile; time of day; animation toggle; no browser or shader errors. |
+| `node tools/check-viewer.ts` | The viewer page's controls, compare wipe and mobile layout. |
+| `node tools/anim-check.ts` | The world moves between two clock times and renders identically at the same time. |
+| `node tools/door-strip.ts [px] [name]` | Sub-pixel flicker contact sheet: the door at 8 tiny camera steps (`out/<name>.png`). |
+| `node tools/shot.ts <name> "<query>" [WxH]` | Screenshot of `/pass3.html` (`PAGE=index.html` for the comparison page) plus the art resolution and colour count. |
+| `node tools/palette-check.ts` | Palette quality per scene: worst shift of any input colour, and each merged group whose worst shift or widest input pair is at least `REPORT_THRESHOLD` (default 0.05) (`K`, `MAX_ERROR`). Fails over `MAX_ERROR` (default 0.10). |
+| `node tools/comparison-sheet.ts` | The passes side by side at 2x (`out/passes.png`), from the captures `verify.ts` writes. |
 
 `out/` holds scratch captures and is git-ignored; it is safe to empty. The approved golden images are tracked in `golden/`.
 
 ## Videos
 
-`tools/timelapse.mjs` renders a scene into an MP4 (or a still PNG) in `out/timelapse/`, with ffmpeg (`/opt/homebrew/bin/ffmpeg`,
-or set `FFMPEG_PATH`; `tools/video-check.mjs` also takes `FFPROBE_PATH`, by default the ffprobe next to ffmpeg). It needs a dev server.
+`tools/timelapse.ts` renders a scene into an MP4 (or a still PNG) in `out/timelapse/`, with ffmpeg (`/opt/homebrew/bin/ffmpeg`,
+or set `FFMPEG_PATH`; `tools/video-check.ts` also takes `FFPROBE_PATH`, by default the ffprobe next to ffmpeg). It needs a dev server.
 
 ```sh
-node tools/timelapse.mjs day-to-night                       # a ready-made clip (see below)
-node tools/timelapse.mjs square-orbit --res 4k --fps 60 --workers 3
-node tools/timelapse.mjs --view mill --hour 8..22 --seconds 12   # ad hoc: fixed camera, hour swept 8:00 -> 22:00
-node tools/timelapse.mjs --still --view overview --hour 21  # one PNG
-node tools/timelapse.mjs my-clip.json --keep-frames         # your own clip file; also keep the PNG frames
+node tools/timelapse.ts day-to-night                       # a ready-made clip (see below)
+node tools/timelapse.ts square-orbit --res 4k --fps 60 --workers 3
+node tools/timelapse.ts --view mill --hour 8..22 --seconds 12   # ad hoc: fixed camera, hour swept 8:00 -> 22:00
+node tools/timelapse.ts --still --view overview --hour 21  # one PNG
+node tools/timelapse.ts my-clip.json --keep-frames         # your own clip file; also keep the PNG frames
 ```
 
 - **Deterministic.** Frame `i` is drawn at clock time `time + i / fps` and read straight off the canvas, so nothing is recorded in
@@ -149,7 +154,7 @@ node tools/timelapse.mjs my-clip.json --keep-frames         # your own clip file
 - **Pixel-art friendly.** The scene is drawn at the art resolution (one canvas pixel per art pixel) and scaled up by a whole number
   with nearest-neighbour scaling. `--res 1080p` (default) or `4k` with `--scale` 4 or 8 respectively, i.e. 480x270 art; e.g.
   `--res 4k --scale 6` is 640x360 art, so more detail. `--res WxH` takes any size that is a multiple of `--scale`. `--fps` is 30 by default.
-- **Clips.** The presets live in `tools/timelapse-presets.mjs`: `day-to-night` (the overview from 8:00 to 22:00), `square-orbit` (a
+- **Clips.** The presets live in `tools/timelapse-presets.ts`: `day-to-night` (the overview from 8:00 to 22:00), `square-orbit` (a
   slow turn round the market square) and `canal-fly` (along the canal, under the bridges). A clip file has the same shape:
 
   ```json
@@ -171,7 +176,7 @@ node tools/timelapse.mjs my-clip.json --keep-frames         # your own clip file
   from the page's own view. On the requested scene, an unknown view is still an error.
 - **Output.** `out/timelapse/<name>.mp4` (H.264, BT.709, `--crf`, default 12), `<name>.camera.json` (the camera, hour and clock of
   every frame, and the driver used) and, with `--keep-frames`, the upscaled frames in `<name>-frames/`.
-- **Checking a video.** `node tools/video-check.mjs out/timelapse/<name>.mp4 --log out/timelapse/<name>.camera.json
+- **Checking a video.** `node tools/video-check.ts out/timelapse/<name>.mp4 --log out/timelapse/<name>.camera.json
   [--reference out/timelapse/<name>-frames/%05d.png] [--static x,y,w,h]` decodes every frame and reports, as JSON, the frame count
   and timing against the log, repeated frames, camera steps and acceleration spikes, pixels that vary inside one art pixel's block
   (smoothing), colour error against the kept PNG frames, and flicker in a still region (art pixels; fixed camera and hour only).
@@ -193,7 +198,7 @@ Both pages: `hour` (0–24, default 17.5), `time` (freeze the animation clock, e
 Geometry thinner than a screen pixel flickers as the camera moves, because whether a pixel centre lands on it changes every frame. The door's
 five plank grooves are 0.015 units wide (about 40% of a pixel at default zoom), so in Pass 3 they are not meshes: the post shader draws them at
 fixed world positions (`DOOR_GROOVES` in `src/scenes/cookie-co/layout.ts`) on the surface flagged `GROOVED`, always exactly one screen pixel
-wide. `node tools/door-strip.mjs` shows they hold steady. Passes 0–1 still flicker. This is a workaround; proper fixes are on the roadmap.
+wide. `node tools/door-strip.ts` shows they hold steady. Passes 0–1 still flicker. This is a workaround; proper fixes are on the roadmap.
 
 ## Assets
 

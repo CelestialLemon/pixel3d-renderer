@@ -5,7 +5,7 @@ Goal: turn this experiment into a reusable renderer module that several games ca
 **Done in the 2026-10-01 restructure:** the renderer core (`src/renderer/`) is split from scene content (`src/scenes/`) and the demo pages
 (`src/app/`). Nothing scene-specific lives in the renderer any more: lamps, water drip points, door grooves, the shadow area, the chimney
 and every animation anchor are `PixelScene` data or per-vertex attributes. Scenes are registered and selectable (`?scene=`), passes are a
-registry, Passes 0–1 are frozen in `src/reference/`, Pass 2 is archived, and `tools/golden.mjs` gives pixel-exact regression checks.
+registry, Passes 0–1 are frozen in `src/reference/`, Pass 2 is archived, and `tools/golden.ts` gives pixel-exact regression checks.
 The restructure changed no output pixels.
 
 ## 1. Test scenes (in progress)
@@ -15,7 +15,7 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
 1. **Done (2026-10-01): the test-chart scene** (`?scene=test-chart`, `src/scenes/test-chart/`). Six bays on a 1 m checker: thin
    features (poles, rails, ladder, wires, fence, mullions at 0.02–0.16 widths), curves, ink and creases, AO and self-shadowing, palette
    stress, and terraces with a lit room and seven coloured lamps. Each bay is a camera preset (`?view=thin|curves|ink|ao|palette|lamps`),
-   and `tools/golden.mjs` has 11 `chart-*` shots. **What it showed on first run:**
+   and `tools/golden.ts` has 11 `chart-*` shots. **What it showed on first run:**
    - Rails and poles under ~0.04 render as broken dotted lines (the sub-pixel problem of section 2, now measurable per width).
      **Fixed 2026-10-01** by the thin-feature resolve (section 2).
    - All six near-identical colour pairs collapse to one palette colour each, and the two darkest greys merge.
@@ -23,7 +23,7 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
      colour on a small object is no longer absorbed into a clearly different one, and the default size is now 80 colours
      (`DEFAULT_PALETTE_SIZE`). At 80 the darkest greys and the other distinct colours (dark teal, navy/purple, pink/peach,
      mint/cream, white/off-white) separate; the six near-identical pairs and the two ground checker tiles still merge, because
-     they are the closest colours in the chart. `tools/palette-check.mjs` reports each scene's worst colour shift;
+     they are the closest colours in the chart. `tools/palette-check.ts` reports each scene's worst colour shift;
      `?compare=palette&left-k=56&k=80` wipes two palettes against each other.
    - Lamp light ignores occlusion: the room's lamp makes a dithered pool on top of its own roof and speckles outside its walls.
      **Fixed 2026-10-01:** per-lamp distance cube maps (`src/renderer/lampShadows.ts`), with `Lamp.clearance` for the lamp's own fixture.
@@ -79,7 +79,7 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    and upright fluid (spills, waterfalls) falls down its own slope and froths. A top-down map baked once (`fluidMap.ts`) deflects the
    current round piers, hulls and banks, slows it at the edges, and holds turbulence from sources, wakes and falls. The village canal
    flows with the mill wheel, the basin and pond lie still, the fountain spills; `?scene=fluids` shows every preset side by side.
-   `tools/water-check.mjs` checks the map, the mirror's projected position, rough reflections, misses and the flow direction.
+   `tools/water-check.ts` checks the map, the mirror's projected position, rough reflections, misses and the flow direction.
 
 ## 2. Sub-pixel stability (found 2026-10-01)
 
@@ -91,7 +91,7 @@ always show it, never show it, or show it sometimes (flicker).
 
 **What was done so far (a workaround, not a fix).** The groove meshes are skipped and the post shader draws grooves at fixed world positions
 on surfaces flagged `GROOVED`, always exactly one screen pixel wide. The positions are now scene data (`PixelScene.grooves`), but only one
-groove set per scene is supported. Passes 0–1 are frozen and still flicker. `node tools/door-strip.mjs <px> <name>` shows 8 tiny camera steps side by side.
+groove set per scene is supported. Passes 0–1 are frozen and still flicker. `node tools/door-strip.ts <px> <name>` shows 8 tiny camera steps side by side.
 
 **Proper fixes to build and measure.** Option 1 is done and is the default (see `docs/THIN_FEATURES.md`, measured with
 `npm run thin-check`). The others are not built yet:
@@ -107,7 +107,7 @@ groove set per scene is supported. Passes 0–1 are frozen and still flicker. `n
    removes it for static geometry. Moving objects still shimmer unless their positions are snapped to the pixel grid. The camera already
    snaps its *target* to the pixel grid, which does not help during a continuous rotation.
 4. **Asset rules plus an automated check.** Pixel scale is a fixed design constant in a game, so assets can have a minimum feature size.
-   Generalise `tools/door-strip.mjs` into a test that renders every asset (the test chart first) at many sub-pixel camera offsets and fails
+   Generalise `tools/door-strip.ts` into a test that renders every asset (the test chart first) at many sub-pixel camera offsets and fails
    on pixels that come and go.
 5. **Replace shader-drawn detail with authored data.** Plank patterns and similar should be material/texture data aligned to the pixel grid
    (a detail or ID channel), not a list of positions in a uniform.
@@ -128,7 +128,7 @@ groove set per scene is supported. Passes 0–1 are frozen and still flicker. `n
 
 ## 4. Performance and fairness
 
-- **Checks on a real GPU (done 2026-10-03).** On Linux the tools render on the GPU through ANGLE Vulkan (`GL_BACKEND`, `tools/lib.mjs`).
+- **Checks on a real GPU (done 2026-10-03).** On Linux the tools render on the GPU through ANGLE Vulkan (`GL_BACKEND`, `tools/lib.ts`).
   The golden run takes 1m00s on a Radeon RX 570, against 8m50s on SwiftShader on the same machine (Ryzen 5 1600) and 4m on a
   MacBook Air. The GPU output is byte-identical from run to run, so each machine keeps a pixel-exact golden set of its own.
 - **Profile on a real GPU.** Frame times have only been measured in headless Chrome on SwiftShader (software rendering). Pass 3 re-rasterises the G-buffer every

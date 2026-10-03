@@ -8,7 +8,10 @@
 // Requires the dev server, like the other checks.
 //   npm run village-check
 import assert from 'node:assert/strict';
-import { BASE, launch, newPage, open } from './lib.mjs';
+import type { HTTPRequest } from 'puppeteer-core';
+import type { Mesh } from 'three';
+import type { Placement } from '../src/scenes/village/models.ts';
+import { BASE, launch, newPage, open } from './lib.ts';
 
 const browser = await launch();
 try {
@@ -19,7 +22,7 @@ try {
     const L = await import('/src/scenes/village/layout.ts');
     const M = await import('/src/scenes/village/models.ts');
     const { GeometryCollector, FluidCollector, collectGltf, THIN_MARK } = await import('/src/renderer/index.ts');
-    const find = (id) => M.PROPS.filter((p) => p.id === id);
+    const find = (id: string) => M.PROPS.filter((p) => p.id === id);
 
     // A stand-in for the villagers model: figure 0 is a body with a badge mesh parented to it; figure 1 is a
     // multi-material node `thin_rope` (a Group whose primitives carry plain names), the way GLTFLoader builds one.
@@ -45,7 +48,7 @@ try {
     collectGltf(placedWheel, ws, wd, M.villageRule(undefined, true));
     const wg = wd.build();
     // The placed watermill: its wheel turns across the canal's flow (axle perpendicular to x) and dips into the main channel.
-    const millPlace = M.PLACEMENTS.find((p) => p.id === 'watermill');
+    const millPlace = M.PLACEMENTS.find((p) => p.id === 'watermill')!;
     const { loadGltf } = await import('/src/renderer/index.ts');
     const mill = (await loadGltf('/village/watermill.glb')).clone();
     mill.position.set(millPlace.x, L.groundY(millPlace.x, millPlace.z), millPlace.z); mill.rotation.y = L.facingAngle(millPlace.front);
@@ -91,23 +94,23 @@ try {
       inWater: M.PROPS.filter((p) => /boat|barge/.test(p.id)).map((p) => L.inWater(p.x, p.z)),
       ripplesInWater: L.CANAL_RIPPLES.map(([x, z]) => L.inWater(x, z) || Math.hypot(x - L.POND.x, z - L.POND.z) < L.POND.r),
       // Every mesh in the figure, nested ones included: a recursive copy would show the badge twice.
-      figure0: (() => { const n = []; figures[0].traverse((m) => m.isMesh && n.push(m.name)); return n; })(),
+      figure0: (() => { const n: string[] = []; figures[0].traverse((m) => (m as Mesh).isMesh && n.push(m.name)); return n; })(),
       figure1: figures[1].children.map((m) => m.name),
       badgeWorld: badgeWorld.toArray(), ropeFlags: flags, THIN_MARK, spin, millWheel, MODE: (await import('/src/renderer/index.ts')).MODE,
     };
   });
 
   assert.deepEqual(r.problems, [], `Layout problems:\n  ${r.problems.join('\n  ')}`);
-  const near = (a, b, label) => assert.ok(Math.abs(a - b) < 1e-9, `${label}: ${a} != ${b}`);
+  const near = (a: number, b: number, label: string) => assert.ok(Math.abs(a - b) < 1e-9, `${label}: ${a} != ${b}`);
   for (const [label, model, at] of [['bridge', r.bridge, r.BRIDGE], ['footbridge', r.footbridge, r.FOOTBRIDGE], ['jetty', r.jetty, r.JETTY],
-    ['fountain', r.fountain, r.FOUNTAIN], ['statue', r.statue, r.STATUE]]) {
+    ['fountain', r.fountain, r.FOUNTAIN], ['statue', r.statue, r.STATUE]] as [string, Placement[], { x: number; z: number }][]) {
     assert.equal(model.length, 1, `one ${label}`);
     near(model[0].x, at.x, `${label} x`); near(model[0].z, at.z, `${label} z`);
   }
   near(r.BRIDGE.z, (r.CANAL.z0 + r.CANAL.z1) / 2, 'bridge spans the middle of the canal');
   near(r.FOOTBRIDGE.z, (r.CANAL.z0 + r.CANAL.z1) / 2, 'footbridge spans the middle of the canal');
   near(r.JETTY.z, r.CANAL.z1, 'jetty starts at the south quay edge');
-  for (const b of r.boats) near(b.y, r.CANAL.waterY, `${b.id} floats on the water`);
+  for (const b of r.boats) near(b.y!, r.CANAL.waterY, `${b.id} floats on the water`);
   assert.ok(r.inWater.every(Boolean), 'every boat is on the water');
   for (const v of r.villagers.slice(0, 2)) {
     assert.ok(Math.abs(v.x - r.STATUE.x) > 1.1 || Math.abs(v.z - r.STATUE.z) > 1.1, 'statue villagers stand off the plinth');
@@ -135,9 +138,9 @@ try {
 
   // Loading: a missing and a corrupt model must each stop the build with a visible failure.
   for (const [label, respond] of [
-    ['missing', (req) => req.respond({ status: 404, body: 'not found' })],
-    ['corrupt', (req) => req.respond({ status: 200, contentType: 'model/gltf-binary', body: Buffer.from('glTF but not really') })],
-  ]) {
+    ['missing', (req: HTTPRequest) => req.respond({ status: 404, body: 'not found' })],
+    ['corrupt', (req: HTTPRequest) => req.respond({ status: 200, contentType: 'model/gltf-binary', body: Buffer.from('glTF but not really') })],
+  ] as const) {
     const { page: p } = await newPage(browser, { width: 64, height: 64 });
     await p.setRequestInterception(true);
     p.on('request', (req) => (req.url().endsWith('/village/house_A.glb') ? respond(req) : req.continue()));

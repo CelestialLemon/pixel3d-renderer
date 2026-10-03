@@ -3,7 +3,7 @@
 // Requires the dev server like the other checks.
 //   npm run resolve-check  (DEMO_URL / CHROME_PATH to override)
 import assert from 'node:assert/strict';
-import { launch, newPage, open } from './lib.mjs';
+import { launch, newPage, open } from './lib.ts';
 
 const browser = await launch();
 try {
@@ -16,13 +16,14 @@ try {
     const renderer = new THREE.WebGLRenderer({ canvas: document.createElement('canvas') });
     const TEXEL = 0.075, D0 = 10;
     // Camera basis: right +x, up +y, forward +z. Depth is measured along forward.
-    const texture = (rows) => {
+    type Sample = { albedo: number[]; normal: number[]; depth: number };
+    const texture = (rows: number[][]) => {
       const t = new THREE.DataTexture(new Float32Array(rows.flat()), 3, 3, THREE.RGBAFormat, THREE.FloatType);
       t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t;
     };
     // sample(sx, sy) -> { albedo: [r, g, b, a], normal: [x, y, z], depth }; sub-sample offsets are (s - 1) / 3 art pixels.
-    const resolve = (sample) => {
-      const albedo = [], normal = [];
+    const resolve = (sample: (sx: number, sy: number) => Sample) => {
+      const albedo: number[][] = [], normal: number[][] = [];
       for (let sy = 0; sy < 3; sy++) for (let sx = 0; sx < 3; sx++) {
         const s = sample(sx, sy); albedo.push(s.albedo); normal.push([...s.normal, s.depth]);
       }
@@ -45,7 +46,7 @@ try {
       return { albedo: Array.from(a), depth: n[3] };
     };
     // A plane through depth D0 at the pixel centre with normal n: its depth at a sub-sample (exact, no clamping).
-    const plane = (n, colour) => (sx, sy) => ({
+    const plane = (n: number[], colour: number[]) => (sx: number, sy: number): Sample => ({
       albedo: [...colour, 1], normal: n,
       depth: D0 - (n[0] * (sx - 1) / 3 + n[1] * (sy - 1) / 3) * TEXEL / n[2],
     });
@@ -54,7 +55,7 @@ try {
     const edgeOn = [Math.sqrt(1 - 1e-6), 0, -1e-3];
     // Middle column: a different, nearer, non-thin surface (3 samples). The grazing plane covers the other 6 samples,
     // so it is the majority and its emitted sample is off-centre.
-    const withNearColumn = (n) => { const p = plane(n, A); return (sx, sy) => sx === 1 ? { albedo: [...B, 1], normal: [0, 0, -1], depth: D0 - 1 } : p(sx, sy); };
+    const withNearColumn = (n: number[]) => { const p = plane(n, A); return (sx: number, sy: number): Sample => sx === 1 ? { albedo: [...B, 1], normal: [0, 0, -1], depth: D0 - 1 } : p(sx, sy); };
     try {
       return {
         grazing: resolve(withNearColumn(grazing)),
@@ -66,7 +67,7 @@ try {
     } finally { renderer.dispose(); }
   });
 
-  const isA = (r, label) => assert.ok(r.albedo.slice(0, 3).every((v, i) => Math.abs(v - cases.A[i]) < 1e-4), `${label}: expected the 6-sample plane to win, got albedo ${r.albedo}`);
+  const isA = (r: { albedo: number[] }, label: string) => assert.ok(r.albedo.slice(0, 3).every((v, i) => Math.abs(v - cases.A[i]) < 1e-4), `${label}: expected the 6-sample plane to win, got albedo ${r.albedo}`);
   isA(cases.grazing, 'grazing plane');
   assert.ok(Math.abs(cases.grazing.depth - cases.D0) < 1e-3, `grazing plane: centre depth ${cases.grazing.depth}, expected ${cases.D0}`);
   isA(cases.flat, 'flat plane');
