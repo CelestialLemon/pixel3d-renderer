@@ -2,7 +2,9 @@
 // node tools/video-check.ts out/timelapse/overview.mp4 [--log file.camera.json]
 //   [--art 480x270] [--tolerance 12] [--static x,y,w,h] [--reference frames/%05d.png]
 // --static uses ART pixels and is valid only for a fixed camera/hour and an unanimated region.
-// --reference is an ffmpeg image sequence of original PNGs (art-size or nearest-upscaled; starting at 0 or 1).
+// --reference is an ffmpeg image sequence of original PNGs (art-size or nearest-upscaled; starting at 0 or 1). A capture
+// that moved its frames by the camera snap (a log with a per-frame `move`) is measured on its moved art grid, so compare it
+// with that run's own --keep-frames.
 import { spawn, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -11,7 +13,7 @@ const FFMPEG = process.env.FFMPEG_PATH || '/opt/homebrew/bin/ffmpeg';
 const FFPROBE = process.env.FFPROBE_PATH || join(dirname(FFMPEG), 'ffprobe');
 
 // The fields read from a capture's camera log (tools/timelapse.ts) and from ffprobe's JSON; both are checked as they are read.
-interface CameraLog { fps: number; art?: number[]; output?: number[]; scale?: number; frames: { i: number; time: number; hour: number; view?: Record<string, number> }[] }
+interface CameraLog { fps: number; art?: number[]; output?: number[]; scale?: number; frames: { i: number; time: number; hour: number; view?: Record<string, number>; move?: { x: number; y: number } }[] }
 interface Probe { streams?: { width: number; height: number; avg_frame_rate: string; pix_fmt: string }[]; frames?: { best_effort_timestamp_time: string }[] }
 interface CameraStats { maxStep: number; maxSecondDifference: number; meanSecondDifference: number; spikes?: { i: number; value: number }[] }
 
@@ -90,33 +92,45 @@ async function main() {
     roi = opts.static.split(',').map(Number);
     if (roi.length !== 4 || roi.some(n => !Number.isInteger(n)) || roi[0] < 0 || roi[1] < 0 || roi[2] < 1 || roi[3] < 1 || roi[0] + roi[2] > aw || roi[1] + roi[3] > ah) throw new Error('Static region must fit within the art dimensions');
   }
-  const ref = opts.reference ? rgbFrames(['-framerate', String(fps), '-start_number', '0', '-i', opts.reference, '-vf', `scale=${aw}:${ah}:flags=neighbor`, '-vsync', '0'], aw * ah * 3)[Symbol.asyncIterator]() : null;
+  // Where each frame's art grid starts, in output pixels: tools/timelapse.ts logs how far it moved each upscaled frame to
+  // follow the camera snap. Art pixel (x, y) covers the block from (x * scale + dx, y * scale + dy); a block may run off the
+  // frame by up to half a block.
+  const gridShift = (i: number) => {
+    const m = log?.frames[i]?.move;
+    if (m && !(Number.isInteger(m.x) && Number.isInteger(m.y))) throw new Error(`Camera log frame ${i} has a non-integer move`);
+    return { dx: m?.x ?? 0, dy: m?.y ?? 0 };
+  };
+  // Decoded at output size (an art-size reference is upscaled), so it is sampled at the same pixels as the video.
+  const ref = opts.reference ? rgbFrames(['-framerate', String(fps), '-start_number', '0', '-i', opts.reference, '-vf', `scale=${w}:${h}:flags=neighbor`, '-vsync', '0'], w * h * 3)[Symbol.asyncIterator]() : null;
   let count = 0, previous: Buffer | undefined, gridBad = 0, gridSamples = 0, refBad = 0, refSamples = 0, refError = 0, flicker = 0, flickerSamples = 0;
   const diffs: { i: number; changedFraction: number; meanAbsoluteDifference: number }[] = [], duplicates: number[] = [], gridByFrame: number[] = [];
   try {
     for await (const frame of rgbFrames(['-i', file, '-map', '0:v:0', '-vsync', '0'], w * h * 3)) {
       const source = ref ? await ref.next() : null;
       if (source?.done) throw new Error(`Reference sequence ends before video frame ${count}`);
-      const centers = Buffer.allocUnsafe(aw * ah * 3);
-      let bad = 0;
+      const centers = Buffer.allocUnsafe(aw * ah * 3), { dx, dy } = gridShift(count);
+      const clampX = (v: number) => Math.min(Math.max(v, 0), w - 1), clampY = (v: number) => Math.min(Math.max(v, 0), h - 1);
+      let bad = 0, samples = 0;
       for (let y = 0; y < ah; y++) for (let x = 0; x < aw; x++) {
-        const center = ((y * scale + Math.floor(scale / 2)) * w + x * scale + Math.floor(scale / 2)) * 3;
+        const x0 = x * scale + dx, y0 = y * scale + dy;
+        const center = (clampY(y0 + Math.floor(scale / 2)) * w + clampX(x0 + Math.floor(scale / 2))) * 3;
         const c = (y * aw + x) * 3;
         centers[c] = frame[center]; centers[c + 1] = frame[center + 1]; centers[c + 2] = frame[center + 2];
         if (source) {
           let delta = 0;
-          for (let k = 0; k < 3; k++) { const d = Math.abs(frame[center + k] - source.value[c + k]); delta = Math.max(delta, d); refError += d; }
+          for (let k = 0; k < 3; k++) { const d = Math.abs(frame[center + k] - source.value[center + k]); delta = Math.max(delta, d); refError += d; }
           if (delta > tolerance) refBad++;
           refSamples++;
         }
         // Any within-block variation is introduced after the art render: interpolation,
         // chroma resampling or codec ringing. A lossy encode usually has small variations.
-        for (let dy = 0; dy < scale; dy++) for (let dx = 0; dx < scale; dx++) {
-          const offset = ((y * scale + dy) * w + x * scale + dx) * 3;
+        for (let py = Math.max(y0, 0); py < Math.min(y0 + scale, h); py++) for (let px = Math.max(x0, 0); px < Math.min(x0 + scale, w); px++) {
+          const offset = (py * w + px) * 3;
           if (Math.max(Math.abs(frame[offset] - frame[center]), Math.abs(frame[offset + 1] - frame[center + 1]), Math.abs(frame[offset + 2] - frame[center + 2])) > tolerance) bad++;
+          samples++;
         }
       }
-      gridBad += bad; gridSamples += w * h; gridByFrame.push(rounded(bad / (w * h)));
+      gridBad += bad; gridSamples += samples; gridByFrame.push(rounded(bad / samples));
       if (previous) {
         let changed = 0, sum = 0;
         for (let i = 0; i < centers.length; i += 3) {

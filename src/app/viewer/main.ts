@@ -181,6 +181,8 @@ async function main() {
       if (frame.hour !== undefined) { hour = frame.hour; applyLook(); }
       if (frame.view) Object.assign(orbit.target, Object.assign(orbit.view, frame.view));
       dirty = true; render();
+      // Captures can restore the requested camera after upscaling without moving the art-pixel shading grid.
+      return { x: p3.snapShift.x, y: p3.snapShift.y };
     },
   };
   (window as any).app3 = app3;
