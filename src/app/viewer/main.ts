@@ -171,10 +171,10 @@ async function main() {
     if (left()) { const w = Math.round(out.width * split / 100); if (w > 0) ctx.drawImage($<HTMLCanvasElement>(compare === 'palette' ? 'pal-view' : 'p1-view'), 0, 0, w, out.height, 0, 0, w, out.height); }
     const a = document.createElement('a'); a.download = `${scene.id}-pass3-${hourLabel(hour).replace(':', '')}.png`; a.href = out.toDataURL('image/png'); a.click();
   };
-  (window as any).app3 = {
+  const app3 = {
     p3, get p1() { return p1; }, get pOther() { return pOther; }, settings, orbit, scene, pixelScene, render, redraw: () => (dirty = true), get hour() { return hour; },
     setHour: (h: number) => { hour = h; applyLook(); }, setCompare, setSplit,
-    // Deterministic frame for tools/timelapse.mjs: stops the live loop for good, then draws exactly this clock time,
+    // Deterministic frame for tools/timelapse.ts: stops the live loop for good, then draws exactly this clock time,
     // hour and camera (radians, as in `orbit.view`). The caller reads the canvas afterwards.
     capture: (frame: { time: number; hour?: number; view?: Partial<typeof orbit.view> }) => {
       capturing = true; time = frame.time;
@@ -183,6 +183,7 @@ async function main() {
       dirty = true; render();
     },
   };
+  (window as any).app3 = app3;
 
   applyLook();
   if (compare !== 'off') await setCompare(compare);
@@ -196,5 +197,10 @@ async function main() {
   };
   render(); requestAnimationFrame(frame);
   $('loading').classList.add('done'); (window as any).appReady = true;
+  return app3;
 }
+
+/** The page's `window.app3`, for the tools that drive this page. */
+export type ViewerApp = Awaited<ReturnType<typeof main>>;
+
 main().catch((e) => { console.error(e); $('loading').textContent = 'failed: ' + e.message; });

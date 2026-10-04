@@ -1,8 +1,8 @@
 // Lay the native pass captures side by side at an exact 2x scale (no interpolation), labelled.
-// Run tools/verify.mjs first: it writes out/<pass>-native.png.
-//   node tools/comparison-sheet.mjs   ->  out/passes.png
+// Run tools/verify.ts first: it writes out/<pass>-native.png.
+//   node tools/comparison-sheet.ts   ->  out/passes.png
 import { readFile } from 'node:fs/promises';
-import { launch, writePng } from './lib.mjs';
+import { launch, writePng } from './lib.ts';
 
 const PASSES = [
   ['pass0', 'PASS 0', 'Original renderer, preserved'],
@@ -19,7 +19,7 @@ try {
     const decoded = await Promise.all(images.map(async ({ data }) => { const i = new Image(); i.src = data; await i.decode(); return i; }));
     const w = decoded[0].width * 2, h = decoded[0].height * 2;
     const c = document.createElement('canvas'); c.width = 16 + (w + 16) * images.length; c.height = h + 100;
-    const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = false;
+    const ctx = c.getContext('2d')!; ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#fff9e9'; ctx.fillRect(0, 0, c.width, c.height);
     images.forEach((img, i) => {
       const x = 16 + i * (w + 16);

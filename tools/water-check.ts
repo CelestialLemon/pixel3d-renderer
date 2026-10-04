@@ -1,28 +1,31 @@
 // Fluid map and rendered reflection / flow regressions. Requires the dev server.
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { launch, newPage, open, writePng } from './lib.mjs';
+import type { BufferGeometry, Vector3 } from 'three';
+import type { FluidCollector as Fluids, RGB } from '../src/renderer/index.ts';
+import type { FluidMap } from '../src/renderer/fluidMap.ts';
+import { launch, newPage, open, writePng } from './lib.ts';
 
 // Kept as one browser function so the same probes can run in the collaborative preview during development.
 export async function waterChecks() {
   const T = await import('/node_modules/three/build/three.module.js');
   const { FluidCollector, FLUIDS, GeometryCollector, PixelRenderer, FLAG, buildFluidMap, flip } = await import('/src/renderer/index.ts');
   const { lookAt } = await import('/src/renderer/look.ts');
-  const maps = [], geometries = [];
-  const build = (f, g = new GeometryCollector()) => {
+  const maps: FluidMap[] = [], geometries: BufferGeometry[] = [];
+  const build = (f: Fluids, g = new GeometryCollector()) => {
     const fluid = f.build(), solid = g.build(); geometries.push(fluid.geometry, solid);
     const m = buildFluidMap(fluid, solid); maps.push(m); return m;
   };
-  const pool = (flow = [0, 0], width = 8, depth = 4) => {
+  const pool = (flow: [number, number] = [0, 0], width = 8, depth = 4) => {
     const f = new FluidCollector(); f.add(new T.PlaneGeometry(width, depth).rotateX(-Math.PI / 2), null, FLUIDS.water, flow); return f;
   };
-  const decoded = (m) => Array.from(m.texture.image.data, (v) => T.DataUtils.fromHalfFloat(v));
-  const sample = (m, x, z) => {
+  const decoded = (m: FluidMap) => Array.from(m.texture.image.data as Uint16Array, (v) => T.DataUtils.fromHalfFloat(v));
+  const sample = (m: FluidMap, x: number, z: number) => {
     const { width, height, data } = m.texture.image, [x0, z0, x1, z1] = m.bounds;
     const ix = Math.max(0, Math.min(width - 1, Math.floor((x - x0) / (x1 - x0) * width)));
     const iz = Math.max(0, Math.min(height - 1, Math.floor((z - z0) / (z1 - z0) * height)));
     const i = iz * width + ix;
-    return { rgba: Array.from(data.slice(i * 4, i * 4 + 4), (v) => T.DataUtils.fromHalfFloat(v)), height: m.height.image.data[i] };
+    return { rgba: Array.from((data as Uint16Array).slice(i * 4, i * 4 + 4), (v) => T.DataUtils.fromHalfFloat(v)), height: m.height.image.data[i] };
   };
   const solids = new GeometryCollector();
   solids.add(new T.BoxGeometry(1, 2, 1), null, [.3, .3, .3]);
@@ -54,7 +57,7 @@ export async function waterChecks() {
   }
   const twoCavities = build(pool([1, 0]), twoCavitySolids);
   const nestedSolids = new GeometryCollector();
-  for (const [width, depth, reversed] of [[6, 3.5, false], [4, 2.5, true], [2, 1.5, false], [.8, .8, true]]) {
+  for (const [width, depth, reversed] of [[6, 3.5, false], [4, 2.5, true], [2, 1.5, false], [.8, .8, true]] as [number, number, boolean][]) {
     const g = new T.BoxGeometry(width, 2, depth).toNonIndexed(); if (reversed) flip(g);
     nestedSolids.add(g, null, [.3, .3, .3]); g.dispose();
   }
@@ -99,9 +102,9 @@ export async function waterChecks() {
   highFluid.add(new T.PlaneGeometry(8, 4).rotateX(-Math.PI / 2).translate(0, highY, 0), null, FLUIDS.water, [.75, .25]);
   const high = build(highFluid);
   // Exercise actual texture uploads/sampling without the optional 32-bit float linear extension.
-  const gpuCanvas = document.createElement('canvas'), gl = gpuCanvas.getContext('webgl2');
+  const gpuCanvas = document.createElement('canvas'), gl = gpuCanvas.getContext('webgl2')!;
   const getExtension = gl.getExtension.bind(gl);
-  gl.getExtension = (name) => name === 'OES_texture_float_linear' ? null : getExtension(name);
+  gl.getExtension = (name: string) => name === 'OES_texture_float_linear' ? null : getExtension(name);
   const gpu = new T.WebGLRenderer({ canvas: gpuCanvas, context: gl });
   const target = new T.WebGLRenderTarget(1, 1), quad = new T.PlaneGeometry(2, 2);
   const mat = new T.ShaderMaterial({
@@ -169,7 +172,11 @@ export async function waterChecks() {
 
   const settings = { outlines: false, dither: false, cleanup: false, clouds: false, contacts: false, glow: false, vignette: false };
   const W = 160, H = 160, V = 8;
-  const render = (roughness = 0, az = 0, el = .6, time = 8, flow = [0, 0], withMarker = true, options = {}) => {
+  type Options = { bedY?: number; bedColor?: RGB; markerHeight?: number; markerZ?: number; occluder?: boolean; sheet?: boolean; poolY?: number;
+    reflectivity?: number; clarity?: number; foamAmount?: number; sourceStrength?: number; sourceRings?: boolean; sourceY?: number };
+  // `png` and `pixels` are deleted once used, to keep the result that crosses back to Node small.
+  type Shot = { expected: number[]; bounds: number[]; center: number[]; red: number; outside: number; centerPixel: number[]; png?: string; pixels?: number[] };
+  const render = (roughness = 0, az = 0, el = .6, time = 8, flow: [number, number] = [0, 0], withMarker = true, options: Options = {}): Shot => {
     const s = new GeometryCollector(), f = new FluidCollector();
     s.add(new T.PlaneGeometry(12, 12).rotateX(-Math.PI / 2).translate(0, options.bedY ?? -1, 0), null, options.bedColor ?? [.02, .02, .02]);
     const rotation = new T.Matrix4().makeRotationY(az);
@@ -189,13 +196,13 @@ export async function waterChecks() {
       pr.supersample = 1; pr.resize(W, H); pr.placeCamera(new T.Vector3(), az, el, V); pr.setLook(lookAt(12));
       pr.renderGeometry(time); pr.renderStyle(settings, time);
       const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
-      const ctx = canvas.getContext('2d'); ctx.drawImage(pr.canvas, 0, 0);
+      const ctx = canvas.getContext('2d')!; ctx.drawImage(pr.canvas, 0, 0);
       const pixels = ctx.getImageData(0, 0, W, H).data;
-      const project = (p) => { const q = p.applyMatrix4(rotation).project(pr.camera); return [(q.x + 1) * W / 2, (1 - q.y) * H / 2]; };
+      const project = (p: Vector3) => { const q = p.applyMatrix4(rotation).project(pr.camera); return [(q.x + 1) * W / 2, (1 - q.y) * H / 2]; };
       const expected = project(new T.Vector3(0, -2, markerZ));
       const corners = [-.3, .3].flatMap((x) => [-2 + markerHeight / 2, -2 - markerHeight / 2].map((y) => project(new T.Vector3(x, y, markerZ))));
       const bounds = [Math.min(...corners.map((p) => p[0])), Math.max(...corners.map((p) => p[0])), Math.min(...corners.map((p) => p[1])), Math.max(...corners.map((p) => p[1]))];
-      const red = [];
+      const red: [number, number][] = [];
       for (let y = Math.max(0, Math.floor(bounds[2] - 12)); y <= Math.min(H - 1, Math.ceil(bounds[3] + 12)); y++) for (let x = 0; x < W; x++) {
         const i = (y * W + x) * 4;
         if (pixels[i] > pixels[i + 1] * 1.7 && pixels[i] > pixels[i + 2] * 1.7 && pixels[i] > 60) red.push([x, y]);
@@ -206,7 +213,7 @@ export async function waterChecks() {
         png: canvas.toDataURL('image/png'), pixels: [...pixels] };
     } finally { pr.dispose(); }
   };
-  const reflections = [];
+  const reflections: (Shot & { az: number; el: number })[] = [];
   for (const [az, el] of [[0, .4], [0, .6], [Math.PI / 3, .6], [Math.PI * .75, .85]]) {
     const r = render(0, az, el); delete r.pixels; reflections.push({ az, el, ...r });
   }
@@ -218,8 +225,9 @@ export async function waterChecks() {
   const clear = render(0, 0, .6, 8, [0, 0], false, { reflectivity: 0, clarity: 10, bedColor: [1, .01, .01] });
   const opaque = render(0, 0, .6, 8, [0, 0], false, { reflectivity: 0, clarity: .01, bedColor: [1, .01, .01] });
   const movingA = render(.3, 0, .6, 8, [.5, 0], false), movingB = render(.3, 0, .6, 8.5, [.5, 0], false), movingAgain = render(.3, 0, .6, 8, [.5, 0], false);
-  const diff = (a, b) => a.pixels.filter((v, i) => i % 4 !== 3 && v !== b.pixels[i]).length;
-  const animation = { changed: diff(movingA, movingB), repeat: diff(movingA, movingAgain) };
+  const diff = (a: Shot, b: Shot) => a.pixels!.filter((v, i) => i % 4 !== 3 && v !== b.pixels![i]).length;
+  type Shift = { shift: number; error: number };
+  const animation = { changed: diff(movingA, movingB), repeat: diff(movingA, movingAgain) } as { changed: number; repeat: number; advection: Shift[]; reverse: Shift[] };
   const ringOptions = { reflectivity: 0, sourceStrength: 1 };
   const ringsOn = render(0, 0, .6, 2.5, [0, 0], false, { ...ringOptions, sourceRings: true });
   const ringsOff = render(0, 0, .6, 2.5, [0, 0], false, { ...ringOptions, sourceRings: false });
@@ -233,12 +241,12 @@ export async function waterChecks() {
   const sheetSource = render(0, 0, .6, 2.5, [0, 0], false, { ...sheetOptions, sourceY: 0, sourceStrength: 1 });
   const sourceScope = { wrongHeight: diff(upperControl, upperWrongSource), rightHeight: diff(upperControl, upperRightSource), sheet: diff(sheetControl, sheetSource) };
   for (const r of [upperControl, upperWrongSource, upperRightSource, sheetControl, sheetSource]) delete r.pixels;
-  const advection = (first, second) => {
-    const shifts = [];
+  const advection = (first: Shot, second: Shot) => {
+    const shifts: Shift[] = [];
     for (let shift = -10; shift <= 10; shift++) {
       let error = 0;
       for (let y = 75; y < 125; y++) for (let x = 40; x < 120; x++) for (let c = 0; c < 3; c++) {
-        const a = first.pixels[(y * W + x) * 4 + c], b = second.pixels[(y * W + x + shift) * 4 + c];
+        const a = first.pixels![(y * W + x) * 4 + c], b = second.pixels![(y * W + x + shift) * 4 + c];
         error += (a - b) ** 2;
       }
       shifts.push({ shift, error });
@@ -304,7 +312,7 @@ async function main() {
       assert.ok(r.red > 50, `Mirror visible at az=${r.az}, el=${r.el}`);
       assert.ok(Math.hypot(r.center[0] - r.expected[0], r.center[1] - r.expected[1]) < 2, 'Reflection matches projected virtual marker');
       assert.ok(r.outside / r.red < .1, 'Calm reflection has a sharp boundary');
-      await writePng(`${output}/reflection-${i}.png`, r.png); delete r.png;
+      await writePng(`${output}/reflection-${i}.png`, r.png!); delete r.png;
     }
     assert.ok(result.rough.outside / Math.max(1, result.rough.red) > result.mirror.outside / result.mirror.red + .05, 'Rough surface breaks the mirror boundary');
     assert.ok(result.thin.red >= 8 && Math.hypot(result.thin.center[0] - result.thin.expected[0], result.thin.center[1] - result.thin.expected[1]) < 2,
@@ -320,10 +328,10 @@ async function main() {
     assert.equal(result.sourceScope.sheet, 0, 'Pool sources cannot alter a falling sheet at the same XZ');
     assert.ok(Math.abs(result.animation.advection[0].shift - 5) <= 2, 'Ripple patterns travel downstream at their authored current');
     assert.ok(Math.abs(result.animation.reverse[0].shift + 5) <= 2, 'Reversing the current reverses ripple travel');
-    for (const key of ['rough', 'mirror', 'thin', 'miss', 'occluded', 'foaming', 'noFoam', 'clear', 'opaque', 'ringsOn', 'ringsOff']) { await writePng(`${output}/${key}.png`, result[key].png); delete result[key].png; }
+    for (const key of ['rough', 'mirror', 'thin', 'miss', 'occluded', 'foaming', 'noFoam', 'clear', 'opaque', 'ringsOn', 'ringsOff'] as const) { await writePng(`${output}/${key}.png`, result[key].png!); delete result[key].png; }
     assert.deepEqual(errors, [], 'No browser / shader errors');
     await writeFile(`${output}/stats.json`, JSON.stringify(result, null, 2) + '\n');
     console.log(`PASS: fluid map, mirror projection, rough reflection, SSR miss and deterministic animation. ${output}/`);
   } finally { await browser.close(); }
 }
-if (process.argv[1]?.endsWith('water-check.mjs')) await main();
+if (process.argv[1]?.endsWith('water-check.ts')) await main();

@@ -6,7 +6,7 @@ import { kerb } from './kit';
 
 // Test chart: a calibration ground for the renderer. Six bays, each aimed at one risk, on a 1 m checker
 // (one tile is ~25 art pixels at the default zoom). Built entirely in code, so it is exact and deterministic.
-// Each bay has a camera preset (`?view=<name>`), which tools/golden.mjs uses for its chart shots.
+// Each bay has a camera preset (`?view=<name>`), which tools/golden.ts uses for its chart shots.
 
 /** Bay centres (x, z). Bays span ±3.5 around these. */
 export const BAYS = {

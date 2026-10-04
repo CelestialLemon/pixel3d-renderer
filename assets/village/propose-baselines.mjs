@@ -1,6 +1,6 @@
 // Prepare review images without changing golden/ reference images.
 import assert from 'node:assert/strict';
-import {launch,newPage,open,canvasPng,writePng} from '../../tools/lib.mjs';
+import {launch,newPage,open,canvasPng,writePng} from '../../tools/lib.ts';
 const view='auto=0&clean-ui=1&time=8&px=3';
 const shots=[...[22,17.5].map(hour=>({name:`village-street-hour${hour}`,query:`scene=village&hour=${hour}`})),
   ...['overview','square','canal'].map(view=>({name:`village-${view}`,query:`scene=village&view=${view}&hour=22`}))];

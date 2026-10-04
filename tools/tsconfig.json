@@ -1,0 +1,17 @@
+{
+  // The tools run under Node's type stripping (`node tools/x.ts`), so imports keep their .ts extension and the tools may only
+  // use erasable syntax: no enums, namespaces or constructor parameter properties. (erasableSyntaxOnly would enforce that,
+  // but it also applies to the app sources below, which use parameter properties.) Callbacks passed to page.evaluate run in the browser: hence the DOM lib, and `paths` so the app modules
+  // they import from the dev server (`/src/...`, `/node_modules/three/...`) get the app's own types.
+  "compilerOptions": {
+    "target": "ES2024", "module": "preserve", "moduleResolution": "bundler", "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "strict": true, "skipLibCheck": true, "isolatedModules": true, "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true, "noEmit": true, "types": ["node", "vite/client"],
+    "paths": {
+      "/src/*": ["../src/*"],
+      "/node_modules/three/build/three.module.js": ["../node_modules/@types/three/build/three.module.d.ts"],
+      "/node_modules/three/examples/jsm/*": ["../node_modules/@types/three/examples/jsm/*"]
+    }
+  },
+  "include": ["*.ts"]
+}

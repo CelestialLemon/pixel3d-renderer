@@ -1,8 +1,8 @@
 // Screenshot a demo page and report the art resolution and colour count.
-//   node tools/shot.mjs <name> [query] [WxH] [clip x,y,w,h]          pass3.html (the current renderer)
-//   PAGE=index.html node tools/shot.mjs <name> [query] ...         the comparison page
-// Example: node tools/shot.mjs golden "hour=17.5&clean-ui=1&time=8"   ->  out/golden.png
-import { launch, newPage, BASE } from './lib.mjs';
+//   node tools/shot.ts <name> [query] [WxH] [clip x,y,w,h]          pass3.html (the current renderer)
+//   PAGE=index.html node tools/shot.ts <name> [query] ...         the comparison page
+// Example: node tools/shot.ts golden "hour=17.5&clean-ui=1&time=8"   ->  out/golden.png
+import { launch, newPage, BASE } from './lib.ts';
 
 const [name = 'shot', query = '', size = '1440x900', clipArg = ''] = process.argv.slice(2);
 const pageName = process.env.PAGE || 'pass3.html';
@@ -16,8 +16,8 @@ try {
   const clip = clipArg ? (([x, y, w, h]) => ({ x, y, width: w, height: h }))(clipArg.split(',').map(Number)) : undefined;
   await page.screenshot({ path: `out/${name}.png`, clip });
   const info = await page.evaluate(() => {
-    const c = document.getElementById('p3-view') ?? document.getElementById('pass3-view'), t = document.createElement('canvas'); t.width = c.width; t.height = c.height;
-    const x = t.getContext('2d'); x.drawImage(c, 0, 0); const d = x.getImageData(0, 0, t.width, t.height).data; const set = new Set();
+    const c = (document.getElementById('p3-view') ?? document.getElementById('pass3-view')) as HTMLCanvasElement, t = document.createElement('canvas'); t.width = c.width; t.height = c.height;
+    const x = t.getContext('2d')!; x.drawImage(c, 0, 0); const d = x.getImageData(0, 0, t.width, t.height).data; const set = new Set();
     for (let i = 0; i < d.length; i += 4) set.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
     return { res: `${c.width}x${c.height}`, uniqueColours: set.size, stats: document.getElementById('stats')?.textContent };
   });
