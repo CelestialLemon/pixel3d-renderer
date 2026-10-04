@@ -12,9 +12,15 @@
 //   --fps 30|60 (default 30)  --seconds <s>  --crf <n> (default 12)  --name <name>  --keep-frames  --still
 //   --workers <n>       parallel headless browsers (default 1); the frames are identical whichever worker draws them
 //   --tier hook|legacy|url  force a page driver (normally detected, see below)
+//   --no-subpixel       don't carry the camera's pixel-grid snap into the video (see Sub-pixel camera below)
 // Drivers: `hook` uses app3.capture (this repo since the time-lapse tool). `legacy` drives app3's view, setHour and
 // renderGeometry/renderStyle, which every version of the viewer has had. `url` reloads the page for every frame with the
 // camera, hour and clock in the URL: slow, but it needs nothing from the page beyond its URL parameters.
+// Sub-pixel camera: the renderer snaps the camera to the art-pixel grid so the art doesn't crawl, which on its own leaves a
+// moving camera off by up to half an art pixel, so the picture jumps by nearly a whole one between frames. A video draws a
+// few art pixels of margin all round and moves each upscaled frame by the snap the renderer threw away (in steps of two
+// output pixels, see cropShift), so the art stays on its grid but the picture glides. Only the hook driver reports the
+// snap; the others draw the margin and crop it centred.
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import type { Browser, Page } from 'puppeteer-core';
@@ -27,7 +33,7 @@ const DEG = Math.PI / 180;
 
 // ---- options ----
 const fail = (msg: string): never => { console.error(`timelapse: ${msg}`); process.exit(1); };
-const FLAGS = ['keep-frames', 'still'];
+const FLAGS = ['keep-frames', 'still', 'no-subpixel'];
 const VALUES = ['url', 'page', 'scene', 'view', 'hour', 'time', 'query', 'res', 'scale', 'fps', 'seconds', 'crf', 'name', 'workers', 'tier'];
 const argv = process.argv.slice(2), opts: Record<string, string | undefined> = {}, positional: string[] = [];
 for (let i = 0; i < argv.length; i++) {
@@ -83,6 +89,10 @@ if (!(outW > 0 && outH > 0) || outW % scale || outH % scale) fail(`${outW}x${out
 // H.264 in 4:2:0 needs even dimensions; a still can be any size.
 if (!still && (outW % 2 || outH % 2)) fail(`video size ${outW}x${outH} must be even in both dimensions`);
 const artW = outW / scale, artH = outH / scale;
+// Art pixels drawn beyond each edge, for the sub-pixel crop (which needs half a pixel). A still has no motion to smooth.
+// Four keeps the screen-anchored 4x4 ordered dither in the same phase as an unpadded render.
+const margin = still || opts['no-subpixel'] ? 0 : 4;
+const drawW = artW + 2 * margin, drawH = artH + 2 * margin;
 const frameCount = still ? 1 : Math.max(1, Math.round(clip.seconds * fps));
 const startTime = +(opts.time ?? clip.time ?? 0);
 const workers = Math.max(1, Math.min(+(opts.workers ?? 1) | 0, frameCount));
@@ -180,11 +190,15 @@ function plan(start: Start, presets: Preset[], sceneShown: boolean, pageScene: s
 // ---- page drivers ----
 type View = { az: number; el: number; zoom: number; tx: number; tz: number };
 type Frame = ReturnType<typeof plan>[number];
-const toOrbit = (v: View) => ({ az: v.az * DEG, el: v.el * DEG, size: v.zoom, tx: v.tx, tz: v.tz });
+// The margin widens the view so the art pixel stays the same size: the page's visible height is `zoom`, widened by
+// 1.15 / aspect on a tall canvas (Orbit.viewHeight), spread over the canvas height.
+const viewScale = (w: number, h: number) => Math.max(1, 1.15 / (w / h)) / h;
+const drawZoom = (zoom: number) => zoom * viewScale(artW, artH) / viewScale(drawW, drawH);
+const toOrbit = (v: View) => ({ az: v.az * DEG, el: v.el * DEG, size: drawZoom(v.zoom), tx: v.tx, tz: v.tz });
 
 async function openPage(browser: Browser, url: string) {
   const page = await browser.newPage();
-  await page.setViewport({ width: artW, height: artH, deviceScaleFactor: 1 });
+  await page.setViewport({ width: drawW, height: drawH, deviceScaleFactor: 1 });
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push((e as Error).message));
   await page.goto(url, { waitUntil: 'load', timeout: 180000 });
@@ -208,10 +222,14 @@ const probe = (page: Page) => page.evaluate(() => {
   };
 });
 
-/** Draw one frame and return its pixels as base64 RGBA at art resolution. */
+/**
+ * Draw one frame and return its pixels as base64 RGBA at drawn (art + margin) resolution, and the camera snap in art
+ * pixels: where the unsnapped camera's picture sits relative to the drawn one (x right, y down; zero if not reported).
+ */
 const drawFrame = (page: Page, tier: string, f: Frame) => page.evaluate((tier, f) => {
   const a: any = window.app3;
-  if (tier === 'hook') a.capture({ time: f.time, hour: f.hour, view: f.view });
+  let shift = { x: 0, y: 0 };
+  if (tier === 'hook') shift = a.capture({ time: f.time, hour: f.hour, view: f.view }) ?? shift;
   else if (tier === 'legacy') {
     const o = a.orbit ?? a;
     a.setHour(f.hour);
@@ -226,29 +244,47 @@ const drawFrame = (page: Page, tier: string, f: Frame) => page.evaluate((tier, f
   const bytes = new Uint8Array(x.getImageData(0, 0, c.width, c.height).data.buffer);
   let s = '';
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000) as unknown as number[]);
-  return { w: c.width, h: c.height, data: btoa(s) };
+  return { w: c.width, h: c.height, data: btoa(s), shift };
 }, tier, { ...f, view: tier === 'url' ? null : toOrbit(f.view) });
 
-const urlForFrame = (f: Frame) => pageQuery({ time: f.time, hour: +f.hour.toFixed(4), az: f.view.az, el: f.view.el, zoom: f.view.zoom, tx: f.view.tx, tz: f.view.tz, anim: 1 });
+const urlForFrame = (f: Frame) => pageQuery({ time: f.time, hour: +f.hour.toFixed(4), az: f.view.az, el: f.view.el, zoom: drawZoom(f.view.zoom), tx: f.view.tx, tz: f.view.tz, anim: 1 });
 
-/** RGBA base64 -> RGB buffer, checking the canvas really is art-sized (an old page may ignore ?px=). */
-function toRgb({ w, h, data }: { w: number; h: number; data: string }) {
-  if (w !== artW || h !== artH) fail(`the page drew ${w}x${h}, expected ${artW}x${artH} (does it support ?px=1?)`);
-  const rgba = Buffer.from(data, 'base64'), rgb = Buffer.alloc(w * h * 3);
-  for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) { rgb[j] = rgba[i]; rgb[j + 1] = rgba[i + 1]; rgb[j + 2] = rgba[i + 2]; }
-  return rgb;
+/**
+ * The snap as a move of the upscaled frame, in output pixels: in steps of two, because 4:2:0 video stores colour per 2x2
+ * block and an odd step would smear it across art-pixel edges; and no further than the margin.
+ */
+const cropShift = (s: number) => Math.min(Math.max(2 * Math.round(s * scale / 2), -margin * scale), margin * scale);
+
+/**
+ * RGBA base64 -> nearest-neighbour upscaled RGB at output size, cut out of the margin moved by `move` output pixels. Checks
+ * the canvas really is the size asked for (an old page may ignore ?px=).
+ */
+function toOutput({ w, h, data }: { w: number; h: number; data: string }, move: { x: number; y: number }) {
+  if (w !== drawW || h !== drawH) fail(`the page drew ${w}x${h}, expected ${drawW}x${drawH} (does it support ?px=1?)`);
+  const rgba = Buffer.from(data, 'base64'), out = Buffer.alloc(outW * outH * 3), row = outW * 3;
+  // Output pixel (x, y) shows drawn pixel (x - move) inside the margin.
+  const ox = margin * scale - move.x, oy = margin * scale - move.y;
+  for (let y = 0; y < outH; y++) {
+    const at = y * row;
+    if (y > 0 && Math.floor((y + oy) / scale) === Math.floor((y - 1 + oy) / scale)) { out.copy(out, at, at - row, at); continue; }
+    const src = Math.floor((y + oy) / scale) * w * 4;
+    for (let x = 0, j = at; x < outW; x++, j += 3) {
+      const i = src + Math.floor((x + ox) / scale) * 4;
+      out[j] = rgba[i]; out[j + 1] = rgba[i + 1]; out[j + 2] = rgba[i + 2];
+    }
+  }
+  return out;
 }
 
 // ---- ffmpeg ----
 function encoder() {
-  // Nearest-neighbour upscale by a whole multiple, then BT.709 limited-range YUV (what players and YouTube expect).
-  const up = `scale=iw*${scale}:ih*${scale}:flags=neighbor`;
-  const args = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${artW}x${artH}`, '-r', String(fps), '-i', '-'];
-  if (still) args.push('-vf', up, '-frames:v', '1', `${outDir}/${name}.png`);
+  // Frames arrive already upscaled (toOutput). Video is BT.709 limited-range YUV (what players and YouTube expect).
+  const args = ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', `${outW}x${outH}`, '-r', String(fps), '-i', '-'];
+  if (still) args.push('-frames:v', '1', `${outDir}/${name}.png`);
   else {
-    args.push('-vf', `${up}:out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709`, '-c:v', 'libx264', '-preset', 'slow', '-tune', 'animation',
+    args.push('-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709', '-c:v', 'libx264', '-preset', 'slow', '-tune', 'animation',
       '-crf', String(opts.crf ?? 12), '-movflags', '+faststart', `${outDir}/${name}.mp4`);
-    if (opts['keep-frames']) args.push('-vf', up, `${framesDir}/%05d.png`);
+    if (opts['keep-frames']) args.push(`${framesDir}/%05d.png`);
   }
   const proc = spawn(FFMPEG, args, { stdio: ['pipe', 'inherit', 'inherit'] });
   const done = new Promise<void>((resolve, reject) => { proc.on('error', reject); proc.on('close', (code) => (code ? reject(new Error(`ffmpeg exited with ${code}`)) : resolve())); });
@@ -270,10 +306,12 @@ try {
   const start = info.start ?? { az: 30, el: 38, zoom: 22, tx: 0, tz: 0, hour: 17.5, ...(info.presets[0] && { el: info.presets[0].el, zoom: info.presets[0].size }) };
   const frames = plan(start, info.presets, info.sceneId === clip.scene, info.sceneId);
   console.log(`${name}: ${frameCount} frame${frameCount > 1 ? 's' : ''} at ${fps} fps, art ${artW}x${artH} x${scale} = ${outW}x${outH}, driver ${tier}, ${workers} worker${workers > 1 ? 's' : ''}`);
-  await writeFile(`${outDir}/${name}.camera.json`, JSON.stringify({
-    name, tier, url: pageQuery(), fps, art: [artW, artH], scale, output: [outW, outH], seconds: clip.seconds, startTime, clip,
-    frames: frames.map(({ i, at, time, hour, view }) => ({ i, at, time, hour, view })),
+  const shifts: { snapShift: { x: number; y: number }; move: { x: number; y: number } }[] = [];
+  const writeLog = () => writeFile(`${outDir}/${name}.camera.json`, JSON.stringify({
+    name, tier, url: pageQuery(), fps, art: [artW, artH], margin, scale, output: [outW, outH], seconds: clip.seconds, startTime, clip,
+    frames: frames.map(({ i, at, time, hour, view }) => ({ i, at, time, hour, view, ...shifts[i] })),
   }, null, 1));
+  await writeLog();
 
   const enc = encoder();
   // Workers take every n-th frame; frames are written to ffmpeg in order, and a worker that gets too far ahead waits.
@@ -300,12 +338,16 @@ try {
       while (i >= next + ahead) await new Promise<void>((r) => waiters.push(r));
       const f = frames[i];
       if (tier === 'url') await page.goto(urlForFrame(f), { waitUntil: 'load' }).then(() => page.waitForFunction(() => window.appReady === true, { timeout: 180000 }).catch(() => {}));
-      pending.set(i, toRgb(await drawFrame(page, tier, f)));
+      const drawn = await drawFrame(page, tier, f);
+      const move = { x: cropShift(drawn.shift.x), y: cropShift(drawn.shift.y) };
+      shifts[i] = { snapShift: drawn.shift, move };
+      pending.set(i, toOutput(drawn, move));
       wake();
     }
   }));
   await writer;
   await enc.done;
+  await writeLog();
   process.stdout.write('\n');
   console.log(`wrote ${outDir}/${name}.${still ? 'png' : 'mp4'}${opts['keep-frames'] && !still ? ` and ${framesDir}/` : ''} in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 } finally {

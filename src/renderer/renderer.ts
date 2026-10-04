@@ -39,6 +39,8 @@ const padded = <T,>(items: T[], size: number, fill: () => T) => {
 export class PixelRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 300);
+  /** Image translation from the snapped camera to the requested camera, in art pixels (+x right, +y down). */
+  readonly snapShift = new THREE.Vector2();
   readonly scene = new THREE.Scene();
   readonly light = new THREE.DirectionalLight(0xffffff, 1);
 
@@ -273,6 +275,7 @@ ${POSE}`);
     const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
     const snapR = Math.round(cam.position.dot(right) / texel) * texel - cam.position.dot(right);
     const snapU = Math.round(cam.position.dot(up) / texel) * texel - cam.position.dot(up);
+    this.snapShift.set(snapR / texel, -snapU / texel);
     cam.position.addScaledVector(right, snapR).addScaledVector(up, snapU);
     cam.updateMatrixWorld();
   }

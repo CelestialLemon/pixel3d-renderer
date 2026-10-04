@@ -125,6 +125,7 @@ A tool fails rather than quietly fall back to the CPU when a GPU backend is chos
 | `npm run lamp-shadow-check` | Lamp shadow atlas: enclosed shells, back-facing panels, fixture clearance, and fitting small device limits (2048 and 512 px) with smaller faces. |
 | `npm run moving-shadow-check` | Sun-shadow mask on rigid moving parts (`move_spin_`/`move_sway_`): a moving panel at rest, spun 90 degrees and mid-swing gets exactly the mask of the same panel as static geometry at that pose, over striped ground (no borrowing the background) and under a roof (no "always sunlit"), without painting over static geometry in front of it. |
 | `npm run village-check` | Lantern Row: canopies clear every building, backdrop house, street, quay and the water, and buildings don't overlap or stand in the water (`layoutProblems` in `layout.ts`); models tied to layout features follow them; the mill wheel turns across the canal's flow in the main channel; moving parts spin about their node's local X axis; villager splitting keeps nested meshes single and parent prefixes; a missing or corrupt model fails the build visibly. |
+| `npm run camera-check` | Camera snap: the image shift the renderer reports for the camera it snapped to the art-pixel grid (`snapShift`) moves projected landmarks back onto the requested camera, for both signs, with and without a capture margin, at several scales, and repeatably. |
 | `node tools/verify.ts` | Comparison page: Pass 0 matches its standalone page; modes; ordered wipe dividers; shared camera, sun and resolution; layouts; PNG export sizes; mobile; time of day; animation toggle; no browser or shader errors. |
 | `node tools/check-viewer.ts` | The viewer page's controls, compare wipe and mobile layout. |
 | `node tools/anim-check.ts` | The world moves between two clock times and renders identically at the same time. |
@@ -154,6 +155,16 @@ node tools/timelapse.ts my-clip.json --keep-frames         # your own clip file;
 - **Pixel-art friendly.** The scene is drawn at the art resolution (one canvas pixel per art pixel) and scaled up by a whole number
   with nearest-neighbour scaling. `--res 1080p` (default) or `4k` with `--scale` 4 or 8 respectively, i.e. 480x270 art; e.g.
   `--res 4k --scale 6` is 640x360 art, so more detail. `--res WxH` takes any size that is a multiple of `--scale`. `--fps` is 30 by default.
+- **Smooth camera moves.** The renderer snaps the camera to the art-pixel grid so the art doesn't crawl, which on its own leaves a
+  moving camera off by up to half an art pixel (2 px at 1080p), so the picture can jump by nearly a whole art pixel between frames. A
+  video draws 4 art pixels of margin all round, then moves each upscaled frame by the snap the renderer threw away, in steps of 2
+  output pixels (an odd step would smear 4:2:0 colour across art-pixel edges, which an even `--scale` otherwise keeps aligned). Steps
+  of 2 pixels need `--scale` 3 or more to do anything; the default 4 and 8 move in steps of half and a quarter of an art pixel. The
+  art stays on its grid, and the picture is within 1 output pixel of the requested camera. Screen-anchored effects (the ordered
+  dither, vignette and sky bands) are drawn per art pixel, so they move with the picture. The vignette and sky sit a few pixels
+  further out than on a still, because the canvas is bigger. Only the `hook` driver reports the snap; the others draw the margin and
+  crop it centred. `--no-subpixel` turns it off, and `--still` never uses it. The sub-pixel motion also makes the video harder to
+  compress: about twice the size at the same `--crf`.
 - **Clips.** The presets live in `tools/timelapse-presets.ts`: `day-to-night` (the overview from 8:00 to 22:00), `square-orbit` (a
   slow turn round the market square) and `canal-fly` (along the canal, under the bridges). A clip file has the same shape:
 
@@ -175,11 +186,13 @@ node tools/timelapse.ts my-clip.json --keep-frames         # your own clip file;
   town before PR #8), so they show their own default scene; a clip's `view` keys are then skipped with a warning and the camera starts
   from the page's own view. On the requested scene, an unknown view is still an error.
 - **Output.** `out/timelapse/<name>.mp4` (H.264, BT.709, `--crf`, default 12), `<name>.camera.json` (the camera, hour and clock of
-  every frame, and the driver used) and, with `--keep-frames`, the upscaled frames in `<name>-frames/`.
+  every frame, the driver used and, for smooth camera moves, each frame's `snapShift` in art pixels and the `move` in output
+  pixels applied for it) and, with `--keep-frames`, the upscaled frames in `<name>-frames/`.
 - **Checking a video.** `node tools/video-check.ts out/timelapse/<name>.mp4 --log out/timelapse/<name>.camera.json
   [--reference out/timelapse/<name>-frames/%05d.png] [--static x,y,w,h]` decodes every frame and reports, as JSON, the frame count
   and timing against the log, repeated frames, camera steps and acceleration spikes, pixels that vary inside one art pixel's block
-  (smoothing), colour error against the kept PNG frames, and flicker in a still region (art pixels; fixed camera and hour only).
+  (smoothing; on the art grid as moved by the log's per-frame `move`), colour error against the kept PNG frames (a moved
+  capture needs that run's own frames), and flicker in a still region (art pixels; fixed camera and hour only).
   Structural problems (frame count, timestamps, a log that doesn't match the video) fail; the image measures are warnings to inspect.
 
 ## Query parameters
