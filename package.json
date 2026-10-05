@@ -18,8 +18,10 @@
     "window-light-check": "node tools/window-light-check.ts",
     "water-check": "node tools/water-check.ts",
     "camera-check": "node tools/camera-check.ts",
+    "object-check": "node tools/object-check.ts",
+    "object-bench": "node tools/object-bench.ts",
     "verify": "node tools/verify.ts && node tools/check-viewer.ts && node tools/anim-check.ts",
-    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run window-light-check && npm run water-check && npm run camera-check && npm run golden && npm run verify"
+    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run window-light-check && npm run water-check && npm run camera-check && npm run object-check && npm run golden && npm run verify"
   },
   "dependencies": {
     "three": "^0.180.0"

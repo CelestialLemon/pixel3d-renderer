@@ -41,6 +41,10 @@ const SHOTS = [
   ...[12, 22].map((h) => ({ name: `fluids-hour${h}`, path: `pass3.html?${VIEW}&scene=fluids&hour=${h}`, canvas: 'p3-view' })),
   // The props gallery: every batch-1 prop, so a loader change that breaks a prop shows up here.
   { name: 'props-overview', path: `pass3.html?${VIEW}&scene=props&hour=12`, canvas: 'p3-view' },
+  // Rigid game objects: shared crop instances, transformed normals, moving sun shadows and runtime visibility.
+  ...['yard', 'field', 'balls'].map((v) => ({ name: `objects-${v}`, path: `pass3.html?${VIEW}&scene=objects&view=${v}&hour=12`, canvas: 'p3-view' })),
+  { name: 'objects-yard-time2', path: `pass3.html?auto=0&clean-ui=1&time=2&px=3&scene=objects&view=yard&hour=12`, canvas: 'p3-view' },
+  { name: 'objects-yard-night', path: `pass3.html?${VIEW}&scene=objects&view=yard&hour=22`, canvas: 'p3-view' },
 ];
 
 process.chdir(fileURLToPath(new URL('..', import.meta.url)));   // golden/ paths are relative to the repo root
