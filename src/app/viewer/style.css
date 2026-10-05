@@ -25,6 +25,8 @@ hr { width: 100%; border: 0; border-top: 1px dashed var(--ink); margin: 3px 0; o
 .preset-row { display: flex; flex-wrap: wrap; gap: 4px; } .preset-row button { flex: 1 1 auto; font-size: 11px; padding: 2px 4px; }
 .row { display: flex; gap: 6px; } .row button { flex: 1; }
 #stats { font-size: 10.5px; opacity: .7; border-top: 1px dashed var(--ink); padding-top: 6px; }
+#pick { font-size: 10.5px; opacity: .7; }
+#pick:empty { display: none; }
 #hint { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); padding: 5px 12px; font-size: 11px; white-space: nowrap; box-shadow: none; }
 #hint a { color: var(--accent); }
 .divider { display: none; position: fixed; top: 0; bottom: 0; left: var(--split, 50%); width: 22px; margin-left: -11px; padding: 0; border: 0; background: transparent; cursor: ew-resize; z-index: 5; touch-action: none; }

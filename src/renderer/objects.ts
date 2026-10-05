@@ -23,8 +23,11 @@ export class PixelObject {
   /** @internal */
   drawnVisible = false;
 
-  /** @internal Created by `PixelRenderer.addObject`. */
-  constructor(readonly batch: ObjectBatch, private readonly detach: (o: PixelObject) => void) {}
+  /**
+   * @internal Created by `PixelRenderer.addObject`. `id` (from 1, never reused by that renderer) is what the
+   * G-buffer stores where the object is drawn, so `pick` can tell which object is under a pixel.
+   */
+  constructor(readonly batch: ObjectBatch, readonly id: number, private readonly detach: (o: PixelObject) => void) {}
 
   /** Copy a new transform. `rotation` and `scale` keep their current values when left out. */
   setTransform(position: THREE.Vector3, rotation?: THREE.Quaternion | THREE.Euler, scale?: THREE.Vector3 | number) {
@@ -51,6 +54,7 @@ export const MIRROR_X = new THREE.Matrix4().makeScale(-1, 1, 1);
  * are packed into the first `count` instances each frame. Mirrored objects (negative scale) go in `mirrored`, a mesh
  * mirrored across x itself holding `MIRROR_X * matrix`: three reverses the front face for a mesh whose world matrix is
  * mirrored, in every pass, which it can't do per instance. Both meshes are replaced by ones twice the size when full.
+ * Each instance's object id rides in `instanceColor.r` (per mesh, unlike a geometry attribute, and the geometry is the game's).
  */
 export class ObjectBatch {
   readonly objects: PixelObject[] = [];
@@ -67,6 +71,7 @@ export class ObjectBatch {
   private makeMesh(capacity: number, mirrored: boolean) {
     const m = new THREE.InstancedMesh(this.geometry, this.material, capacity);
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3).setUsage(THREE.DynamicDrawUsage);
     m.castShadow = true; m.receiveShadow = true;
     m.frustumCulled = false;   // the instances move every frame; a stale bounding sphere would cull them
     m.count = 0;

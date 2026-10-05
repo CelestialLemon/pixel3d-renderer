@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { DEFAULT_PALETTE_SIZE, hourLabel, lookAt, nearestPreset, PixelRenderer, PRESETS, type Look, type RenderSettings } from '../../renderer';
 import { buildWorld } from '../../reference/world';
 import { SCENES, sceneById } from '../../scenes';
+import type { SceneGame } from '../../scenes/types';
 import { Orbit } from '../orbit';
 import { $, num, paletteSize as paletteParam, params, settingsFromParams } from '../params';
 import { PASSES, type PassView } from '../passes';
@@ -40,8 +41,8 @@ async function main() {
   };
   const p3 = configure(new PixelRenderer($<HTMLCanvasElement>('p3-view'), pixelScene));
   // Scenes with game objects move them to the clock before each frame (see BuiltScene.populate).
-  const moveObjects = pixelScene.populate?.(p3);
-  let p1: PassView | null = null, pOther: PixelRenderer | null = null, moveOther: ((time: number) => void) | undefined;
+  const game = pixelScene.populate?.(p3);
+  let p1: PassView | null = null, pOther: PixelRenderer | null = null, otherGame: SceneGame | undefined;
   const left = () => (compare === 'pass1' ? p1 : compare === 'palette' ? pOther : null);
   let look: Look = lookAt(hour);
   // Pass 1 has no dusk grade, so it keeps the sun at least 12 degrees up.
@@ -67,7 +68,7 @@ async function main() {
     $('loading').classList.remove('done');
     const other = await scene.build(leftPaletteSize);
     pOther = configure(new PixelRenderer($<HTMLCanvasElement>('pal-view'), other));
-    moveOther = other.populate?.(pOther);
+    otherGame = other.populate?.(pOther);
     $('loading').classList.add('done');
     pOther.setLook(look);
     fit();
@@ -152,6 +153,23 @@ async function main() {
   // Orbit controls live on the stage, so the divider and both canvases share them.
   orbit.attach($('stage'), () => p3.viewHeight / innerHeight);
   orbit.bindKeys(() => document.body.classList.toggle('clean'));
+  // A click (a left press that barely moved, unlike an orbit drag) picks what is under it: the scene's game reacts and
+  // the panel shows the art pixel, world position and object. Not while comparing, when the left side is another canvas.
+  // Shift-press pans, so it never picks.
+  let press: { id: number; x: number; y: number } | null = null;
+  $('stage').addEventListener('pointerdown', (e) => { press = e.button === 0 && !e.shiftKey ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null; });
+  $('stage').addEventListener('pointercancel', () => { press = null; });
+  // Any point of the press more than 4 px out makes it a drag, even one that comes back.
+  $('stage').addEventListener('pointermove', (e) => { if (press?.id === e.pointerId && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 4) press = null; });
+  $('stage').addEventListener('pointerup', (e) => {
+    const p = press; press = null;
+    if (!p || p.id !== e.pointerId || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4 || compare !== 'off') return;
+    const hit = p3.pick(e.clientX, e.clientY);
+    if (!hit) return;
+    game?.click?.(hit, time); dirty = true;
+    const w = hit.world, f = (v: number) => v.toFixed(2);
+    $('pick').textContent = `pixel ${hit.x}, ${hit.y} · ${w ? `world ${f(w.x)}, ${f(w.y)}, ${f(w.z)}` : 'sky'}${hit.object ? ` · object #${hit.object.id}` : ''}`;
+  });
 
   let last = performance.now(), time = params.has('time') ? num('time', 0) : 0, capturing = false;
   const focus = new THREE.Vector3();
@@ -159,7 +177,7 @@ async function main() {
     if (dirty || settings.animate) {
       const viewHeight = orbit.viewHeight(p3.width / p3.height);
       orbit.focus(focus);
-      moveObjects?.(time); moveOther?.(time);
+      game?.update(time); otherGame?.update(time);
       p3.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); p3.renderGeometry(time);
       left()?.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); left()?.renderGeometry(time);
       dirty = false;

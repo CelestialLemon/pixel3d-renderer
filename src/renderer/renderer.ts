@@ -26,6 +26,18 @@ export interface RenderSettings {
 
 export const DEFAULT_SETTINGS: RenderSettings = { outlines: true, dither: true, cleanup: true, clouds: true, contacts: true, glow: true, vignette: true };
 
+/** What `pick` finds under a point of the canvas. */
+export interface PickResult {
+  /** The art pixel, from the top left of the canvas. */
+  x: number; y: number;
+  /** World position of the surface drawn at the pixel's centre, or null over the sky. Fluids are seen through: this is the surface below. */
+  world: THREE.Vector3 | null;
+  /** Its world normal, or null over the sky. */
+  normal: THREE.Vector3 | null;
+  /** The object drawn there, or null for the baked scene, the sky or an object removed since the last `renderGeometry`. */
+  object: PixelObject | null;
+}
+
 /** Pads `items` to the shader's fixed array length (three.js uploads the whole declared array). */
 const padded = <T,>(items: T[], size: number, fill: () => T) => {
   if (items.length > size) throw new Error(`At most ${size} entries are supported, got ${items.length}`);
@@ -49,7 +61,7 @@ export class PixelRenderer {
   /** Supersampled G-buffer (S x S per art pixel) and sun-shadow mask, rasterised by `renderGeometry`. */
   private gbufHi!: THREE.WebGLRenderTarget;
   private shadowHi!: THREE.WebGLRenderTarget;
-  /** Resolved to art resolution: albedo+flag, normal+depth, shadow (alpha). What the post shader reads. */
+  /** Resolved to art resolution: albedo+flag, normal+depth, shadow (alpha) + object id (red). What the post shader reads. */
   private gbuf!: THREE.WebGLRenderTarget;
   private stylised!: THREE.WebGLRenderTarget;
   /** The fluid G-buffer (normal + depth, velocity + material slot) at art resolution, and the image with the fluids drawn in. */
@@ -82,6 +94,14 @@ export class PixelRenderer {
   private shadowDirty = true;
   /** Objects the game added, one instanced batch per geometry, drawn with `objectMat`. */
   private batches = new Map<THREE.BufferGeometry, ObjectBatch>();
+  /** Every live object by its id, for `pick`. Ids start at 1 (0 in the G-buffer means no object) and are never reused. */
+  private objectsById = new Map<number, PixelObject>();
+  private nextObjectId = 1;
+  /** The camera the G-buffer was last rendered with (`placeCamera` may have moved it since): what `pick` reads against. */
+  private drawnCamera = { position: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(), fwd: new THREE.Vector3(), texel: 1 };
+  private pickBuf = new Float32Array(4);
+  /** False until `renderGeometry` has filled the G-buffer at the current size: `pick` finds nothing before that. */
+  private gbufDrawn = false;
   private objectMat: THREE.ShaderMaterial;
   /**
    * The sun again, with a shadow map of the objects only: the static map then renders only when the sun moves, and
@@ -225,7 +245,7 @@ ${POSE}`);
     this.resolveMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: RESOLVE_FRAG,
       uniforms: {
-        tAlbedo: { value: null }, tNormal: { value: null }, tShadow: { value: null }, uS: { value: 1 }, uPolicy: { value: 0 }, uThinOnly: { value: 0 }, uTexel: { value: 0.05 },
+        tAlbedo: { value: null }, tNormal: { value: null }, tShadow: { value: null }, tObjectId: { value: null }, uS: { value: 1 }, uPolicy: { value: 0 }, uThinOnly: { value: 0 }, uTexel: { value: 0.05 },
         uRight: { value: new THREE.Vector3() }, uUp: { value: new THREE.Vector3() }, uFwd: { value: new THREE.Vector3() },
       },
     });
@@ -247,11 +267,13 @@ ${POSE}`);
   /**
    * Add an object the game moves. `geometry` is in the object's local space, with the attributes `GeometryCollector`
    * builds (position, normal, aColor, aFlag; quantise its colours together with the scene's). Many objects may share
-   * one geometry; the renderer never disposes it.
+   * one geometry; the renderer never disposes it. At most 2^24 objects can be added over the renderer's life (ids are never reused).
    */
   addObject(geometry: THREE.BufferGeometry): PixelObject {
     const missing = OBJECT_ATTRIBUTES.filter((a) => !geometry.getAttribute(a));
     if (missing.length) throw new Error(`addObject: geometry has no ${missing.join(', ')} attribute`);
+    // Ids travel through float32 targets, which hold every integer only up to 2^24.
+    if (this.nextObjectId > 2 ** 24) throw new RangeError('addObject: more than 2^24 objects added over this renderer\'s life');
     if (!this.objectLight) {
       const light = this.objectLight = new THREE.DirectionalLight(0xffffff, 1);
       this.setupSun(light, this.pixelScene.shadow.radius);
@@ -265,8 +287,9 @@ ${POSE}`);
       this.batches.set(geometry, batch);
       this.scene.add(...batch.meshes);
     }
-    const o = new PixelObject(batch, (o) => this.removeObject(o));
+    const o = new PixelObject(batch, this.nextObjectId++, (o) => this.removeObject(o));
     batch.objects.push(o);
+    this.objectsById.set(o.id, o);
     const old = batch.grow();
     if (old.length) { for (const m of old) { this.scene.remove(m); m.dispose(); } this.scene.add(...batch.meshes); }
     this.objectShadowDirty = true;
@@ -277,6 +300,7 @@ ${POSE}`);
     const batch = o.batch, i = batch.objects.indexOf(o);
     if (i < 0) return;
     batch.objects.splice(i, 1);
+    this.objectsById.delete(o.id);
     if (o.drawnVisible) this.objectShadowDirty = true;
     if (!batch.objects.length) { for (const m of batch.meshes) { this.scene.remove(m); m.dispose(); } this.batches.delete(batch.geometry); }
   }
@@ -303,15 +327,15 @@ ${POSE}`);
             if (Math.abs(fwd.y) > 0.05) p.addScaledVector(fwd, (o.position.y - p.y) / fwd.y);
           }
           m.compose(p, o.quaternion, o.scale);
-          if (m.determinant() < 0) batch.mirrored.setMatrixAt(nm++, mm.multiplyMatrices(MIRROR_X, m));
-          else batch.mesh.setMatrixAt(n++, m);
+          if (m.determinant() < 0) { batch.mirrored.instanceColor!.setX(nm, o.id); batch.mirrored.setMatrixAt(nm++, mm.multiplyMatrices(MIRROR_X, m)); }
+          else { batch.mesh.instanceColor!.setX(n, o.id); batch.mesh.setMatrixAt(n++, m); }
           if (!o.drawnVisible || !m.equals(o.drawn)) this.objectShadowDirty = true;
           o.drawn.copy(m);
         } else if (o.drawnVisible) this.objectShadowDirty = true;
         o.drawnVisible = shown;
       }
       batch.mesh.count = n; batch.mirrored.count = nm;
-      batch.mesh.instanceMatrix.needsUpdate = true; batch.mirrored.instanceMatrix.needsUpdate = true;
+      for (const mesh of batch.meshes) { mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor!.needsUpdate = true; }
     }
   }
 
@@ -339,13 +363,15 @@ ${POSE}`);
 
   /** Set the art resolution (G-buffer and canvas size in art pixels). */
   resize(w: number, h: number) {
-    this.width = w; this.height = h;
+    this.width = w; this.height = h; this.gbufDrawn = false;
     this.renderer.setSize(w, h, false);
     const S = this.supersample === 3 ? 3 : 1;
     const mk = (opts: THREE.RenderTargetOptions, count = 1, k = 1) => new THREE.WebGLRenderTarget(w * k, h * k, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, generateMipmaps: false, count, ...opts });
     for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage]) t?.dispose();
     // Full float depth avoids false depth discontinuities on planar roof/paving edges.
-    this.gbufHi = mk({ type: THREE.FloatType }, 2, S);
+    // Albedo + flag, normal + depth, and the object id (R32F: exact to 2^24, a quarter of an RGBA float target).
+    this.gbufHi = mk({ type: THREE.FloatType }, 3, S);
+    this.gbufHi.textures[2].format = THREE.RedFormat;
     this.shadowHi = mk({ type: THREE.UnsignedByteType }, 1, S);
     this.gbuf = mk({ type: THREE.FloatType, depthBuffer: false }, 3);
     this.stylised = mk({ type: THREE.UnsignedByteType, depthBuffer: false });
@@ -424,12 +450,16 @@ ${POSE}`);
 
     const ru = this.resolveMat.uniforms;
     ru.tAlbedo.value = this.gbufHi.textures[0]; ru.tNormal.value = this.gbufHi.textures[1]; ru.tShadow.value = this.shadowHi.texture;
+    ru.tObjectId.value = this.gbufHi.textures[2];
     ru.uPolicy.value = this.resolvePolicy; ru.uThinOnly.value = this.resolveThinOnly ? 1 : 0; ru.uTexel.value = this.viewHeight / this.height;
     ru.uRight.value.setFromMatrixColumn(this.camera.matrixWorld, 0);
     ru.uUp.value.setFromMatrixColumn(this.camera.matrixWorld, 1);
     ru.uFwd.value.setFromMatrixColumn(this.camera.matrixWorld, 2).negate();
     this.quad.material = this.resolveMat;
     r.setRenderTarget(this.gbuf); r.render(this.quadScene, this.quadCam);
+    const dc = this.drawnCamera;
+    this.gbufDrawn = true;
+    dc.position.copy(this.camera.position); dc.right.copy(ru.uRight.value); dc.up.copy(ru.uUp.value); dc.fwd.copy(ru.uFwd.value); dc.texel = ru.uTexel.value;
 
     // The fluids, into their own G-buffer, hidden by hand behind the resolved opaque world.
     if (this.fluidBuf) {
@@ -478,6 +508,38 @@ ${POSE}`);
     r.setRenderTarget(null); r.render(this.quadScene, this.quadCam);
   }
 
+  /**
+   * What is drawn under a point of the page (`clientX`/`clientY` of a mouse or pointer event), as of the last
+   * `renderGeometry`; null outside the canvas, or before the first `renderGeometry` since the last `resize`.
+   * Reads one pixel back from the GPU, so call it on input, not every frame.
+   */
+  pick(clientX: number, clientY: number): PickResult | null {
+    const rect = this.canvas.getBoundingClientRect();
+    return this.pickPixel((clientX - rect.left) / rect.width * this.width, (clientY - rect.top) / rect.height * this.height);
+  }
+
+  /** `pick` for an art pixel (from the top left of the canvas; fractions are dropped). */
+  pickPixel(px: number, py: number): PickResult | null {
+    const x = Math.floor(px), y = Math.floor(py);
+    if (!this.gbufDrawn || !(x >= 0 && y >= 0 && x < this.width && y < this.height)) return null;   // also rejects NaN
+    const gy = this.height - 1 - y, read = (i: number) => {   // the G-buffer's rows go bottom up
+      this.renderer.readRenderTargetPixels(this.gbuf, x, gy, 1, 1, this.pickBuf, undefined, i);
+      return this.pickBuf;
+    };
+    const res: PickResult = { x, y, world: null, normal: null, object: null };
+    if (read(0)[3] < 0.5) return res;   // albedo alpha 0: sky (flags.ts)
+    const [nx, ny, nz, depth] = read(1);
+    // The resolved depth is the surface's depth at the pixel centre, as in post.ts's worldAt().
+    const c = this.drawnCamera;
+    res.normal = new THREE.Vector3(nx, ny, nz);
+    res.world = c.position.clone()
+      .addScaledVector(c.right, (x + 0.5 - 0.5 * this.width) * c.texel)
+      .addScaledVector(c.up, (gy + 0.5 - 0.5 * this.height) * c.texel)
+      .addScaledVector(c.fwd, depth);
+    res.object = this.objectsById.get(Math.round(read(2)[0])) ?? null;
+    return res;
+  }
+
   /** Debug and tools: the albedo + flag G-buffer the post shader reads (RGBA float, bottom row first). */
   readAlbedo(): Float32Array {
     const out = new Float32Array(this.width * this.height * 4);
@@ -487,6 +549,7 @@ ${POSE}`);
 
   /** Free GPU resources. The scene's geometries are disposed too; object geometries belong to the game and are not. */
   dispose() {
+    this.gbufDrawn = false; this.objectsById.clear();
     for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage]) t?.dispose();
     this.light.shadow.map?.dispose(); this.objectLight?.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();
     this.fluidMap.texture.dispose(); this.fluidMap.height.dispose(); this.noFluid.dispose();
