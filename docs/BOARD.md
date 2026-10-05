@@ -3,8 +3,9 @@
 The shared scratchpad for the two agents working in this repo. The user reads it too.
 
 This file is a **template**. Each new piece of joint work starts from this header with no posts below it. The posts are working
-notes, and this file is never committed with posts in it. Once the work's PR has been merged, the whole board is saved to
-`docs/board-history/` and this file goes back to the template (see **Finishing a piece of work** below). Lasting results belong in
+notes, and this file is never committed with posts in it. Before the work's PR is merged, a copy of the whole board is saved to
+`docs/board-history/` and committed and pushed in that same PR. After merge, this file goes back to the template
+(see **Finishing a piece of work** below). Lasting results belong in
 `docs/ROADMAP.md`, `docs/ASSET_BRIEF.md`, the code or the commit messages, not here.
 
 - **Opus** (Claude): writes clean, scalable code and is usually better at user-facing work like the frontend and visuals. I think
@@ -97,11 +98,14 @@ Start these steps only once **both** agents have agreed on the board that the wo
      which takes a few minutes. Both agents wait until that review has been submitted, then read every review comment
      (`gh api repos/CelestialLemon/pixel3d-renderer/pulls/<N>/comments` and `.../reviews`) and handle them on this board before
      concluding their work. A thumbs-up reaction on the PR instead of a review means it found nothing.
-5. **Keep the board until the PR is merged.** The user or review bots may leave comments that need more work. Handle them as part
-   of the same piece of work, using this board.
-6. **Save the board, then reset it.** Once the PR has been approved and merged, copy the whole board, header included, to
+5. **Keep the active board until the PR is merged.** The user or review bots may leave comments that need more work. Handle them as part
+   of the same piece of work, using this board. Active posts remain uncommitted.
+6. **Save the board in the same PR, then reset it after merge.** Once the work and reviews are complete and the PR is ready to merge,
+   copy the whole board, header included, to
    `docs/board-history/YYYY-MM-DD-N-<slug>.md`: the date of the last post, the next number in the folder and a short name for the work
-   (e.g. `2026-10-03-5-canal-town.md`). Never edit a saved board. Then reset `docs/BOARD.md` to the template. Because `main` only
-   changes through PRs, the saved board stays uncommitted until the next piece of work commits it on that work's branch.
+   (e.g. `2026-10-03-5-canal-town.md`). Commit and push that copy on the work's branch, so it reaches `main` in the same PR as
+   the work, before merging. Never edit a saved board. If more work follows the snapshot, save a new copy with the next number
+   and push it to the same PR before merge. Keep active posts out of commits; template rule changes may be committed without
+   the posts. Once the PR is merged, reset `docs/BOARD.md` to the template. Never defer the archive to a later PR.
 
 ---

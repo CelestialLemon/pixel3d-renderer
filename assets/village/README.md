@@ -33,7 +33,7 @@ Workbench previews check the geometry and flat colours; they do not reproduce th
 | stair_arch | 2.5 × 0.8 | 3.741 | 492 | 0 | Clear 1.9 m passage to 2.5 m spring line; 3.45 m centre headroom |
 | bakery | 4.5 × 4 | 5.555 | 4,940 | 1 | Low warm building, loaf display and striped canopy |
 | house_E | 5 × 4.5 | 7.405 | 6,488 | 2 | Lower sage townhouse with a dormer |
-| fountain | 3 × 3 | 2.110 | 3,556 | 1 | Hollow basin, upward water disc, teal rim lanterns |
+| fountain | 3 × 3 | 2.110 | 3,604 | 4 | Hollow basin, upward water disc, four lit teal rim lanterns |
 | barrel | 0.85 × 0.85 | 1.000 | 624 | 0 | Sixteen oak staves, four iron hoops |
 | crate | 1.1 × 0.95 | 0.760 | 264 | 0 | Open slatted crate with diagonal braces |
 | bench | 1.9 × 0.75 | 1.050 | 252 | 0 | Oak slats, iron arms and legs |
@@ -44,7 +44,7 @@ Workbench previews check the geometry and flat colours; they do not reproduce th
 
 All buildings stay below 10,000 triangles and small props below 5,000. Lamp positions, radii and fixture clearances are in each model's metadata. Every building has finished side/back facades. Window lights sit inside genuine wall apertures with solid emissive interior panels behind skipped glass; the loader validator checks outward passage and inward occlusion. It also checks the fountain's hollow basin and upward water normal, the arch's clear passage, the tavern sign hierarchy, and the four clock faces.
 
-Batch 2 total: **17 assets, 67,962 triangles and 14 authored lamps**, before scene reuse and procedural geometry. Every GLB passed an identical fresh-process SHA-256 rebuild.
+Batch 2 total: **17 assets, 68,010 triangles and 17 authored lamps**, before scene reuse and procedural geometry. Every GLB passed an identical fresh-process SHA-256 rebuild.
 
 The layout-dependent retaining wall, stairs, railings, canal, cobbles and trees are owned by the scene code. No additional Blender wall/stair assembly is exported.
 

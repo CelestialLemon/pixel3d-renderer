@@ -1,4 +1,4 @@
-"""A hollow stone town fountain with two fluid pools, falling streams and a teal accent lantern."""
+"""A hollow stone town fountain with two fluid pools, falling streams and four teal rim lanterns."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -34,13 +34,13 @@ for i in range(4):
     # Closed hexagonal streams show from every orbit angle. water_ routes all their sides into the fluid layer;
     # tangent gravity scrolls their highlights down, and the lower endpoints stir the receiving basin.
     beam('water_Fountain_spill',(x*.65,y*.65,1.25),(x*.82,y*.82,.47),.09,water,6)
-# Low rim lanterns add turquoise emission; only the front lantern has a real light.
+# Each low rim lantern emits turquoise light onto the surrounding stone and paving.
 for i in range(4):
     a=i*math.pi/2
     x,y=1.27*math.cos(a),1.27*math.sin(a)
     cylinder('Fountain_rim_lantern_foot',(x,y,.71),.14,.06,m['iron'],12)
     sphere('Fountain_teal_lantern',(x,y,.84),(.10,.10,.14),m['teal_glow'],12,6)
     cone('Fountain_lantern_cap',(x,y,.99),.15,.035,.12,m['brass'],12)
-light=lamp('Fountain_teal_rim',(0,-1.27,.84),(.20,.90,.70),3.5)
-light['clearance']=.18
-export_village('fountain','Hollow round stone basin and upper-bowl water_ pools, four falling water_ streams, carved column, four teal rim lanterns with one coloured lamp.',budget=5000,footprint=(3,3),front_door=None)
+    light=lamp(f'Fountain_teal_rim_{i}',(x,y,.84),(.20,.90,.70),3.5)
+    light['clearance']=.18
+export_village('fountain','Hollow round stone basin and upper-bowl water_ pools, four falling water_ streams, carved column, four teal rim lanterns with four coloured lamps.',budget=5000,footprint=(3,3),front_door=None)

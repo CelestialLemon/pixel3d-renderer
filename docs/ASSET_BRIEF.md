@@ -96,7 +96,7 @@ turns and places them, so a model can move without a re-export.
 
 - Buildings: `house_A`–`house_E`, `tavern` (two facades, rose `move_sway_` sign), `clock_tower`, `bakery`, `stair_arch` (gateway, 1.9 m
   clear opening). About 2 `lamp_` empties per building at most; other lit windows are emission only.
-- Square and street: `fountain` (teal lamp), `closed_stall`, `festoon` (emissive bulbs, no lamps), `bench`, `barrel`, `crate`,
+- Square and street: `fountain` (four teal rim lamps), `closed_stall`, `festoon` (emissive bulbs, no lamps), `bench`, `barrel`, `crate`,
   `flower_box`, `signpost`.
 - The scene finds chimney smoke emitters by node name (`chimney_mouth` or `dark_flue`), so keep those names.
 - Buildings are also reused as backdrop copies past the street, with their lamps dropped.
@@ -192,7 +192,8 @@ Ownership is agreed on `docs/BOARD.md` at the start of each piece of work. These
 - **The renderer agent owns:** `src/**`, `tools/**`, `index.html`, `pass*.html`, `docs/ROADMAP.md`, this brief.
 - **Never touch without agreement:** `src/reference/**`, `assets/cookie-factory/**`, `public/cookie_factory.glb` (frozen),
   `public/cookie_factory_current.glb`, `golden/**`.
-- **Shared:** `docs/BOARD.md` (append only, never committed with posts in it; saved to `docs/board-history/` after the merge).
+- **Shared:** `docs/BOARD.md` (append only, never committed with posts in it; a copy is saved to `docs/board-history/`, committed
+  and pushed in the same PR as the work before merge; the active board is reset to its template after merge).
 - **Git:** nobody commits, pushes or branches unless the user says so for that piece of work (see the board's rules). Don't run
   `git checkout`/`reset`/`clean`/`stash` either: the other agent's uncommitted work lives in the same tree.
 - **Dev server:** `npm run dev` serves on 127.0.0.1:5180. If it's already running, use it. Don't kill it.
