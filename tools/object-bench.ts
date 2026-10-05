@@ -30,7 +30,9 @@ try {
       glslVersion: THREE.GLSL3, fragmentShader: GBUF_FRAG, uniforms: { uSS: { value: 3 } },
       vertexShader: `in vec3 aColor; in float aFlag;
         out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+        flat out float vObjectId;
         void main() {
+          vObjectId = 0.0;
           vec4 p = vec4(position, 1.0); vec3 n = normal;
           #ifdef USE_INSTANCING
             p = instanceMatrix * p; n = mat3(instanceMatrix) * n;

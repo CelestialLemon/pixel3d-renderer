@@ -66,8 +66,22 @@ time. A game can't move, add or remove anything. This phase fixes that and turns
      phones. Add these when the game needs them.
    - Demo: `?scene=objects` (a cart on a loop, bouncing balls, a turning crate and a field of crops that grow and are harvested).
      `BuiltScene.populate` (`src/scenes/types.ts`) plays the game: it adds the objects and moves them to the clock each frame.
-2. **Picking.** Map a screen point to the art pixel and the world position, plus the object under it (an object-ID channel in the
-   G-buffer). Clicking a tile or a crop needs this, and the game can't work it out by itself.
+2. **Done (2026-10-05): picking.** `r.pick(clientX, clientY)` (a pointer event's coordinates) or `r.pickPixel(x, y)` (an art pixel,
+   top left origin) returns the art pixel, the world position and normal of the surface drawn there, and the `PixelObject` drawn there
+   (null for the baked scene and the sky). It reads one pixel back from the GPU, so the game calls it on input, not every frame, and it
+   describes the last `renderGeometry` (with the camera of that render). It is null outside the canvas and until the first
+   `renderGeometry` after a `resize`.
+   - **Object ids.** Each object gets an id (`o.id`, from 1, never reused). It rides per instance in the batch meshes'
+     `instanceColor.r` (the geometry is the game's, and shared by a batch's normal and mirrored meshes), into an R32F third target of
+     the supersampled G-buffer, and the resolve copies the id of the sample it chose for the pixel into the resolved shadow target's
+     spare red channel. Surface grouping still ignores the id, so no pixel changes; float32 holds ids exactly to 2^24, so `addObject`
+     stops there.
+   - **World position** is the resolved depth at the pixel centre, which the resolve already moves along the surface's plane, so it
+     projects back to the same art pixel.
+   - **Not yet:** fluids are seen through (the pick is the surface below the water), and the baked scene is one id (0), so a game
+     that wants to click parts of it (tiles, doors) maps the world position to them itself.
+   - Demo: in `?scene=objects`, clicking a crop harvests it early, and the panel shows the pixel, world position and object id.
+     `BuiltScene.populate` now returns `{ update, click }`. `npm run pick-check` (`tools/pick-check.ts`) checks the API and the resolve.
 3. **Game-supplied settings.** Look keyframes per game or scene (today `look.ts` is global), the palette size and the limits. The
    orbit camera stays in the demo app; a game places the camera itself with `placeCamera`.
 4. **Startup cost.** Merge and palette at build time instead of at page load (the asset pipeline: Blender → glTF → naming rules →

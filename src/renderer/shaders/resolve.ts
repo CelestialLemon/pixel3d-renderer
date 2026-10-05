@@ -6,7 +6,7 @@
 // See docs/THIN_FEATURES.md.
 export const RESOLVE_FRAG = /* glsl */ `
 precision highp float; precision highp int;
-uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform sampler2D tShadow;
+uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform sampler2D tShadow; uniform sampler2D tObjectId;
 uniform int uS; uniform int uPolicy; uniform float uTexel;   // policy 0 majority, k >= 1 near-priority with k + 1 samples
 uniform int uThinOnly;                                       // 1: near-priority only for thin-marked surfaces
 uniform vec3 uRight; uniform vec3 uUp; uniform vec3 uFwd;
@@ -45,14 +45,15 @@ void emit(ivec2 q, int i){
   float dc = clamp(planeDepth(nd[i].xyz, nd[i].w, -offsetOf(i)), nd[i].w - m, nd[i].w + m);
   oAlbedo = a[i];
   oNormal = vec4(nd[i].xyz, a[i].a < 0.5 ? nd[i].w : dc);
-  oShadow = vec4(0.0, 0.0, 0.0, texelFetch(tShadow, q, 0).a);
+  // Carry the representative's id without changing surface grouping or the shadow alpha used by post/water.
+  oShadow = vec4(texelFetch(tObjectId, q, 0).r, 0.0, 0.0, texelFetch(tShadow, q, 0).a);
 }
 
 void main(){
   ivec2 p = ivec2(gl_FragCoord.xy);
   if (uS == 1) {
     oAlbedo = texelFetch(tAlbedo, p, 0); oNormal = texelFetch(tNormal, p, 0);
-    oShadow = vec4(0.0, 0.0, 0.0, texelFetch(tShadow, p, 0).a);
+    oShadow = vec4(texelFetch(tObjectId, p, 0).r, 0.0, 0.0, texelFetch(tShadow, p, 0).a);
     return;
   }
   ivec2 base = p * 3;

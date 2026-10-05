@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, FLAG, FluidCollector, GeometryCollector, linearColor as lin, place, quantizePalette, type Lamp, type PixelRenderer } from '../../renderer';
-import type { BuiltScene, SceneDefinition } from '../types';
+import { DEFAULT_PALETTE_SIZE, FLAG, FluidCollector, GeometryCollector, linearColor as lin, place, quantizePalette, type Lamp, type PickResult, type PixelRenderer } from '../../renderer';
+import type { BuiltScene, SceneDefinition, SceneGame } from '../types';
 
 // Moving objects: a small yard where everything that moves is a game object (PixelRenderer.addObject), not baked
 // ambient motion. A cart drives a loop, balls bounce and squash, a crate turns on a plinth and a field of crops
-// grows, is harvested and replanted. `populate` plays the part of the game: it owns the clock-to-transform logic.
+// grows, is harvested and replanted. `populate` plays the part of the game: it owns the clock-to-transform logic, and
+// clicking a crop (PixelRenderer.pick) harvests it early.
 
 const GROUND = { hx: 10, hz: 8 };
 const BOX = new THREE.BoxGeometry(1, 1, 1);
@@ -78,7 +79,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
   const paletteColors = quantizePalette([staticGeometry, dynamicGeometry, ...Object.values(geos)], paletteSize);
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
 
-  const populate = (r: PixelRenderer) => {
+  const populate = (r: PixelRenderer): SceneGame => {
     const cartObj = r.addObject(geos.cart), crateObj = r.addObject(geos.crate);
     const balls = [[7.8, 5.6], [8.8, 4.6], [-8.6, 1.5]].map(([x, z]) => ({ x, z, o: r.addObject(geos.ball) }));
     const crops: { o: ReturnType<PixelRenderer['addObject']>; phase: number }[] = [];
@@ -89,7 +90,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
       crops.push({ o, phase: ((i * 5 + j * 3) % 8) / 8 });
     }
     const e = new THREE.Euler();
-    return (t: number) => {
+    const update = (t: number) => {
       const a = t * LOOP.speed;   // radians around the loop
       const x = LOOP.cx + Math.cos(a) * LOOP.rx, z = LOOP.cz - Math.sin(a) * LOOP.rz;
       // Face along the loop: the cart's +x turned by yaw is (cos, -sin), the loop's direction is (-sin a rx, -cos a rz).
@@ -106,6 +107,13 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
         c.o.scale.setScalar(0.15 + 0.85 * Math.min(g / 0.7, 1));
       }
     };
+    // Harvest a clicked crop now: shift its phase just past the harvest point (0.85; past it so rounding can't leave the
+    // crop standing while the clock is paused), after which it replants as usual.
+    const click = (hit: PickResult, t: number) => {
+      const c = crops.find((c) => c.o === hit.object);
+      if (c) c.phase = (((0.86 - t / CROP_CYCLE) % 1) + 1) % 1;
+    };
+    return { update, click };
   };
 
   return {

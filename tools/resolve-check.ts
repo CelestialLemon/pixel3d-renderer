@@ -31,6 +31,7 @@ try {
         glslVersion: THREE.GLSL3, depthTest: false, depthWrite: false, vertexShader: POST_VERT, fragmentShader: RESOLVE_FRAG,
         uniforms: {
           tAlbedo: { value: texture(albedo) }, tNormal: { value: texture(normal) }, tShadow: { value: texture(albedo.map(() => [0, 0, 0, 1])) },
+          tObjectId: { value: texture(albedo.map(() => [0, 0, 0, 0])) },
           uS: { value: 3 }, uPolicy: { value: 1 }, uThinOnly: { value: 1 }, uTexel: { value: TEXEL },
           uRight: { value: new THREE.Vector3(1, 0, 0) }, uUp: { value: new THREE.Vector3(0, 1, 0) }, uFwd: { value: new THREE.Vector3(0, 0, 1) },
         },

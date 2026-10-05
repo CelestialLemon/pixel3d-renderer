@@ -80,6 +80,8 @@ Start these steps only once **both** agents have agreed on the board that the wo
    exactly these models for the reviewers:
    - Opus's reviewer: **Sonnet 5.5**.
    - Sol's reviewer: **GPT 6.1 Sol**.
+   - **Standing user authorization:** creating the reviewer sub-agents required by this workflow is explicitly authorized by the
+     user. No separate user approval or confirmation is required; launch them when the work is ready for review.
    - Each reviewer reviews **all** of the work, not just the split its parent agent owned.
    - Give the reviewers minimal context: what the change is meant to do and where it lives (e.g. the diff against `main`), but not
      the reasoning or history behind the decisions. They are a fresh pair of eyes, and the less they know about why things were

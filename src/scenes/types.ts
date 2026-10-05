@@ -1,4 +1,4 @@
-import type { PixelRenderer, PixelScene } from '../renderer';
+import type { PickResult, PixelRenderer, PixelScene } from '../renderer';
 
 /** Default camera framing and limits for a scene. Angles in degrees, sizes in world units of visible height. */
 export interface SceneView {
@@ -15,12 +15,17 @@ export interface SceneView {
   azimuth: number;
 }
 
-/**
- * A built scene. `populate` stands in for a game: it adds the scene's moving objects to a renderer and returns the
- * function that moves them to the clock time (seconds) before each frame.
- */
+/** The game half of a scene with objects: what the demo page calls each frame and on a click. */
+export interface SceneGame {
+  /** Move the objects to the clock time (seconds), before each frame. */
+  update(time: number): void;
+  /** A click on the scene, with what `PixelRenderer.pick` found under it. */
+  click?(hit: PickResult, time: number): void;
+}
+
+/** A built scene. `populate` stands in for a game: it adds the scene's moving objects to a renderer. */
 export interface BuiltScene extends PixelScene {
-  populate?(r: PixelRenderer): (time: number) => void;
+  populate?(r: PixelRenderer): SceneGame;
 }
 
 export interface SceneDefinition {

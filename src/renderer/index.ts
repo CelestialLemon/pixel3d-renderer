@@ -1,5 +1,5 @@
 // Public API of the pixel-art renderer. Scenes and apps import from here, never from the files directly.
-export { PixelRenderer, DEFAULT_SETTINGS, type RenderSettings } from './renderer';
+export { PixelRenderer, DEFAULT_SETTINGS, type RenderSettings, type PickResult } from './renderer';
 export { PixelObject } from './objects';
 export { LIMITS, type PixelScene, type Lamp, type Grooves } from './scene';
 export { FLAG, THIN_MARK, thin, type Flag } from './flags';
