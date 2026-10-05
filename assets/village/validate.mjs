@@ -83,7 +83,7 @@ for (const name of names) {
     assert.equal(scene.getObjectByName('glass_House_A_front_lower_0')?.isMesh,true);
   }
   if (name==='fountain') {
-    assert.equal(lamps,1);
+    assert.equal(lamps,4,'Each rim lantern lights the paving');
     const water=scene.getObjectByName('water_Fountain_basin');
     assert(water?.isMesh);
     const normal=new Vector3().fromBufferAttribute(water.geometry.attributes.normal,0).transformDirection(water.matrixWorld);
