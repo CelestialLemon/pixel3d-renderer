@@ -1,6 +1,108 @@
-# Roadmap: next improvements
+# Roadmap
 
-Goal: turn this experiment into a reusable renderer module that several games can use. Items are roughly in priority order within each section.
+Goal: one pixel-art 3D renderer, built once and reused by every hobby game. The first game to use it is the **3D port of Harvest
+Frenzy**. More games will follow, but none are planned yet.
+
+The **Direction** and **Phases** below are the plan (decided 2026-10-05). The numbered sections after them are the renderer's
+detailed backlog and the record of what has been done. Items are roughly in priority order within each section.
+
+## Direction
+
+The games are code-only (no engine, no editor) hobby projects for the web, shared with friends as a link (GitHub Pages or itch.io).
+They are not meant to be sold.
+
+1. **A renderer library, not an engine.** The game owns the main loop, the game state, the timing, input, audio, physics and UI, and
+   *calls* the renderer: "here is the world and where everything is, draw it". The renderer never calls into the game and never owns
+   game objects. This keeps it usable by very different games.
+2. **Share only what must look the same.** The renderer is shared because the look *is* the point, and it is hard to rebuild. Most
+   other systems are small or already exist as good libraries, so each game writes or picks its own.
+3. **Extract code only after a game has proved it.** The renderer came out of Harvest Frenzy once it had proved itself there, and
+   other shared code follows the same rule. Nothing is designed for games that don't exist yet. When a second game needs the same
+   thing as the first, it moves into a small, independent module (a kit, not a framework).
+4. **Finished games stay frozen.** A game depends on the renderer through a git dependency pinned to a tag
+   (`"pixel3d-renderer": "github:CelestialLemon/pixel3d-renderer#vX.Y"`). While a game and the renderer change together, it points at
+   a local checkout instead (`npm link` or a `file:` path). A renderer change never breaks an old game until that game chooses to
+   upgrade.
+5. **The demo scenes stay the test bed.** Cookie Co., the canal town, the test chart, fluids and the props gallery are the renderer's
+   own regression suite (golden images, check tools). A game never replaces them.
+
+**Who owns what:**
+
+| Concern | Owner | Notes |
+|---|---|---|
+| Drawing: look, light, palette, outlines, shadows, water, pixel snapping | renderer | the shared part |
+| Ambient motion (grass, smoke, fireflies, wheels) | renderer | GPU, driven only by time |
+| Character animation | split | the game picks the clip and the time (three.js `AnimationMixer` or its own code), and the renderer skins the mesh from bone matrices |
+| Positions, spawning, game state | game | sent to the renderer each frame |
+| Mouse to world (picking) | renderer | only the renderer knows which art pixel shows what |
+| UI | game | HTML/CSS over the canvas to start with; a pixel-art UI kit is the first candidate for a shared module (it is part of the look) |
+| Audio, input, physics, save/load, game loop | game | Web Audio or Howler; tile or box collision, or Rapier if a game needs real physics; copy small code from game to game |
+
+## Phases
+
+### Phase 1: make the renderer usable by a game
+
+Today a scene is baked once into a `PixelScene` (one static mesh, one dynamic mesh), and each frame only takes a camera, a look and a
+time. A game can't move, add or remove anything. This phase fixes that and turns the repo into a package.
+
+1. **Dynamic objects API.** A game registers meshes as objects and adds, removes and moves them at runtime. The static world stays
+   baked and merged for speed. Moving objects snap to the pixel grid (section 2, option 3), and dynamic casters get real shadows
+   (section 4). Decide between per-object draw calls and instancing while building it. Roughly:
+   ```ts
+   const r = new PixelRenderer(canvas, { look, palette });
+   r.setStatic(levelGeometry);
+   const cart = r.addObject(cartMesh);
+   cart.setTransform(position, rotation);   // every frame, from the game
+   r.render(camera, time);
+   ```
+2. **Picking.** Map a screen point to the art pixel and the world position, plus the object under it (an object-ID channel in the
+   G-buffer). Clicking a tile or a crop needs this, and the game can't work it out by itself.
+3. **Game-supplied settings.** Look keyframes per game or scene (today `look.ts` is global), the palette size and the limits. The
+   orbit camera stays in the demo app; a game places the camera itself with `placeCamera`.
+4. **Startup cost.** Merge and palette at build time instead of at page load (the asset pipeline: Blender → glTF → naming rules →
+   baked data). Cookie Co. takes seconds to build in the browser, and the canal town's lamp-shadow pass redraws the static mesh 264
+   times (section 1, item 5).
+5. **Package it.** A small public API (`src/renderer/index.ts`), a library build (ES modules plus `.d.ts`, with three.js as a peer
+   dependency), version tags, unit tests for the palette and geometry, and CI that runs the typecheck and tests. Golden images need
+   a set of their own for CI, made once from a known-good commit.
+6. **A minimal example game** in this repo (a character walking around a small level with the keyboard, clicking to place things).
+   It uses only the public API, the way a real game would, and it is the check for this phase: if the example is awkward to write,
+   the API is wrong.
+
+**Done when:** the example game runs against the package, and a separate repo can install it from a tag.
+
+### Phase 2: Harvest Frenzy 3D
+
+The port lives in its own repo and installs the renderer from a tag. From here on, the game drives the renderer's priorities: each
+gap it hits comes back here as a backlog item. Expected needs (confirm them against the game):
+
+- **Characters:** skinned meshes in the renderer, with clip playback on the game side.
+- **Things that change state:** crops growing, items being picked up. Object swaps, scaling, and spawning and removing objects.
+- **Textures,** if the port uses CC0 packs (Kenney, Quaternius, KayKit) rather than models made for it (section 1, item 3).
+- **UI** over the canvas, built in the game.
+
+### Phase 3: harden the renderer
+
+Work that matters more once a real game depends on the renderer, in any order the port suggests:
+
+- **Ambient motion hook.** Make the list of vertex-animation modes pluggable: a scene or game registers a mode (a GLSL snippet with
+  the `pose()` contract, a parameter packer, and whether it casts a moving shadow), and the renderer builds `pose()` from the core
+  modes plus the registered ones. The core keeps static, sway, spin and swing. The conveyor, butterfly, smoke and firefly modes move
+  out to the scenes. The moving-part shadow pass checks the "casts shadow" setting instead of the mode number (`mode > 5.5` today). It
+  should change no pixels, and the golden images prove that.
+- **Performance** on real GPUs and phones (friends may play on either). See section 4.
+- **Sub-pixel stability**, the remaining options (section 2).
+- **Lamp placement audit:** Cookie Co.'s window lights still sit just outside the glass and should move inside their fixtures.
+- **Visual backlog** (section 5) and the open findings from the test chart (section 1, item 1): metals, gentle slopes, close colours.
+
+### Phase 4: the second game
+
+When the next game starts, look at what it needs from Harvest Frenzy's code. Anything both games need in the same form moves into a
+small shared module, most likely a pixel-art UI kit first, then perhaps input or audio helpers. Each module is independent and
+optional, and games call them; nothing sits in the middle and imposes a structure. The renderer gets a new minor version for anything
+the second game needs, and Harvest Frenzy upgrades only if it wants to.
+
+---
 
 **Done in the 2026-10-01 restructure:** the renderer core (`src/renderer/`) is split from scene content (`src/scenes/`) and the demo pages
 (`src/app/`). Nothing scene-specific lives in the renderer any more: lamps, water drip points, door grooves, the shadow area, the chimney
@@ -67,7 +169,8 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    (the builder moves a pane's source just outside the facade around it, keeping the wall below lit). Window pools have no shadows; a
    pane with an obstacle right in front of it can still light the obstacle's near side, and past it. Each texel keeps one averaged
    source, so where pools of windows facing each other across a narrow gap overlap, a wall between them can be lit or darkened wrongly.
-   - The tavern's hanging sign (`move_sway_`) is static: the loader has no motion for `move_*` parts yet (section 3, animation hook).
+   - The tavern's hanging sign (`move_sway_`) was static when this was written. The village now opts in to `movingPartMotion`, so
+     its `move_*` parts (the sign, the mill wheel, the windmill sails, the laundry) move; the batch-1 props in `?scene=props` stay static.
 7. **Done (2026-10-03): fluids.** Water is no longer an opaque flagged floor. `src/renderer/fluids.ts` defines a `FluidMaterial`
    (colours, clarity, reflectivity, roughness, ripple size, foam, emission) with `FLUIDS` presets (water, canal, pond, swamp, acid,
    lava) and a `FluidCollector`; `PixelScene.fluids` replaces `ripples`, and `water_` assets become fluids (`water_<preset>_` picks a
@@ -114,17 +217,8 @@ groove set per scene is supported. Passes 0–1 are frozen and still flicker. `n
 
 ## 3. Finish the reusable module
 
-- **Animation hook.** Motion is a fixed list of modes in `shaders/gbuffer.ts` (sway, conveyor, smoke, butterfly, firefly). Let a scene
-  supply its own vertex-animation GLSL instead, and drop the Cookie Co.-flavoured modes from the core.
-- **Lamp placement.** Since lamps are occluded, a lamp must sit inside its fixture, because a light offset in front of its post is
-  shadowed by the post (seen and fixed on the test chart). Cookie Co.'s window lights still sit just outside the glass; audit the
-  geometry before moving them inside.
-- **Look per scene.** The day-cycle keyframes in `look.ts` are global; a scene (or game) should be able to supply its own.
-- **Asset pipeline.** Blender → glTF export → flags by node name or custom property (`collectGltf` rules handle names today) → merge and
-  palette as a build step instead of at page load (Cookie Co. takes seconds to build in the browser).
-- **Package it** (npm workspace or published package) with the demo as a consumer, a smaller public API (`src/renderer/index.ts` is the
-  start), unit tests for palette/geometry, and the golden and browser checks in CI. The golden images are tracked per platform,
-  backend and GPU (`golden/<set>/`), so CI needs its own set, made once from a known-good commit.
+Moved into the phases above (2026-10-05): the animation hook, lamp placement and the visual items are in Phase 3; look per scene, the
+asset pipeline and packaging are in Phase 1.
 
 ## 4. Performance and fairness
 
