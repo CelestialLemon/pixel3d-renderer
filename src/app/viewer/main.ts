@@ -39,7 +39,9 @@ async function main() {
     return r;
   };
   const p3 = configure(new PixelRenderer($<HTMLCanvasElement>('p3-view'), pixelScene));
-  let p1: PassView | null = null, pOther: PixelRenderer | null = null;
+  // Scenes with game objects move them to the clock before each frame (see BuiltScene.populate).
+  const moveObjects = pixelScene.populate?.(p3);
+  let p1: PassView | null = null, pOther: PixelRenderer | null = null, moveOther: ((time: number) => void) | undefined;
   const left = () => (compare === 'pass1' ? p1 : compare === 'palette' ? pOther : null);
   let look: Look = lookAt(hour);
   // Pass 1 has no dusk grade, so it keeps the sun at least 12 degrees up.
@@ -63,7 +65,9 @@ async function main() {
   const ensureOther = async () => {
     if (pOther) return;
     $('loading').classList.remove('done');
-    pOther = configure(new PixelRenderer($<HTMLCanvasElement>('pal-view'), await scene.build(leftPaletteSize)));
+    const other = await scene.build(leftPaletteSize);
+    pOther = configure(new PixelRenderer($<HTMLCanvasElement>('pal-view'), other));
+    moveOther = other.populate?.(pOther);
     $('loading').classList.add('done');
     pOther.setLook(look);
     fit();
@@ -155,6 +159,7 @@ async function main() {
     if (dirty || settings.animate) {
       const viewHeight = orbit.viewHeight(p3.width / p3.height);
       orbit.focus(focus);
+      moveObjects?.(time); moveOther?.(time);
       p3.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); p3.renderGeometry(time);
       left()?.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); left()?.renderGeometry(time);
       dirty = false;

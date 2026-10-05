@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Look } from './look';
 import { LIMITS, type PixelScene } from './scene';
 import { POST_VERT } from './shaders/common';
-import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_STATIC_VERT, POSE } from './shaders/gbuffer';
+import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_OBJECT_VERT, GBUF_STATIC_VERT, POSE } from './shaders/gbuffer';
 import { POST_FRAG } from './shaders/post';
 import { CLEAN_FRAG } from './shaders/cleanup';
 import { RESOLVE_FRAG } from './shaders/resolve';
@@ -11,6 +11,7 @@ import { buildWindowLight, type WindowLight } from './windowLight';
 import { FLUID_FRAG, FLUID_VERT } from './shaders/water';
 import { linearColor } from './geometry';
 import { buildFluidMap, type FluidMap } from './fluidMap';
+import { MIRROR_X, OBJECT_ATTRIBUTES, ObjectBatch, PixelObject } from './objects';
 
 /** Stylisation switches. All on is the intended look; the toggles exist for comparison and debugging. */
 export interface RenderSettings {
@@ -33,8 +34,9 @@ const padded = <T,>(items: T[], size: number, fill: () => T) => {
 
 /**
  * Draws a PixelScene as pixel art into `canvas`, one canvas pixel per art pixel (scale the canvas up with CSS).
- * Per frame: `placeCamera`, then `renderGeometry` (rasterise the G-buffer and shadow mask) whenever the view
- * or the animation clock changed, then `renderStyle` (the post shader; cheap).
+ * Per frame: `placeCamera`, then `renderGeometry` (rasterise the G-buffer and shadow mask) whenever the view,
+ * the animation clock or an object changed, then `renderStyle` (the post shader; cheap).
+ * The scene is baked; objects the game moves are added with `addObject`.
  */
 export class PixelRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -78,6 +80,16 @@ export class PixelRenderer {
   private quadScene = new THREE.Scene();
   private quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private shadowDirty = true;
+  /** Objects the game added, one instanced batch per geometry, drawn with `objectMat`. */
+  private batches = new Map<THREE.BufferGeometry, ObjectBatch>();
+  private objectMat: THREE.ShaderMaterial;
+  /**
+   * The sun again, with a shadow map of the objects only: the static map then renders only when the sun moves, and
+   * this one whenever an object does. The mask pass multiplies the two. Created with the first object, so a scene
+   * without objects draws exactly as before.
+   */
+  private objectLight?: THREE.DirectionalLight;
+  private objectShadowDirty = false;
   private shadowCenter: THREE.Vector3;
   private lampShadows: LampShadows;
   /** Warm pools below the lit windows, splatted once into a top-down map (see windowLight.ts). */
@@ -110,6 +122,9 @@ export class PixelRenderer {
     this.staticMesh = new THREE.Mesh(pixelScene.staticGeometry, smat);
     this.staticMesh.castShadow = true; this.staticMesh.receiveShadow = true; this.staticMesh.frustumCulled = false;
 
+    this.objectMat = new THREE.ShaderMaterial({ vertexShader: GBUF_OBJECT_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide, uniforms: { uSS: { value: 1 } } });
+    this.objectMat.shadowSide = THREE.DoubleSide;
+
     this.dynMat = new THREE.ShaderMaterial({
       vertexShader: GBUF_DYN_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.DoubleSide,
       uniforms: { uTime: { value: 0 }, uNight: { value: 0 }, uSS: { value: 1 } },
@@ -120,11 +135,7 @@ export class PixelRenderer {
 
     const { center, radius } = pixelScene.shadow;
     this.shadowCenter = center.clone();
-    this.light.castShadow = true;
-    this.light.shadow.mapSize.set(4096, 4096);
-    const sc = this.light.shadow.camera;
-    sc.left = -radius; sc.right = radius; sc.top = radius; sc.bottom = -radius; sc.near = 1; sc.far = 140;
-    this.light.shadow.bias = -0.0004; this.light.shadow.normalBias = 0.03;
+    this.setupSun(this.light, radius);
     this.scene.add(this.light, this.light.target);
 
     // Writes shadow occlusion (0 = lit, 1 = shadowed) into alpha, no blending.
@@ -223,6 +234,87 @@ ${POSE}`);
     this.quadScene.add(this.quad);
   }
 
+  /** A shadow-casting sun covering the scene's shadow area, rendered only when asked (see `renderGeometry`). */
+  private setupSun(light: THREE.DirectionalLight, radius: number) {
+    light.castShadow = true;
+    light.shadow.autoUpdate = false;
+    light.shadow.mapSize.set(4096, 4096);
+    const sc = light.shadow.camera;
+    sc.left = -radius; sc.right = radius; sc.top = radius; sc.bottom = -radius; sc.near = 1; sc.far = 140;
+    light.shadow.bias = -0.0004; light.shadow.normalBias = 0.03;
+  }
+
+  /**
+   * Add an object the game moves. `geometry` is in the object's local space, with the attributes `GeometryCollector`
+   * builds (position, normal, aColor, aFlag; quantise its colours together with the scene's). Many objects may share
+   * one geometry; the renderer never disposes it.
+   */
+  addObject(geometry: THREE.BufferGeometry): PixelObject {
+    const missing = OBJECT_ATTRIBUTES.filter((a) => !geometry.getAttribute(a));
+    if (missing.length) throw new Error(`addObject: geometry has no ${missing.join(', ')} attribute`);
+    if (!this.objectLight) {
+      const light = this.objectLight = new THREE.DirectionalLight(0xffffff, 1);
+      this.setupSun(light, this.pixelScene.shadow.radius);
+      light.position.copy(this.light.position); light.target.position.copy(this.light.target.position);
+      light.target.updateMatrixWorld();
+      this.scene.add(light, light.target);
+    }
+    let batch = this.batches.get(geometry);
+    if (!batch) {
+      batch = new ObjectBatch(geometry, this.objectMat);
+      this.batches.set(geometry, batch);
+      this.scene.add(...batch.meshes);
+    }
+    const o = new PixelObject(batch, (o) => this.removeObject(o));
+    batch.objects.push(o);
+    const old = batch.grow();
+    if (old.length) { for (const m of old) { this.scene.remove(m); m.dispose(); } this.scene.add(...batch.meshes); }
+    this.objectShadowDirty = true;
+    return o;
+  }
+
+  private removeObject(o: PixelObject) {
+    const batch = o.batch, i = batch.objects.indexOf(o);
+    if (i < 0) return;
+    batch.objects.splice(i, 1);
+    if (o.drawnVisible) this.objectShadowDirty = true;
+    if (!batch.objects.length) { for (const m of batch.meshes) { this.scene.remove(m); m.dispose(); } this.batches.delete(batch.geometry); }
+  }
+
+  /**
+   * Pack every visible object's transform into its batch for this frame, its origin snapped to the art-pixel grid,
+   * and note whether any of them changed. An object with a zero scale component is not drawn.
+   */
+  private poseObjects() {
+    const texel = this.viewHeight / this.height, w = this.camera.matrixWorld;
+    const right = new THREE.Vector3().setFromMatrixColumn(w, 0), up = new THREE.Vector3().setFromMatrixColumn(w, 1), fwd = new THREE.Vector3().setFromMatrixColumn(w, 2);
+    const p = new THREE.Vector3(), m = new THREE.Matrix4(), mm = new THREE.Matrix4();
+    for (const batch of this.batches.values()) {
+      let n = 0, nm = 0;
+      for (const o of batch.objects) {
+        const shown = o.visible && o.scale.x !== 0 && o.scale.y !== 0 && o.scale.z !== 0;
+        if (shown) {
+          p.copy(o.position);
+          if (o.snap) {
+            const r = p.dot(right), u = p.dot(up);
+            p.addScaledVector(right, Math.round(r / texel) * texel - r).addScaledVector(up, Math.round(u / texel) * texel - u);
+            // Snapping along `up` also moved the object up or down in the world (sinking or lifting it off the ground).
+            // Sliding along the view direction undoes that without moving it in the image, unless the view is near level.
+            if (Math.abs(fwd.y) > 0.05) p.addScaledVector(fwd, (o.position.y - p.y) / fwd.y);
+          }
+          m.compose(p, o.quaternion, o.scale);
+          if (m.determinant() < 0) batch.mirrored.setMatrixAt(nm++, mm.multiplyMatrices(MIRROR_X, m));
+          else batch.mesh.setMatrixAt(n++, m);
+          if (!o.drawnVisible || !m.equals(o.drawn)) this.objectShadowDirty = true;
+          o.drawn.copy(m);
+        } else if (o.drawnVisible) this.objectShadowDirty = true;
+        o.drawnVisible = shown;
+      }
+      batch.mesh.count = n; batch.mirrored.count = nm;
+      batch.mesh.instanceMatrix.needsUpdate = true; batch.mirrored.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   /** Apply a time-of-day look: sun direction and strength, colour grade, sky, lamps. */
   setLook(look: Look) {
     const u = this.postMat.uniforms;
@@ -231,6 +323,12 @@ ${POSE}`);
     this.light.position.copy(this.sun).multiplyScalar(60).add(this.shadowCenter);
     this.light.target.position.copy(this.shadowCenter);
     this.light.target.updateMatrixWorld();
+    if (this.objectLight) {
+      this.objectLight.position.copy(this.light.position);
+      this.objectLight.target.position.copy(this.light.target.position);
+      this.objectLight.target.updateMatrixWorld();
+      this.objectShadowDirty = true;
+    }
     this.shadowDirty = true;
     u.uSunI.value = look.sunI; u.uAmbient.value = look.ambient; u.uExpo.value = look.expo; u.uChroma.value = look.chroma;
     u.uLitTint.value.set(...look.litTint); u.uShadeTint.value.set(...look.shadeTint);
@@ -256,7 +354,7 @@ ${POSE}`);
       this.withFluids = mk({ type: THREE.UnsignedByteType, depthBuffer: false });
       this.linearImage = mk({ type: THREE.FloatType, depthBuffer: false });
     }
-    this.staticMat.uniforms.uSS.value = S; this.dynMat.uniforms.uSS.value = S; this.resolveMat.uniforms.uS.value = S;
+    this.staticMat.uniforms.uSS.value = S; this.objectMat.uniforms.uSS.value = S; this.dynMat.uniforms.uSS.value = S; this.resolveMat.uniforms.uS.value = S;
     this.postMat.uniforms.uRes.value.set(w, h);
     this.cleanMat.uniforms.uRes.value.set(w, h);
   }
@@ -280,32 +378,48 @@ ${POSE}`);
     cam.updateMatrixWorld();
   }
 
-  /** Rasterise into the G-buffer (+ static shadow mask) with the dynamic mesh posed at `time` seconds. */
+  /** Rasterise into the G-buffer (+ shadow mask) with the dynamic mesh posed at `time` seconds and the objects where the game put them. */
   renderGeometry(time: number) {
     const r = this.renderer;
     this.lampShadows.render(r);
     this.dynMat.uniforms.uTime.value = time;
-    r.setClearColor(0x000000, 0);
-    r.setRenderTarget(this.gbufHi); r.clear(); r.render(this.scene, this.camera);
+    this.poseObjects();
+    const objects = [...this.batches.values()].flatMap((b) => b.meshes);
+    const setCasters = (staticWorld: boolean, objs: boolean) => { this.staticMesh.castShadow = staticWorld; for (const m of objects) m.castShadow = objs; };
 
-    // The shadow mask comes from the static world: small moving bits (tufts, puffs) borrow the shadow of whatever
-    // surface sits behind them. Rigid moving parts (sails, wheels, signs) are big enough that borrowing shows the
-    // shadow pattern of the ground behind them, so they get their own mask at their posed position.
-    if (this.shadowDirty) { r.shadowMap.needsUpdate = true; this.shadowDirty = false; }
+    // Each sun shadow map renders only when it changed, during one of the two scene renders below: the static map
+    // (static world only) during the G-buffer render, the object map (objects only) during the mask render.
+    // Three renders every caster into every light's map, so the casters are switched per render.
+    if (this.shadowDirty) { this.light.shadow.needsUpdate = true; r.shadowMap.needsUpdate = true; this.shadowDirty = false; }
+    r.setClearColor(0x000000, 0);
+    try {
+      setCasters(true, false);
+      r.setRenderTarget(this.gbufHi); r.clear(); r.render(this.scene, this.camera);
+    } finally { r.shadowMap.needsUpdate = false; this.light.shadow.needsUpdate = false; }
+    if (this.objectLight && this.objectShadowDirty) { this.objectLight.shadow.needsUpdate = true; r.shadowMap.needsUpdate = true; this.objectShadowDirty = false; }
+
+    // The shadow mask comes from the static world and the objects: small moving bits (tufts, puffs) borrow the shadow
+    // of whatever surface sits behind them. Rigid moving parts (sails, wheels, signs) are big enough that borrowing
+    // shows the shadow pattern of the ground behind them, so they get their own mask at their posed position.
     r.setClearColor(0xffffff, 1);
     const autoClear = r.autoClear;
     try {
+      setCasters(false, true);
       this.dynMesh.visible = false;
       this.scene.overrideMaterial = this.shadowMat;
       r.setRenderTarget(this.shadowHi); r.clear(); r.render(this.scene, this.camera);
       if (this.hasRigidParts) {
-        // Then the rigid moving parts over it, depth-tested against the static world (no clear in between).
+        // Then the rigid moving parts over it, depth-tested against the static world and the objects (no clear in between).
         this.dynMesh.visible = true; this.staticMesh.visible = false; this.scene.overrideMaterial = this.dynShadowMat;
+        for (const m of objects) m.visible = false;
         r.autoClear = false; r.render(this.scene, this.camera);
       }
     } finally {
       r.autoClear = autoClear; this.scene.overrideMaterial = null;
+      r.shadowMap.needsUpdate = false; if (this.objectLight) this.objectLight.shadow.needsUpdate = false;
+      setCasters(true, true);
       this.staticMesh.visible = true; this.dynMesh.visible = true;
+      for (const m of objects) m.visible = true;
     }
 
     const ru = this.resolveMat.uniforms;
@@ -371,13 +485,14 @@ ${POSE}`);
     return out;
   }
 
-  /** Free GPU resources. The scene's geometries are disposed too. */
+  /** Free GPU resources. The scene's geometries are disposed too; object geometries belong to the game and are not. */
   dispose() {
     for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage]) t?.dispose();
-    this.light.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();
+    this.light.shadow.map?.dispose(); this.objectLight?.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();
     this.fluidMap.texture.dispose(); this.fluidMap.height.dispose(); this.noFluid.dispose();
     for (const m of [this.staticMesh, this.dynMesh, this.fluidMesh, this.quad]) m.geometry.dispose();
-    for (const m of [this.staticMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat]) (m as THREE.Material).dispose();
+    for (const b of this.batches.values()) for (const m of b.meshes) m.dispose();
+    for (const m of [this.staticMat, this.objectMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat]) (m as THREE.Material).dispose();
     this.renderer.dispose();
   }
 }

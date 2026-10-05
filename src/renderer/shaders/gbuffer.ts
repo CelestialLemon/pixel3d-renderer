@@ -1,8 +1,8 @@
 import { BAYER4 } from './common';
 
 // G-buffer pass. Albedo(rgb) + flag, world normal(xyz) + linear view depth.
-// The static world is one merged mesh; a small dynamic mesh carries everything that moves and is
-// animated here. Transparency is "pixel art transparency": ordered-dither discard.
+// The static world is one merged mesh; a small dynamic mesh carries the ambient motion (wind, wheels, smoke) and is
+// animated here; objects the game moves are meshes of their own. Transparency is "pixel art transparency": ordered-dither discard.
 
 export const GBUF_STATIC_VERT = /* glsl */ `
 in vec3 aColor; in float aFlag;
@@ -10,6 +10,19 @@ out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
 void main(){
   vN = normal; vC = aColor; vF = aFlag; vA = 1.0;
   vec4 vp = viewMatrix * vec4(position, 1.0);
+  vD = -vp.z;
+  gl_Position = projectionMatrix * vp;
+}`;
+
+// Objects the game moves (objects.ts): local-space geometry, instanced, placed by each instance's matrix. The inverse
+// transpose keeps normals right under non-uniform scale.
+export const GBUF_OBJECT_VERT = /* glsl */ `
+in vec3 aColor; in float aFlag;
+out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+void main(){
+  mat4 model = modelMatrix * instanceMatrix;
+  vN = transpose(inverse(mat3(model))) * normal; vC = aColor; vF = aFlag; vA = 1.0;
+  vec4 vp = viewMatrix * model * vec4(position, 1.0);
   vD = -vp.z;
   gl_Position = projectionMatrix * vp;
 }`;

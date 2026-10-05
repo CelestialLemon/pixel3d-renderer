@@ -45,16 +45,27 @@ They are not meant to be sold.
 Today a scene is baked once into a `PixelScene` (one static mesh, one dynamic mesh), and each frame only takes a camera, a look and a
 time. A game can't move, add or remove anything. This phase fixes that and turns the repo into a package.
 
-1. **Dynamic objects API.** A game registers meshes as objects and adds, removes and moves them at runtime. The static world stays
-   baked and merged for speed. Moving objects snap to the pixel grid (section 2, option 3), and dynamic casters get real shadows
-   (section 4). Decide between per-object draw calls and instancing while building it. Roughly:
-   ```ts
-   const r = new PixelRenderer(canvas, { look, palette });
-   r.setStatic(levelGeometry);
-   const cart = r.addObject(cartMesh);
-   cart.setTransform(position, rotation);   // every frame, from the game
-   r.render(camera, time);
-   ```
+1. **Done (2026-10-05): dynamic objects API.** `r.addObject(geometry)` returns a `PixelObject` (`src/renderer/objects.ts`) that the
+   game moves with `setTransform(position, rotation?, scale?)` or by writing its `position`, `quaternion` and `scale`; `visible` hides
+   it and `remove()` takes it out. The geometry is local-space `GeometryCollector` output whose colours the game quantises together with
+   the scene's; the renderer never disposes it. The baked `PixelScene` is unchanged, so scenes without objects draw exactly as before.
+   - **Instancing.** Objects sharing a geometry are one `InstancedMesh` (one draw call), with the visible ones packed into it each
+     frame. Instanced against separate meshes, measured on the RX 570 with `tools/object-bench.ts` (480×360 G-buffer, 4096² sun map
+     and mask, every object moving, median; its own minimal shader, not the full `addObject` path): separate meshes cost 0.4 / 2.6 / 10.1 ms at 50 / 500 / 2000 boxes, instances 0.1 / 0.1 / 0.3 ms. A crop field is
+     exactly the many-copies case.
+   - **Snapping** (section 2, option 3). Each object's origin is drawn snapped to the art-pixel grid in the camera's image plane
+     (`snap`, on by default), so it moves in whole art pixels. It is then slid along the view direction, which doesn't move it in the
+     image, back to its own height, so grounded objects don't sink or float. Rotation and scale are not snapped. Negative scale
+     (mirroring) works; a zero scale component hides the object.
+   - **Sun shadows** (section 4). A second sun light holds a shadow map of the objects only and re-renders when an object, the sun or the
+     camera (snapping) changes; the static map still renders only when the sun moves. The mask multiplies the two, so where an object's
+     soft shadow edge overlaps the world's, the two penumbras combine slightly differently from one merged map.
+   - **Not yet:** objects neither block lamp light nor cast lamp shadows (the lamp atlas is static), and they have no ambient motion
+     (sway, spin). The object shadow map is a second fixed 4096² map, allocated with the first object (which also recompiles the mask
+     shader once), and it re-renders whenever the camera moves, since snapping moves the objects; a game-chosen size would help on
+     phones. Add these when the game needs them.
+   - Demo: `?scene=objects` (a cart on a loop, bouncing balls, a turning crate and a field of crops that grow and are harvested).
+     `BuiltScene.populate` (`src/scenes/types.ts`) plays the game: it adds the objects and moves them to the clock each frame.
 2. **Picking.** Map a screen point to the art pixel and the world position, plus the object under it (an object-ID channel in the
    G-buffer). Clicking a tile or a crop needs this, and the game can't work it out by itself.
 3. **Game-supplied settings.** Look keyframes per game or scene (today `look.ts` is global), the palette size and the limits. The
@@ -230,7 +241,8 @@ asset pipeline and packaging are in Phase 1.
   mobile behaviour; consider caching static geometry and re-rendering only the dynamic mesh.
 - **Comparison fairness.** Pass 3 uses its own world (pond, leaf-clump trees, motion), so the comparison mixes renderer and content
   changes. Future passes should all draw the same `PixelScene`; the frozen references cannot.
-- Moving objects take the shadow of whatever static surface is behind them; add a real shadow for dynamic casters if it matters.
+- The ambient-motion mesh's small moving bits still take the shadow of whatever static surface is behind them. Game objects
+  (`addObject`) cast and receive real sun shadows (Phase 1, item 1).
 
 ## 5. Visual and art ideas not yet done
 
