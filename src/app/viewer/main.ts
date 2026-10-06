@@ -170,15 +170,17 @@ async function main() {
   });
 
   // Hovering a game object highlights it (PixelObject.highlight), as a point-and-click game would. Not while a button
-  // is down (orbiting or panning) or while comparing.
-  let hovered: PixelObject | null = null;
-  const hover = (o: PixelObject | null) => {
+  // is down (orbiting or panning) or while comparing. The pointer is picked again after every redraw too, since objects
+  // and the camera move under a pointer that keeps still.
+  let hovered: PixelObject | null = null, pointer: { x: number; y: number } | null = null;
+  const hover = () => {
+    const o = pointer && compare === 'off' ? p3.pick(pointer.x, pointer.y)?.object ?? null : null;
     if (o === hovered) return;
     if (hovered) hovered.highlight = false;
     hovered = o; if (o) o.highlight = true;   // style only: the next renderStyle shows it, no redraw needed
   };
-  $('stage').addEventListener('pointermove', (e) => { hover(e.buttons || compare !== 'off' ? null : p3.pick(e.clientX, e.clientY)?.object ?? null); });
-  $('stage').addEventListener('pointerleave', () => hover(null));
+  $('stage').addEventListener('pointermove', (e) => { pointer = e.buttons ? null : { x: e.clientX, y: e.clientY }; hover(); });
+  $('stage').addEventListener('pointerleave', () => { pointer = null; hover(); });
 
   let last = performance.now(), time = params.has('time') ? num('time', 0) : 0, capturing = false;
   const focus = new THREE.Vector3();
@@ -190,6 +192,7 @@ async function main() {
       p3.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); p3.renderGeometry(time);
       left()?.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); left()?.renderGeometry(time);
       dirty = false;
+      if (pointer) hover();
     }
     p3.renderStyle(settings, time);
     left()?.renderStyle(settings, time);
