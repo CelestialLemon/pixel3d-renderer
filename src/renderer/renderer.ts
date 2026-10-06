@@ -11,7 +11,7 @@ import { buildWindowLight, type WindowLight } from './windowLight';
 import { FLUID_FRAG, FLUID_VERT } from './shaders/water';
 import { linearColor } from './geometry';
 import { buildFluidMap, type FluidMap } from './fluidMap';
-import { MIRROR_X, MOTION_ATTRIBUTES, OBJECT_ATTRIBUTES, ObjectBatch, PixelObject } from './objects';
+import { MAX_HIGHLIGHTS, MIRROR_X, MOTION_ATTRIBUTES, OBJECT_ATTRIBUTES, ObjectBatch, PixelObject } from './objects';
 
 /** Stylisation switches. All on is the intended look; the toggles exist for comparison and debugging. */
 export interface RenderSettings {
@@ -40,6 +40,11 @@ export interface PixelRendererOptions {
   shadowMapSize?: number;
   /** Square moving-object shadow map side. Defaults to shadowMapSize. Allocated with the first object. */
   objectShadowMapSize?: number;
+  /**
+   * Compile the object highlight shaders (`PixelObject.highlight`) in the background once the renderer has objects, so the
+   * first highlight doesn't stall on them (seconds on a software GPU). Default false: they compile on first use.
+   */
+  warmHighlight?: boolean;
 }
 
 const positiveInteger = (name: string, value: number) => {
@@ -119,6 +124,14 @@ export class PixelRenderer {
   private shadowMat: THREE.ShadowMaterial;
   private postMat: THREE.ShaderMaterial;
   private cleanMat: THREE.ShaderMaterial;
+  /** The same two with the highlight code (`HIGHLIGHT`) and the same uniforms, drawn while an object is highlighted. */
+  private postHiMat: THREE.ShaderMaterial;
+  private cleanHiMat: THREE.ShaderMaterial;
+  /** Whether the highlight variants still have to be compiled ahead of the first hover (`warmHighlight`, renderStyle). */
+  private highlightWarmPending: boolean;
+  /** The background compile `warmHighlight` started, until it settles: `dispose` waits for it (three polls the materials). */
+  private warming: Promise<unknown> | null = null;
+  private disposed = false;
   private quad: THREE.Mesh;
   private quadScene = new THREE.Scene();
   private quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -128,6 +141,11 @@ export class PixelRenderer {
   /** Every live object by its id, for `pick`. Ids start at 1 (0 in the G-buffer means no object) and are never reused. */
   private objectsById = new Map<number, PixelObject>();
   private nextObjectId = 1;
+  /**
+   * The highlighted objects (`PixelObject.highlight`), their ids in `uHighlight`. Only the HIGHLIGHT variants of the post
+   * and clean-up shaders do the highlight work, and they are drawn only while this is not empty, so it costs nothing otherwise.
+   */
+  private highlighted = new Set<PixelObject>();
   /** The camera the G-buffer was last rendered with (`placeCamera` may have moved it since): what `pick` reads against. */
   private drawnCamera = { position: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(), fwd: new THREE.Vector3(), texel: 1 };
   private pickBuf = new Float32Array(4);
@@ -172,6 +190,7 @@ export class PixelRenderer {
     this.shadowMapSize = positiveInteger('shadowMapSize', options.shadowMapSize ?? 4096);
     this.objectShadowMapSize = positiveInteger('objectShadowMapSize', options.objectShadowMapSize ?? this.shadowMapSize);
     this.supersample = options.supersample ?? 3;
+    this.highlightWarmPending = options.warmHighlight ?? false;
     if (this.supersample !== 1 && this.supersample !== 3) throw new RangeError('supersample must be 1 or 3');
     this.resolvePolicy = options.resolvePolicy ?? 1;
     if (!Number.isSafeInteger(this.resolvePolicy) || this.resolvePolicy < 0 || this.resolvePolicy > 8) {
@@ -340,11 +359,14 @@ ${POSE_OBJECT}`;
         uGrooves: { value: padded(grooves?.positions ?? [], this.limits.grooves, () => 0) },
         uGrooveAxis: { value: new THREE.Vector3(...(grooves?.axis ?? [1, 0, 0])) },
         uGrooveY: { value: new THREE.Vector2(...(grooves?.yRange ?? [0, 0])) },
+        uHighlight: { value: new THREE.Vector4() },
       },
     });
     this.cleanMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: CLEAN_FRAG,
-      uniforms: { tImage: { value: null }, tAlbedo: { value: null }, tNormal: { value: null }, tFluid: { value: null }, uRes: { value: new THREE.Vector2() }, uOn: { value: 1 } },
+      uniforms: { tImage: { value: null }, tAlbedo: { value: null }, tNormal: { value: null }, tShadow: { value: null }, tFluid: { value: null }, uRes: { value: new THREE.Vector2() }, uOn: { value: 1 },
+        // Shared with the post material, which sets them (setHighlight, renderStyle): the highlight test needs the camera.
+        ...Object.fromEntries(['uHighlight', 'uTexel', 'uRight', 'uUp', 'uFwd'].map((k) => [k, this.postMat.uniforms[k]])) },
     });
     this.resolveMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: RESOLVE_FRAG,
@@ -353,6 +375,10 @@ ${POSE_OBJECT}`;
         uRight: { value: new THREE.Vector3() }, uUp: { value: new THREE.Vector3() }, uFwd: { value: new THREE.Vector3() },
       },
     });
+    const highlightVariant = (m: THREE.ShaderMaterial) => new THREE.ShaderMaterial({
+      ...common, vertexShader: POST_VERT, fragmentShader: m.fragmentShader, uniforms: m.uniforms, defines: { HIGHLIGHT: '' },
+    });
+    this.postHiMat = highlightVariant(this.postMat); this.cleanHiMat = highlightVariant(this.cleanMat);
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.postMat);
     this.quad.frustumCulled = false;
     this.quadScene.add(this.quad);
@@ -402,13 +428,25 @@ ${POSE_OBJECT}`;
       this.batches.set(geometry, batch);
       this.scene.add(...batch.meshes);
     }
-    const o = new PixelObject(batch, this.nextObjectId++, (o) => this.removeObject(o));
+    const o = new PixelObject(batch, this.nextObjectId++, (o) => this.removeObject(o), (o, on) => this.setHighlight(o, on));
     batch.objects.push(o);
     this.objectsById.set(o.id, o);
     const old = batch.grow();
     if (old.length) { for (const m of old) { this.scene.remove(m); m.dispose(); } this.scene.add(...batch.meshes); }
     this.objectShadowDirty = true;
     return o;
+  }
+
+  /** Turn `o`'s highlight on or off; false if `o` was removed (so it can't hold a slot). */
+  private setHighlight(o: PixelObject, on: boolean): boolean {
+    if (on && this.objectsById.get(o.id) !== o) return false;
+    if (on && this.highlighted.size >= MAX_HIGHLIGHTS) {
+      throw new RangeError(`PixelObject.highlight: at most ${MAX_HIGHLIGHTS} objects can be highlighted at once`);
+    }
+    if (on) this.highlighted.add(o); else this.highlighted.delete(o);
+    const ids = Array.from(this.highlighted, (h) => h.id);
+    this.postMat.uniforms.uHighlight.value.set(ids[0] ?? 0, ids[1] ?? 0, ids[2] ?? 0, ids[3] ?? 0);
+    return true;
   }
 
   private removeObject(o: PixelObject) {
@@ -601,6 +639,7 @@ ${POSE_OBJECT}`;
   renderStyle(settings: RenderSettings | undefined, time?: number): void;
   renderStyle(settings: RenderSettings | number = DEFAULT_SETTINGS, time = 0) {
     const s = typeof settings === 'number' ? DEFAULT_SETTINGS : settings;
+    const lit = this.highlighted.size > 0, postMat = lit ? this.postHiMat : this.postMat, cleanMat = lit ? this.cleanHiMat : this.cleanMat;
     if (typeof settings === 'number') time = settings;
     const r = this.renderer, cam = this.camera;
     const u = this.postMat.uniforms;
@@ -616,7 +655,7 @@ ${POSE_OBJECT}`;
 
     const fluidTex = this.fluidBuf?.textures ?? [this.noFluid, this.noFluid];
     u.tFluidN.value = fluidTex[0]; u.tFluidF.value = fluidTex[1];
-    this.quad.material = this.postMat;
+    this.quad.material = postMat;
     u.uPass.value = 0; u.tImage.value = null;   // never sample the target being drawn
     u.uDeferGrade.value = this.hasFluids ? 1 : 0;   // with fluids, pass 1 grades the composited image once
     r.setRenderTarget(this.linearImage ?? this.stylised); r.render(this.quadScene, this.quadCam);
@@ -631,9 +670,27 @@ ${POSE_OBJECT}`;
     this.cleanMat.uniforms.tFluid.value = fluidTex[1];
     this.cleanMat.uniforms.tAlbedo.value = this.gbuf.textures[0];
     this.cleanMat.uniforms.tNormal.value = this.gbuf.textures[1];
+    this.cleanMat.uniforms.tShadow.value = this.gbuf.textures[2];
     this.cleanMat.uniforms.uOn.value = s.cleanup ? 1 : 0;
-    this.quad.material = this.cleanMat;
+    this.quad.material = cleanMat;
     r.setRenderTarget(null); r.render(this.quadScene, this.quadCam);
+    if (this.highlightWarmPending && this.batches.size) this.warmHighlight();
+  }
+
+  /**
+   * Compile the highlight variants in the background (`warmHighlight`). Each is compiled against the target it draws to,
+   * which is part of three's program key.
+   */
+  private warmHighlight() {
+    this.highlightWarmPending = false;
+    const r = this.renderer, target = r.getRenderTarget();
+    const compiles = ([[this.postHiMat, this.linearImage ?? this.stylised], [this.cleanHiMat, null]] as const).map(([m, to]) => {
+      const scene = new THREE.Scene().add(new THREE.Mesh(this.quad.geometry, m));
+      r.setRenderTarget(to);
+      return r.compileAsync(scene, this.quadCam).catch(() => {});   // a failure shows when the variant is first drawn instead
+    });
+    r.setRenderTarget(target);
+    const warming: Promise<unknown> = this.warming = Promise.all(compiles).finally(() => { if (this.warming === warming) this.warming = null; });
   }
 
   /**
@@ -675,15 +732,19 @@ ${POSE_OBJECT}`;
     return out;
   }
 
-  /** Free GPU resources. The scene's geometries are disposed too; object geometries belong to the game and are not. */
+  /** Free GPU resources (later calls do nothing). The scene's geometries are disposed too; object geometries belong to the game and are not. */
   dispose() {
-    this.gbufDrawn = false; this.objectsById.clear();
+    if (this.disposed) return;   // once: a second call would queue a second deferred release
+    this.disposed = true;
+    this.gbufDrawn = false; this.objectsById.clear(); this.highlightWarmPending = false;
     for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage]) t?.dispose();
     this.light.shadow.map?.dispose(); this.objectLight?.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();
     this.fluidMap.texture.dispose(); this.fluidMap.height.dispose(); this.noFluid.dispose();
     for (const m of [this.staticMesh, this.dynMesh, this.fluidMesh, this.quad]) m.geometry.dispose();
     for (const b of this.batches.values()) for (const m of b.meshes) m.dispose();
     for (const m of [this.staticMat, this.objectMat, this.objectMotionMat, this.objectDepthMat, this.objectMaskMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat]) (m as THREE.Material).dispose();
-    this.renderer.dispose();
+    // three polls a background compile's materials on a timer, so they and the renderer go only once it has finished.
+    const last = () => { this.postHiMat.dispose(); this.cleanHiMat.dispose(); this.renderer.dispose(); };
+    if (this.warming) this.warming.then(last); else last();
   }
 }
