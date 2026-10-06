@@ -1,7 +1,8 @@
 # Roadmap
 
-Goal: one pixel-art 3D renderer, built once and reused by every hobby game. The first game to use it is the **3D port of Harvest
-Frenzy**. More games will follow, but none are planned yet.
+Goal: one pixel-art 3D renderer, built once and reused by every hobby game. The first game to use it is **Soil n Silo**
+([CelestialLemon/Soil-n-Silo](https://github.com/CelestialLemon/Soil-n-Silo)), a point-and-click farming and production game. More
+games will follow, but none are planned yet.
 
 The **Direction** and **Phases** below are the plan (decided 2026-10-05). The numbered sections after them are the renderer's
 detailed backlog and the record of what has been done. Items are roughly in priority order within each section.
@@ -135,19 +136,25 @@ time. A game can't move, add or remove anything. This phase fixes that and turns
 
 **Done when:** the example game runs against the package, and a separate repo can install it from a tag.
 
-### Phase 2: Harvest Frenzy 3D
+### Phase 2: Soil n Silo
 
-The port lives in its own repo and installs the renderer from a tag. From here on, the game drives the renderer's priorities: each
-gap it hits comes back here as a backlog item. Expected needs (confirm them against the game):
+The game lives in its own repo and installs the renderer from a tag (v0.1.0 to start). It is point-and-click: there is no player
+character, and the player turns the orthographic camera between preset 90° views and pans it with the mouse. From here on, the game
+drives the renderer's priorities: each gap it hits comes back here as an issue labelled `soil-n-silo`. Expected needs (confirm them
+against the game; its `docs/ROADMAP.md` keeps the current list):
 
-- **Characters:** skinned meshes in the renderer, with clip playback on the game side.
-- **Things that change state:** crops growing, items being picked up. Object swaps, scaling, and spawning and removing objects.
-- **Textures,** if the port uses CC0 packs (Kenney, Quaternius, KayKit) rather than models made for it (section 1, item 3).
+- **Things that change state:** crops growing through stages, tilled tiles, placed machines. Object swaps, spawning and removing
+  objects (done in Phase 1).
+- **Pointing at tiles:** picking and a hover highlight (done in Phase 1).
+- **Soil colour per tile** that changes with fertility: a per-object tint, or one geometry per band.
+- **Machines that show they are running:** smoke and glow on objects, so ambient motion for objects, and perhaps lamps on them.
+- **Seeing behind buildings:** fading or cutting away buildings and trees, if the 90° views are not enough.
+- **Animals:** chickens moving about, as rigid parts or skinned meshes.
 - **UI** over the canvas, built in the game.
 
 ### Phase 3: harden the renderer
 
-Work that matters more once a real game depends on the renderer, in any order the port suggests:
+Work that matters more once a real game depends on the renderer, in any order the game suggests:
 
 - **Ambient motion hook.** Make the list of vertex-animation modes pluggable: a scene or game registers a mode (a GLSL snippet with
   the `pose()` contract, a parameter packer, and whether it casts a moving shadow), and the renderer builds `pose()` from the core
@@ -161,10 +168,10 @@ Work that matters more once a real game depends on the renderer, in any order th
 
 ### Phase 4: the second game
 
-When the next game starts, look at what it needs from Harvest Frenzy's code. Anything both games need in the same form moves into a
+When the next game starts, look at what it needs from Soil n Silo's code. Anything both games need in the same form moves into a
 small shared module, most likely a pixel-art UI kit first, then perhaps input or audio helpers. Each module is independent and
 optional, and games call them; nothing sits in the middle and imposes a structure. The renderer gets a new minor version for anything
-the second game needs, and Harvest Frenzy upgrades only if it wants to.
+the second game needs, and Soil n Silo upgrades only if it wants to.
 
 ---
 
