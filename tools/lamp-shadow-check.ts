@@ -50,7 +50,14 @@ try {
       const clearance = sample(geometry);
       // A 512 px device limit forces 128 px faces in rows of four: the addressing must still find each face.
       const smallDevice = sample(solid(new THREE.BoxGeometry(4, 4, 4)), [0, 0, 0], 512);
-      return { shell, panel, exterior, clearance, smallDevice, layouts };
+      const ranged = (indexed: boolean, start: number, count: number) => {
+        const box = new THREE.BoxGeometry(4, 4, 4), geometry = indexed ? box : box.toNonIndexed();
+        if (!indexed) box.dispose();
+        geometry.setDrawRange(start, count);
+        return sample(solid(geometry));
+      };
+      return { shell, panel, exterior, clearance, smallDevice, layouts,
+        indexedRange: ranged(true, 6, 6), nonIndexedRange: ranged(false, 6, 6), emptyRange: ranged(true, 0, 0) };
     } finally { renderer.dispose(); }
   });
 
@@ -62,6 +69,11 @@ try {
   blockedAtTwoMetres(cases.exterior[0], 'lamp outside the box');
   cases.clearance.forEach((distance, face) => blockedAtTwoMetres(distance, `clearance skips fixture but records enclosure, face ${face}`));
   cases.smallDevice.forEach((distance, face) => blockedAtTwoMetres(distance, `512 px device limit, face ${face}`));
+  for (const range of [cases.indexedRange, cases.nonIndexedRange]) {
+    blockedAtTwoMetres(range[1], 'Restricted draw range keeps only the -X face');
+    assert.deepEqual(range.filter((_, face) => face !== 1), [0, 0, 0, 0, 0], 'Excluded triangles cast no lamp shadows');
+  }
+  assert.deepEqual(cases.emptyRange, [0, 0, 0, 0, 0, 0], 'An empty draw range casts no lamp shadows');
   const L = cases.layouts;
   assert.deepEqual(L.old16, { tile: 256, cols: 12, width: 3072, height: 2048 }, 'Default layout unchanged for 16 lamps');
   assert.deepEqual(L.village22, { tile: 256, cols: 12, width: 3072, height: 2816 }, 'Default layout for 22 lamps');

@@ -1,7 +1,7 @@
 // Construction-time budgets: default compatibility, custom shader capacities, fluid collection and shadow maps.
 // Requires the dev server and pinned browser, like the other renderer checks.
 import assert from 'node:assert/strict';
-import type { PixelScene, PixelRendererOptions, RendererLimits } from '../src/renderer/index.ts';
+import type { BakedScene as PixelScene, PixelRendererOptions, RendererLimits } from '../src/renderer/index.ts';
 import { launch, newPage, open } from './lib.ts';
 
 const browser = await launch();
@@ -11,7 +11,7 @@ try {
   const result = await page.evaluate(async () => {
     const THREE = await import('/node_modules/three/build/three.module.js');
     const { PixelRenderer, GeometryCollector, FluidCollector, FLUIDS, DEFAULT_LIMITS, LIMITS,
-      resolveLimits, DEFAULT_SETTINGS, lookAt, place, FLAG, dayCycle, DEFAULT_DAY_CYCLE, PRESETS } = await import('/src/renderer/index.ts');
+      resolveLimits, DEFAULT_SETTINGS, lookAt, place, FLAG, dayCycle, DEFAULT_DAY_CYCLE, PRESETS, encodeScene, decodeScene } = await import('/src/renderer/index.ts');
     const check = (ok: boolean, message: string) => { if (!ok) throw new Error(message); };
     const rejects = (run: () => unknown, pattern: RegExp) => {
       try { run(); } catch (e) { check(pattern.test(String(e)), `Unexpected error: ${e}`); return; }
@@ -109,6 +109,24 @@ try {
       check(pixels.some((v, i) => i % 4 !== 3 && v > 0), 'Draw produces colour pixels');
       return pixels;
     };
+    const minimalGeometry = new GeometryCollector(); minimalGeometry.add(box, null, [0.5, 0.3, 0.1]);
+    const minimalScene = { staticGeometry: minimalGeometry.build(), shadow: { center: new THREE.Vector3(), radius: 4 } };
+    const decodedMinimal = decodeScene(encodeScene(minimalScene));
+    check(decodedMinimal.dynamicGeometry.attributes.position.count === 0 && decodedMinimal.fluids.geometry.attributes.position.count === 0 &&
+      decodedMinimal.lamps.length === 0 && decodedMinimal.grooves === null, 'Minimal scenes bake with empty optional fields');
+    const minimalRenderer = new PixelRenderer(document.createElement('canvas'), minimalScene, { shadowMapSize: 128, limits: small });
+    try {
+      minimalRenderer.resize(128, 96); minimalRenderer.placeCamera(new THREE.Vector3(), 0, 0.7, 4); minimalRenderer.setLook(lookAt(12));
+      const expected = draw(minimalRenderer);
+      minimalRenderer.renderStyle(8);
+      const actual = new Uint8Array(expected.length), gl = minimalRenderer.renderer.getContext();
+      gl.readPixels(0, 0, 128, 96, gl.RGBA, gl.UNSIGNED_BYTE, actual);
+      check(expected.every((v, i) => actual[i] === v), 'renderStyle(time) matches explicit default settings');
+    } finally {
+      minimalRenderer.dispose(); discardScene(decodedMinimal);
+      for (const t of [decodedMinimal.maps!.fluids.texture, decodedMinimal.maps!.fluids.height,
+        decodedMinimal.maps!.windows.texture, decodedMinimal.maps!.windows.source]) t.dispose();
+    }
     const a = make(scene(small)), b = make(scene(small), { limits: { ...DEFAULT_LIMITS }, supersample: 3,
       shadowMapSize: 4096, objectShadowMapSize: 4096, resolvePolicy: 1, resolveThinOnly: true });
     try {

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, linearColor as lin, place, quantizePalette, type PixelScene } from '../../renderer';
+import { sceneBuilder } from '../shared/baked';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, linearColor as lin, place, quantizePalette, type BakedScene as PixelScene } from '../../renderer';
 import type { SceneDefinition } from '../types';
 import { aoBay, curvesBay, inkBay, lampsBay, paletteBay, thinBay } from './bays';
 import { kerb } from './kit';
@@ -46,7 +47,7 @@ export const testChart: SceneDefinition = {
   id: 'test-chart',
   title: 'Test chart',
   hasReference: false,
-  build,
+  build: sceneBuilder(() => testChart, build),
   view: {
     target: { x: 0, z: 0, height: 0.6 },
     groundY: 0,

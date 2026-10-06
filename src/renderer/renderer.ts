@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Look } from './look';
-import { resolveLimits, type RendererLimits, type PixelScene } from './scene';
+import { resolveLimits, resolveScene, type RendererLimits, type PixelScene, type ResolvedPixelScene } from './scene';
 import { POST_VERT } from './shaders/common';
 import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_OBJECT_VERT, GBUF_STATIC_VERT, POSE } from './shaders/gbuffer';
 import { postFragment } from './shaders/post';
@@ -72,6 +72,7 @@ const padded = <T,>(items: T[], size: number, fill: () => T) => {
  * The scene is baked; objects the game moves are added with `addObject`.
  */
 export class PixelRenderer {
+  readonly pixelScene: ResolvedPixelScene;
   readonly limits: Readonly<RendererLimits>;
   readonly shadowMapSize: number;
   readonly objectShadowMapSize: number;
@@ -152,7 +153,8 @@ export class PixelRenderer {
   resolveThinOnly = true;
   sun = new THREE.Vector3(0, 1, 0);
 
-  constructor(readonly canvas: HTMLCanvasElement, readonly pixelScene: PixelScene, options: PixelRendererOptions = {}) {
+  constructor(readonly canvas: HTMLCanvasElement, scene: PixelScene, options: PixelRendererOptions = {}) {
+    const pixelScene = this.pixelScene = resolveScene(scene);
     this.limits = resolveLimits(options.limits);
     this.shadowMapSize = positiveInteger('shadowMapSize', options.shadowMapSize ?? 4096);
     this.objectShadowMapSize = positiveInteger('objectShadowMapSize', options.objectShadowMapSize ?? this.shadowMapSize);
@@ -177,6 +179,7 @@ export class PixelRenderer {
     const context = this.renderer.getContext();
     const maxUniformVectors = context.getParameter(context.MAX_FRAGMENT_UNIFORM_VECTORS) as number;
     if (uniformVectors > maxUniformVectors) {
+      this.renderer.forceContextLoss();
       this.renderer.dispose();
       throw new RangeError(`Renderer limits need up to ${uniformVectors} fragment uniform vectors, but this GPU supports ${maxUniformVectors}; lower the limits`);
     }
@@ -245,14 +248,17 @@ ${POSE}`);
     this.fluidMesh.frustumCulled = false;
     this.fluidScene.add(this.fluidMesh);
     this.hasFluids = fluids.geometry.attributes.position.count > 0;
-    this.fluidMap = buildFluidMap(fluids, pixelScene.staticGeometry);
+    const maps = pixelScene.maps;
+    this.fluidMap = maps ? { texture: maps.fluids.texture.clone(), height: maps.fluids.height.clone(), bounds: [...maps.fluids.bounds] }
+      : buildFluidMap(fluids, pixelScene.staticGeometry);
     const mats = fluids.materials, src = fluids.sources;
     const fluidVec = (pick: (m: typeof mats[number]) => [number, number, number, number]) =>
       padded(mats.map((m) => new THREE.Vector4(...pick(m))), this.limits.fluidMaterials, () => new THREE.Vector4());
     const gl = this.renderer.getContext();
     this.lampShadows = new LampShadows(lamps, pixelScene.staticGeometry,
       Math.min(this.renderer.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number));
-    this.windowLight = buildWindowLight(pixelScene.staticGeometry, lamps);
+    this.windowLight = maps ? { texture: maps.windows.texture.clone(), source: maps.windows.source.clone(),
+      bounds: [...maps.windows.bounds], panes: maps.windows.panes } : buildWindowLight(pixelScene.staticGeometry, lamps);
     const common = { glslVersion: THREE.GLSL3, depthTest: false, depthWrite: false } as const;
     this.postMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: postFragment(this.limits),
@@ -522,8 +528,12 @@ ${POSE}`);
     }
   }
 
-  /** Stylise the G-buffer into the final pixel image on the canvas. `time` drives clouds and the fluids. */
-  renderStyle(s: RenderSettings, time: number) {
+  /** Stylise the G-buffer. `renderStyle(time)` uses DEFAULT_SETTINGS; time drives clouds and fluids. */
+  renderStyle(time?: number): void;
+  renderStyle(settings: RenderSettings | undefined, time?: number): void;
+  renderStyle(settings: RenderSettings | number = DEFAULT_SETTINGS, time = 0) {
+    const s = typeof settings === 'number' ? DEFAULT_SETTINGS : settings;
+    if (typeof settings === 'number') time = settings;
     const r = this.renderer, cam = this.camera;
     const u = this.postMat.uniforms;
     u.tAlbedo.value = this.gbuf.textures[0]; u.tNormal.value = this.gbuf.textures[1]; u.tShadow.value = this.gbuf.textures[2];

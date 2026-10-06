@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { sceneBuilder } from '../shared/baked';
 import {
   DEFAULT_PALETTE_SIZE, FLAG, FluidCollector, FLUIDS, GeometryCollector, linearColor as lin, place, quantizePalette,
-  type FluidMaterial, type Lamp, type PixelScene,
+  type FluidMaterial, type Lamp, type BakedScene as PixelScene,
 } from '../../renderer';
 import type { SceneDefinition } from '../types';
 
@@ -76,7 +77,7 @@ export const fluidsScene: SceneDefinition = {
   id: 'fluids',
   title: 'Fluids',
   hasReference: false,
-  build,
+  build: sceneBuilder(() => fluidsScene, build),
   view: {
     target: { x: 0, z: 0, height: 0.4 },
     groundY: 0,

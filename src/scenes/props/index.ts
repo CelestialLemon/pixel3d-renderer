@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, FluidCollector, collectGltf, collectLamps, GeometryCollector, linearColor as lin, loadGltf, namedMeshRule, place, quantizePalette, resolveLimits, type Lamp, type PixelScene } from '../../renderer';
+import { sceneBuilder } from '../shared/baked';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, collectGltf, collectLamps, GeometryCollector, linearColor as lin, loadGltf, namedMeshRule, place, quantizePalette, resolveLimits, type Lamp, type BakedScene as PixelScene } from '../../renderer';
 import type { SceneDefinition, SceneView } from '../types';
 
 // Props gallery: every modeled prop in assets/props/<id>/ (built per docs/ASSET_BRIEF.md, exported to
@@ -73,4 +74,4 @@ const view: SceneView = {
   ],
 };
 
-export const propsGallery: SceneDefinition = { id: 'props', title: 'Props gallery', hasReference: false, build, view };
+export const propsGallery: SceneDefinition = { id: 'props', title: 'Props gallery', hasReference: false, build: sceneBuilder(() => propsGallery, build), view };

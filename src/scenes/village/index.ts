@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, MODE, quantizePalette, resolveLimits, type PixelScene } from '../../renderer';
+import { sceneBuilder } from '../shared/baked';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, MODE, quantizePalette, resolveLimits, type BakedScene as PixelScene } from '../../renderer';
 import { mulberry32 } from '../shared/random';
 import type { SceneDefinition } from '../types';
 import { buildGround, CANAL_FLOW } from './ground';
@@ -70,7 +71,7 @@ export const village: SceneDefinition = {
   title: 'Lantern Row',
   hasReference: false,
   hour: 22,
-  build,
+  build: sceneBuilder(() => village, build),
   view: {
     target: { x: BRIDGE.x + 2, z: BRIDGE.z - 2, height: 1.2 },
     groundY: 0,

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, loadGltf, quantizePalette, type PixelScene } from '../../renderer';
+import { sceneBuilder } from '../shared/baked';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, loadGltf, quantizePalette, type BakedScene as PixelScene } from '../../renderer';
 import { mulberry32 } from '../shared/random';
 import type { SceneDefinition } from '../types';
 import { addFactory } from './factory';
@@ -38,7 +39,7 @@ export const cookieCo: SceneDefinition = {
   id: 'cookie-co',
   title: 'Cookie Co.',
   hasReference: true,
-  build,
+  build: sceneBuilder(() => cookieCo, build),
   view: {
     target: { x: 0.8, z: 0.4, height: 1.3 },
     groundY: GROUND_Y,

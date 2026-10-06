@@ -53,11 +53,31 @@ void main(){
   outDist = vec4(d);
 }`;
 
+/** Remove triangles the distance shader always discards before submitting them to all six faces per lamp. */
+function solidOccluders(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+  const position = geometry.getAttribute('position'), flags = geometry.getAttribute('aFlag'), input = geometry.index;
+  const indices: number[] = [];
+  const count = input?.count ?? position.count;
+  const start = Math.max(0, geometry.drawRange.start), end = Math.min(count, geometry.drawRange.start + geometry.drawRange.count);
+  for (let t = start; t + 2 < end; t += 3) {
+    const a = input ? input.getX(t) : t, b = input ? input.getX(t + 1) : t + 1, c = input ? input.getX(t + 2) : t + 2;
+    // Collector flags are constant per triangle. Keep mixed flags conservatively: interpolation can produce a solid flag.
+    const value = flags.getX(a), f = Math.floor(value + 0.5);
+    if (flags.getX(b) !== value || flags.getX(c) !== value || f === 0 || f === 1 || f === 6) indices.push(a, b, c);
+  }
+  const result = new THREE.BufferGeometry();
+  result.setAttribute('position', position); result.setAttribute('aFlag', flags); result.setIndex(indices);
+  return result;
+}
+
 /**
  * One distance cube map per lamp, packed into a single float atlas: six LAMP_TILE² faces per lamp, COLS faces per row.
  * Lamps and the static world never move, so this renders once.
  */
 export class LampShadows {
+  /** Triangles submitted per cube face, after filtering non-occluders. */
+  readonly occluderTriangles: number;
+  private occluders: THREE.BufferGeometry;
   readonly target: THREE.WebGLRenderTarget;
   readonly size = new THREE.Vector2();
   /** Face size and faces per row actually used (see `atlasLayout`); the post shader reads the face size from a uniform. */
@@ -66,10 +86,12 @@ export class LampShadows {
   private rendered = false;
 
   /** `maxSize`: the device's texture and renderbuffer size limit (the smaller of the two). */
-  constructor(private lamps: Lamp[], private geometry: THREE.BufferGeometry, maxSize: number) {
+  constructor(private lamps: Lamp[], geometry: THREE.BufferGeometry, maxSize: number) {
     const layout = atlasLayout(lamps.length, maxSize);
     if (layout.tile < LAMP_TILE) console.warn(`lamp shadows: ${lamps.length} lamps need ${layout.tile}px faces to fit this device's ${maxSize}px limit`);
     this.tile = layout.tile; this.cols = layout.cols;
+    this.occluders = lamps.length ? solidOccluders(geometry) : new THREE.BufferGeometry().setIndex([]);
+    this.occluderTriangles = this.occluders.index!.count / 3;
     this.size.set(layout.width, layout.height);
     this.target = new THREE.WebGLRenderTarget(this.size.x, this.size.y, {
       type: THREE.FloatType, format: THREE.RedFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
@@ -81,7 +103,7 @@ export class LampShadows {
     if (this.rendered) return;
     this.rendered = true;
     const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, glslVersion: THREE.GLSL3, side: THREE.DoubleSide, uniforms: { uLamp: { value: new THREE.Vector3() }, uClearance: { value: 0 } } });
-    const scene = new THREE.Scene(), mesh = new THREE.Mesh(this.geometry, mat);
+    const scene = new THREE.Scene(), mesh = new THREE.Mesh(this.occluders, mat);
     mesh.frustumCulled = false;
     scene.add(mesh);
     const cam = new THREE.PerspectiveCamera(90, 1, 0.02, 200);
@@ -113,5 +135,10 @@ export class LampShadows {
     mat.dispose();
   }
 
-  dispose() { this.target.dispose(); }
+  dispose() {
+    this.target.dispose();
+    // These buffers belong to the caller's static geometry; only our filtered index is owned here.
+    this.occluders.deleteAttribute('position'); this.occluders.deleteAttribute('aFlag');
+    this.occluders.dispose();
+  }
 }

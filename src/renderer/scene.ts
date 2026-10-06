@@ -1,5 +1,8 @@
 import type * as THREE from 'three';
-import type { SceneFluids } from './fluids';
+import { FluidCollector, type SceneFluids } from './fluids';
+import { GeometryCollector } from './geometry';
+import type { FluidMap } from './fluidMap';
+import type { WindowLight } from './windowLight';
 
 /** Shader capacities, chosen before collecting fluids and constructing a renderer. All are positive integers. */
 export interface RendererLimits {
@@ -58,12 +61,29 @@ export interface PixelScene {
   /** World-space triangles with aColor and aFlag (see GeometryCollector). Never moves. */
   staticGeometry: THREE.BufferGeometry;
   /** Moving triangles, also with aMode, aAnchor and aAnim (see motion.ts). Animated on the GPU every frame. */
-  dynamicGeometry: THREE.BufferGeometry;
-  lamps: Lamp[];
+  dynamicGeometry?: THREE.BufferGeometry;
+  lamps?: Lamp[];
   /** Water and other fluids: surfaces, their materials and the spots that stir them (see fluids.ts). */
-  fluids: SceneFluids;
-  grooves: Grooves | null;
+  fluids?: SceneFluids;
+  /** Optional precomputed static maps (encodeScene bakes these). The renderer creates its own texture instances. */
+  maps?: { fluids: FluidMap; windows: WindowLight };
+  grooves?: Grooves | null;
   /** Region the sun's shadow map covers: a square of half-size `radius` around `center`. */
   shadow: { center: THREE.Vector3; radius: number };
+  stats?: { triangles: number; paletteColors: number };
+}
+
+/** The scene after optional inputs have their empty defaults. Renderer and baked assets always expose this shape. */
+export interface ResolvedPixelScene extends PixelScene {
+  dynamicGeometry: THREE.BufferGeometry;
+  lamps: Lamp[];
+  fluids: SceneFluids;
+  grooves: Grooves | null;
   stats: { triangles: number; paletteColors: number };
+}
+
+export function resolveScene(scene: PixelScene): ResolvedPixelScene {
+  return { ...scene, dynamicGeometry: scene.dynamicGeometry ?? new GeometryCollector(true).build(),
+    lamps: scene.lamps ?? [], fluids: scene.fluids ?? new FluidCollector().build(), grooves: scene.grooves ?? null,
+    stats: scene.stats ?? { triangles: 0, paletteColors: 0 } };
 }

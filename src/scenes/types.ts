@@ -1,4 +1,5 @@
-import type { DayCycle, PickResult, PixelRenderer, PixelScene, RendererLimits } from '../renderer';
+import type { DayCycle, PickResult, PixelRenderer, RendererLimits } from '../renderer';
+import type { BakedScene } from '../renderer/baked';
 
 /** Default camera framing and limits for a scene. Angles in degrees, sizes in world units of visible height. */
 export interface SceneView {
@@ -24,7 +25,7 @@ export interface SceneGame {
 }
 
 /** A built scene. `populate` stands in for a game: it adds the scene's moving objects to a renderer. */
-export interface BuiltScene extends PixelScene {
+export interface BuiltScene extends BakedScene {
   populate?(r: PixelRenderer): SceneGame;
 }
 
