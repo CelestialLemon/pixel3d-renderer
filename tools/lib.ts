@@ -79,7 +79,9 @@ export async function launch() {
   if (!existsSync(CHROME)) {
     throw new Error(`no browser at ${CHROME}: run \`npm run browser:install\`${process.env.CHROME_PATH ? ' or fix CHROME_PATH' : ''}`);
   }
-  const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: GL_ARGS, pipe: true });
+  // Hosted CI may disallow the user namespaces Chromium's sandbox needs. Pages here are repository test fixtures.
+  const browser = await puppeteer.launch({ executablePath: CHROME, headless: true,
+    args: [...GL_ARGS, ...(process.env.CI ? ['--no-sandbox'] : [])], pipe: true });
   try {
     const page = await browser.newPage();
     const renderer = await glRenderer(page);

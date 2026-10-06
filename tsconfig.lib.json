@@ -1,0 +1,6 @@
+{
+  // Declarations for the library build: lib/types/, one .d.ts per renderer module (package.json "types").
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": false, "declaration": true, "emitDeclarationOnly": true, "outDir": "lib/types", "rootDir": "src/renderer", "types": [] },
+  "include": ["src/renderer"]
+}

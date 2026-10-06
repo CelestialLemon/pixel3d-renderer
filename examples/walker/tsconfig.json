@@ -1,0 +1,9 @@
+{
+  // Type-checks the example the way a game repo would: `pixel3d-renderer` resolves through package.json "exports" to the
+  // built declarations in lib/types (run `npm run build:lib` first).
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true, "skipLibCheck": true, "isolatedModules": true, "noEmit": true, "types": ["vite/client"]
+  },
+  "include": ["main.ts", "level.ts", "models.ts"]
+}

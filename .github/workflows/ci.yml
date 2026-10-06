@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci                # also builds lib/ (the "prepare" script)
+      - run: npm run typecheck
+      - run: npm test              # unit tests against the built package
+      - run: npm run build         # the demo pages
+      - run: npm run build:example # the example game, type-checked and built against the package
+
+  golden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GL_BACKEND: swiftshader
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run browser:install
+      - name: Check fixed software-rendered views
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/pixel3d-vite.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:5180/ > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:5180/ > /dev/null
+          npm run golden -- --ci
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: golden-differences
+          path: |
+            golden/diff/
+            /tmp/pixel3d-vite.log
+          if-no-files-found: ignore

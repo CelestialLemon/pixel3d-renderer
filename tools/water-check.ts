@@ -9,7 +9,8 @@ import { launch, newPage, open, writePng } from './lib.ts';
 // Kept as one browser function so the same probes can run in the collaborative preview during development.
 export async function waterChecks() {
   const T = await import('/node_modules/three/build/three.module.js');
-  const { FluidCollector, FLUIDS, GeometryCollector, PixelRenderer, FLAG, buildFluidMap, flip } = await import('/src/renderer/index.ts');
+  const { FluidCollector, FLUIDS, GeometryCollector, PixelRenderer, FLAG, flip } = await import('/src/renderer/index.ts');
+  const { buildFluidMap } = await import('/src/renderer/fluidMap.ts');
   const { lookAt } = await import('/src/renderer/look.ts');
   const maps: FluidMap[] = [], geometries: BufferGeometry[] = [];
   const build = (f: Fluids, g = new GeometryCollector()) => {

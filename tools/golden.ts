@@ -49,12 +49,16 @@ const SHOTS = [
 
 process.chdir(fileURLToPath(new URL('..', import.meta.url)));   // golden/ paths are relative to the repo root
 const args = process.argv.slice(2), update = args.includes('--update'), filter = args.find((a) => !a.startsWith('--'));
-const shots = SHOTS.filter((s) => !filter || s.name.includes(filter));
+// Small, fixed software-rendered set for CI. Generated from known-good main, never from the change under test.
+const ci = args.includes('--ci');
+const CI_SHOTS = new Set(['pass0-standalone', 'compare-pass0', 'compare-pass1', 'compare-pass3',
+  'pass3-hour12', 'pass3-hour22', 'village-canal', 'village-fountain', 'fluids-hour12', 'objects-yard-night']);
+const shots = SHOTS.filter((s) => (!filter || s.name.includes(filter)) && (!ci || CI_SHOTS.has(s.name)));
 const browser = await launch();
 let failed = 0;
 try {
   const { page, errors } = await newPage(browser);
-  const renderer = await glRenderer(page), set = goldenSet(renderer);
+  const renderer = await glRenderer(page), set = `${ci ? 'ci-' : ''}${goldenSet(renderer)}`;
   console.log(`golden set ${set} (${await browser.version()}, ${renderer})`);
   const noSet = !update && !existsSync(`golden/${set}`);
   if (noSet) {

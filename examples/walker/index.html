@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Walker · pixel3d-renderer example</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #111; }
+    #view { display: block; image-rendering: pixelated; cursor: pointer; }
+    #hud {
+      position: fixed; left: 12px; top: 12px; padding: 8px 12px; border-radius: 6px;
+      font: 13px/1.5 ui-monospace, monospace; color: #f3ead8; background: rgb(20 16 12 / 0.7); pointer-events: none;
+    }
+    #hud b { color: #ffd27a; }
+  </style>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="hud">
+    <div><b id="clock">--:--</b> · placing <b id="item">crate</b> · <b id="count">0</b> placed</div>
+    <div>WASD / arrows walk · Q E turn · click to place, click again to remove</div>
+    <div>1 crate · 2 pumpkin · 3 lantern · T +3 hours</div>
+  </div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

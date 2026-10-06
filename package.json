@@ -3,9 +3,32 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "description": "Pixel-art 3D renderer for three.js games: a library, not an engine.",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "import": "./lib/pixel3d-renderer.js"
+    }
+  },
+  "types": "./lib/types/index.d.ts",
+  "files": [
+    "lib",
+    "src/renderer"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "dev": "vite --port 5180",
     "build": "vite build",
+    "build:baked": "npm run bake && vite build",
+    "bake": "node tools/bake.ts",
+    "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json && node tools/lib-types.ts",
+    "prepare": "npm run build:lib",
+    "test": "npm run build:lib && tsc -p test && node --test test/",
+    "example": "npm run build:lib && vite --config examples/walker/vite.config.ts",
+    "build:example": "npm run build:lib && tsc -p examples/walker && vite build --config examples/walker/vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tools",
     "browser:install": "node tools/install-browser.ts",
     "golden": "node tools/golden.ts",
@@ -21,19 +44,28 @@
     "object-check": "node tools/object-check.ts",
     "pick-check": "node tools/pick-check.ts",
     "settings-check": "node tools/settings-check.ts",
+    "startup-check": "node tools/startup-check.ts",
     "object-bench": "node tools/object-bench.ts",
     "verify": "node tools/verify.ts && node tools/check-viewer.ts && node tools/anim-check.ts",
-    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run window-light-check && npm run water-check && npm run camera-check && npm run object-check && npm run pick-check && npm run settings-check && npm run golden && npm run verify"
-  },
-  "dependencies": {
-    "three": "^0.180.0"
+    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run window-light-check && npm run water-check && npm run camera-check && npm run object-check && npm run pick-check && npm run settings-check && npm run startup-check && npm run example-check && npm run golden && npm run verify",
+    "example-check": "npm run build:lib && node tools/example-check.ts"
   },
   "devDependencies": {
     "@puppeteer/browsers": "^3.2.3",
     "@types/node": "^26.6.4",
     "@types/three": "^0.180.0",
     "puppeteer-core": "^25.12.0",
+    "three": "^0.180.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.1"
+  },
+  "peerDependencies": {
+    "three": "^0.180.0",
+    "@types/three": "^0.180.0"
+  },
+  "peerDependenciesMeta": {
+    "@types/three": {
+      "optional": true
+    }
   }
 }

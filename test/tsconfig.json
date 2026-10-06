@@ -1,0 +1,10 @@
+{
+  // Unit tests run under Node's type stripping (`node --test test/`) against the built package, imported by its own name
+  // (`pixel3d-renderer`, resolved through package.json "exports"), the way a game would.
+  "compilerOptions": {
+    "target": "ES2024", "module": "nodenext", "moduleResolution": "nodenext", "lib": ["ES2024", "DOM"],
+    "strict": true, "skipLibCheck": true, "verbatimModuleSyntax": true, "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true, "noEmit": true, "types": ["node"]
+  },
+  "include": ["*.ts"]
+}
