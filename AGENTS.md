@@ -10,16 +10,23 @@
    - Run `npm run check` (it needs the dev server: `npm run dev`, on 127.0.0.1:5180). If the server is already running, use it
      and don't kill it.
    - Add an entry under **Unreleased** in `CHANGELOG.md` for every change to the renderer.
-   - Never edit `src/reference/`. Pass 0 and Pass 1 must stay pixel-identical.
+   - Never edit `src/reference/` without the user's agreement. Pass 0 and Pass 1 must stay pixel-identical.
 3. **Clean the working tree.** Remove the scratch files, probes and debug renders you created for this work, so the PR holds
    only the changes the work needs. Never delete or revert changes you didn't make (the user may have uncommitted work in the
    tree), and don't run `git checkout`/`reset`/`clean`/`stash` on them.
-4. **Independent review with Codex.** Once the feature or fix is done, use the `codex-worker` skill to get a code review from a
-   separate GPT model. The user authorizes this as a standing rule, so don't ask before running it.
-   - Run it with `--purpose review --model gpt-6.1-sol --effort high --sandbox read-only`.
+4. **Independent review.** Once the feature or fix is done, get a code review from a fresh `gpt-6.1-sol` session through the
+   Codex CLI. The user authorizes this as a standing rule, so don't ask before running it. Write the review request to a file
+   outside the repo, then run:
+
+   ```sh
+   codex exec --ephemeral --model gpt-6.1-sol -c model_reasoning_effort="high" --sandbox read-only \
+     --cd "$(git rev-parse --show-toplevel)" --output-last-message /tmp/review.md - < /tmp/review-request.txt
+   ```
+
    - Give the reviewer minimal context: what the change is meant to do, and the scope to review (the diff against `main`,
      including uncommitted and untracked files). Don't give it your reasoning or the history behind your decisions. A fresh pair
-     of eyes is less biased by them.
+     of eyes is less biased by them. Ask for actionable issues with severity and file/line evidence, or an explicit "no
+     findings".
    - If the review can't run (Codex not signed in, quota, model unavailable), tell the user. Never present a failed run as a
      review.
 5. **Fix what matters.** Check each finding yourself before acting on it. Fix every real issue. Skip extremely minor nits that
@@ -29,7 +36,7 @@
 6. **Push and open the PR.** Commit, push the branch and open a PR against `main` (unless the user says otherwise). The PR
    description is for the user, who will review it:
    - Start with a concise summary of what was done.
-   - Briefly say what the Codex review found and what you fixed or deliberately left.
+   - Briefly say what the review found and what you fixed or deliberately left.
    - If there is anything the user should check by hand, give step-by-step instructions (commands, URL, scene or view, what to
      look for).
    - Include screenshots (renders, before/after) wherever they help.
@@ -39,25 +46,3 @@
    step 5, and push fixes to the same PR. A thumbs-up reaction on the PR instead of a review means it found nothing.
 8. **Before saying you're done,** check for orphaned headless Chrome (`pgrep -f puppeteer_dev_chrome_profile`) and stop any
    left behind by your captures.
-
-## Codex as a worker
-
-Besides the review in step 4, you may call Codex (`gpt-6.1-sol`) through the `codex-worker` skill whenever it would help, without
-asking the user first. It is especially strong at:
-
-- **3D modelling with Blender:** scripted props and buildings that follow `docs/ASSET_BRIEF.md` (`assets/props/`, `assets/village/`).
-- **Deep investigation:** tracking down a hard bug, a rendering artifact or a performance problem to its root cause.
-- **Maths and technical detail:** shader maths, sampling, geometry, numerical precision.
-- **Optimization and verification:** measuring, writing check tools, and proving that a change does what it claims.
-- **A second opinion:** proposing ideas or approaches, or checking whether a plan or decision is good enough before you commit to it.
-
-How to use it:
-
-- Use `--purpose work` (the skill's default) with `--model gpt-6.1-sol`. Unlike a review, a work task needs enough context to do
-  the job: the goal, the relevant files, constraints and what you want back.
-- Prefer `--sandbox read-only` for investigation, ideas and second opinions. Use `--sandbox workspace-write` only for
-  implementation (e.g. building a model). Tell it exactly which files it may change and which checks to run, keep your own edits
-  out of those files until it finishes, and inspect its diff afterwards.
-- You stay responsible for the result. Check what the worker reports or builds before relying on it. Work it implemented still
-  gets the independent review in step 4 like any other change.
-- The worker doesn't commit, push or open PRs. You do that as part of the workflow above.
