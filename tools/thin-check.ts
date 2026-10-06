@@ -24,7 +24,7 @@ try {
       feats.push(['rail-x', w, [cx + 0.7, y, cz - 2.4], [cx + 2.9, y, cz - 2.4]]);
       feats.push(['rail-z', w, [cx - 3, y, cz - 1.0], [cx - 3, y, cz + 0.8]]);
       feats.push(['pole', w, [x, 1.55, cz - 2.7], [x, 2.1, cz - 2.7]]);
-      // Below y ~ 1 the front poles are partly hidden behind the wire-support pole at the default view (Sol, 14:49).
+      // Below y ~ 1 the front poles are partly hidden behind the wire-support pole at the default view.
       feats.push(['pole-front', w, [x, 1.0, cz - 2.1], [x, 1.3, cz - 2.1]]);
     });
     const N = 40, hits = feats.map((): boolean[][] => []), ref: Record<string, number[]> = {};

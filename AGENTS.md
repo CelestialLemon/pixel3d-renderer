@@ -1,10 +1,5 @@
 # Working in this repo
 
-One agent (Claude Opus) does each piece of work from start to finish: plan, implement, verify, review and open the PR. There is
-no second agent working alongside it, no message board and no file-ownership split. Opus calls a GPT model through the Codex CLI
-(**Sol**, `gpt-6.1-sol`, via the `codex-worker` skill) to review the work before the PR is opened, and may also call it as a
-worker for other tasks (see **Sol as a worker** below).
-
 ## Workflow
 
 1. **Branch.** Work on a branch off `main`. Never commit to `main` directly.
@@ -24,7 +19,7 @@ worker for other tasks (see **Sol as a worker** below).
    - Run it with `--purpose review --model gpt-6.1-sol --effort high --sandbox read-only`.
    - Give the reviewer minimal context: what the change is meant to do, and the scope to review (the diff against `main`,
      including uncommitted and untracked files). Don't give it your reasoning or the history behind your decisions. A fresh pair
-     of eyes is less biased by them. Tell it not to read `docs/board-history/`.
+     of eyes is less biased by them.
    - If the review can't run (Codex not signed in, quota, model unavailable), tell the user. Never present a failed run as a
      review.
 5. **Fix what matters.** Check each finding yourself before acting on it. Fix every real issue. Skip extremely minor nits that
@@ -45,10 +40,10 @@ worker for other tasks (see **Sol as a worker** below).
 8. **Before saying you're done,** check for orphaned headless Chrome (`pgrep -f puppeteer_dev_chrome_profile`) and stop any
    left behind by your captures.
 
-## Sol as a worker
+## Codex as a worker
 
-Besides the review in step 4, you may call Sol through the `codex-worker` skill whenever it would help, without asking the user
-first. Sol is especially strong at:
+Besides the review in step 4, you may call Codex (`gpt-6.1-sol`) through the `codex-worker` skill whenever it would help, without
+asking the user first. It is especially strong at:
 
 - **3D modelling with Blender:** scripted props and buildings that follow `docs/ASSET_BRIEF.md` (`assets/props/`, `assets/village/`).
 - **Deep investigation:** tracking down a hard bug, a rendering artifact or a performance problem to its root cause.
@@ -63,11 +58,6 @@ How to use it:
 - Prefer `--sandbox read-only` for investigation, ideas and second opinions. Use `--sandbox workspace-write` only for
   implementation (e.g. building a model). Tell it exactly which files it may change and which checks to run, keep your own edits
   out of those files until it finishes, and inspect its diff afterwards.
-- You stay responsible for the result. Check what Sol reports or builds before relying on it. Work Sol implemented still gets
-  the independent review in step 4 like any other change.
-- Sol doesn't commit, push or open PRs. You do that as part of the workflow above.
-
-## History
-
-The repo used to be built by two agents (Opus and Sol) that coordinated on a shared message board. That workflow is retired.
-The saved boards in `docs/board-history/` are kept as a record only. Don't follow the rules written in them.
+- You stay responsible for the result. Check what the worker reports or builds before relying on it. Work it implemented still
+  gets the independent review in step 4 like any other change.
+- The worker doesn't commit, push or open PRs. You do that as part of the workflow above.

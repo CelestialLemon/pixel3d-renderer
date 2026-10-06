@@ -227,7 +227,7 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    - The broad low mound renders as one flat band at noon (no visible gradient on a gentle slope).
    - Found on the props gallery: contact occlusion (`contactAt` in `shaders/post.ts`) paints a false checker on the faceted, curved
      deck of `stone_arch_bridge`. It disappears with `contacts=0`. Repro: `pass3.html?scene=props&view=stone_arch_bridge&zoom=5&hour=12`.
-     **Fixed 2026-10-01** (Sol): taps fade out by world distance (0.43–0.55 m), and taps outside the frame are skipped.
+     **Fixed 2026-10-01**: taps fade out by world distance (0.43–0.55 m), and taps outside the frame are skipped.
 2. **Modeled props (batch 1 done, 2026-10-01):** 13 purpose-made Blender props per `docs/ASSET_BRIEF.md`, viewable in the
    `?scene=props` gallery. The loader's name-prefix rules (`decor_`, `water_`, `glass_`, `thin_`, `lamp_`) are in place; `move_*` is
    recognised but has no motion yet (section 3, animation hook).
@@ -237,9 +237,9 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    - **Skinned meshes and node animation:** the dynamic mesh only knows the fixed motion modes.
 4. **Done (2026-10-02): the second hero scene, Lantern Row** (`?scene=village`, `src/scenes/village/`). A night village street of about
    30 × 24 m on two levels: a cobbled street, a square with a fountain and a festoon, a stair and gateway up to an upper lane behind a
-   1.6 m retaining wall, a canal with a bridge on the camera side, and backdrop houses past both ends. Sol modelled the 17 buildings and
-   props (`assets/village/`, one GLB each, placed by footprint in `layout.ts`); paving, walls, stairs, canal, trees, smoke and fireflies
-   are built in code. It starts at 22:00 (`SceneDefinition.hour`), has six `?view=` presets and `village-*` golden shots, and needed
+   1.6 m retaining wall, a canal with a bridge on the camera side, and backdrop houses past both ends. The 17 buildings
+   and props are Blender models (`assets/village/`, one GLB each, placed by footprint in `layout.ts`); paving, walls, stairs, canal,
+   trees, smoke and fireflies are built in code. It starts at 22:00 (`SceneDefinition.hour`), has six `?view=` presets and `village-*` golden shots, and needed
    `LIMITS.lamps` raised from 16 to 32 (22 lamps). **What it showed:**
    - The Golden Hour look carries over to a night street and a dense town without changes to the renderer.
    - Warm lamp light on grass and bushes turns olive (lamp colour multiplies green albedo). Natural, but less pretty than on stone.
@@ -248,7 +248,7 @@ The renderer has only ever been judged on one cozy daytime meadow, so a change c
    68 × 62 m around a 6 m canal: quays, a 3-arch stone bridge and a footbridge, boats, a jetty, a watermill with a turning wheel, a
    market square with a town hall, market hall and a glowing guardian statue, a chapel, a watch tower, overgrown ruins with a wardstone,
    thatched cottages, a smithy, a barn, gardens, an orchard, a pond, fields with a windmill, and gentle terrain (`groundY` is a height
-   field that stays flat under paths, water and buildings). Sol built 24 new models (batch 3 in `docs/ASSET_BRIEF.md`). Renderer
+   field that stays flat under paths, water and buildings). It added 24 new models (batch 3 in `docs/ASSET_BRIEF.md`). Renderer
    additions: `move_spin_`/`move_sway_` motion (`movingPartMotion`, opt-in per scene), lamp light and broken lamp reflections on water,
    and `LIMITS.lamps` 64 (44 used). **Open:** about 500k triangles, and the lamp-shadow pass redraws the static mesh once per cube
    face (264 times). Culling DECOR ground from that pass or using coarser slope cells would cut startup cost.
