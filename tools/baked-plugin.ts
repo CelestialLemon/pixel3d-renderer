@@ -21,6 +21,8 @@ export async function bakeFingerprint(root: string): Promise<string> {
   await walk(resolve(root, 'src/scenes'), (p) => p.endsWith('.ts'));
   await walk(resolve(root, 'src/renderer'), (p) => p.endsWith('.ts') && basename(p) !== 'index.ts');
   await walk(resolve(root, 'public'), (p) => p.endsWith('.glb'));
+  // The props gallery reads dimensions and ids here to lay out its geometry and shadow bounds.
+  await walk(resolve(root, 'assets/props'), (p) => basename(p) === 'metadata.json');
   const hash = createHash('sha256');
   const three = JSON.parse(await readFile(resolve(root, 'node_modules/three/package.json'), 'utf8')) as { version: string };
   hash.update(`three@${three.version}`);
