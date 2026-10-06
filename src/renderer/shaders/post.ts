@@ -83,6 +83,23 @@ ivec2 clampP(ivec2 q){ return clamp(q, ivec2(0), ivec2(uRes) - 1); }
 vec4 A(ivec2 q){ return texelFetch(tAlbedo, clampP(q), 0); }
 vec4 N(ivec2 q){ return texelFetch(tNormal, clampP(q), 0); }
 
+#ifdef HIGHLIGHT
+// Highlighted objects (PixelObject.highlight): their ids, 0 for an unused slot. The resolved G-buffer keeps each
+// pixel's object id in tShadow.r (0: no object). Only this variant of the shader reads it.
+uniform vec4 uHighlight;
+float objectId(ivec2 q){ return texelFetch(tShadow, clampP(q), 0).r; }
+bool highlit(ivec2 q){
+  float id = objectId(q);
+  return id > 0.5 && any(lessThan(abs(uHighlight - id), vec4(0.5)));
+}
+// The rim's ink: a pale, self-lit tint of the object's own colour, so it reads at night too and keeps the palette's hues.
+vec3 highlightInk(vec3 albedo){
+  vec3 lab = toLab(ramp(albedo, 4, 1));
+  lab.x = max(lab.x, 0.90); lab.yz *= 0.6;
+  return fromLab(lab);
+}
+#endif
+
 // depth a neighbour at pixel offset o would have if it lay on the plane of (n, d)
 float predictDepth(vec3 n, float d, vec2 o){
   float nf = dot(n, uFwd);
@@ -260,6 +277,27 @@ void main(){
   const ivec2 OFF[4] = ivec2[4](ivec2(1,0), ivec2(-1,0), ivec2(0,1), ivec2(0,-1));
   float THR = max(0.10, uTexel * 3.0);
 
+#ifdef HIGHLIGHT
+  // ---- 0. highlight rim: one pixel all round the visible part of a highlighted object --------------------------
+  // Outside it against sky, anything clearly behind it, and scenery level with it that runs on behind it (the ground at
+  // its feet, so a seedling a pixel or two big still shows); inside it against anything clearly nearer, scenery level with
+  // it that passes in front of it (a wall just ahead), and any other object level with it (a touching copy of itself). So
+  // the rim never paints an occluder or another object. Scenery's side is told by extending its plane to the object's
+  // pixel: the ground runs on behind an object standing on it. The two tests mirror each other, so a pair of pixels never
+  // gets a rim on both sides.
+  bool lifted = highlit(p);
+  for (int i = 0; i < 4; i++) {
+    ivec2 q = p + OFF[i];
+    if (highlit(q) == lifted) continue;
+    vec4 aq = A(q), nq = N(q);
+    bool rim = lifted ? aq.a > 0.5 && (nq.w < d - THR || (nq.w <= d + THR &&                                  // inner
+                          (objectId(q) > 0.5 || predictDepth(nq.xyz, nq.w, -vec2(OFF[i])) < d - 0.5 * uTexel)))
+                      : sky || d > nq.w + THR || (d >= nq.w - THR &&                                          // outer
+                          objectId(p) < 0.5 && predictDepth(n, d, vec2(OFF[i])) >= nq.w - 0.5 * uTexel);
+    if (rim) { outColor = emitColor(highlightInk(lifted ? a.rgb : aq.rgb), p, true); return; }
+  }
+#endif
+
   // ---- 1. silhouette outline: drawn on the FAR pixel, inked from the near object ----
   float bestD = 1e9; ivec2 bestQ = p; bool sil = false;
   if (uOutline == 1) {
@@ -403,6 +441,9 @@ void main(){
     if (nearest * across < 0.5 * uTexel) band = -1;
   }
 
+#ifdef HIGHLIGHT
+  if (lifted && band >= 0) band = min(band + 1, 4);   // and its surfaces one band brighter (ink lines stay ink)
+#endif
   vec3 col = ramp(a.rgb, band, mode, lampTint);
   outColor = emitColor(col, p, true);
 }`;
