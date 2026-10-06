@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT_DAY_CYCLE, DEFAULT_PALETTE_SIZE, hourLabel, PixelRenderer, type Look, type PixelRendererOptions, type PixelScene, type RenderSettings } from '../../renderer';
+import { DEFAULT_DAY_CYCLE, DEFAULT_PALETTE_SIZE, hourLabel, PixelRenderer, type Look, type PixelObject, type PixelRendererOptions, type PixelScene, type RenderSettings } from '../../renderer';
 import { buildWorld } from '../../reference/world';
 import { SCENES, sceneById } from '../../scenes';
 import type { SceneGame } from '../../scenes/types';
@@ -31,7 +31,8 @@ async function main() {
   const pixelScene = await scene.build(paletteSize);
   // Thin-feature resolve (docs/THIN_FEATURES.md). The default is ss=3 with resolve=thin; ?ss=1 turns supersampling off and
   // ?resolve=majority|near|near3 picks another policy for comparison.
-  const options: PixelRendererOptions = { limits: scene.limits };
+  // Hovering highlights objects (below), so compile the highlight shaders ahead of the first hover.
+  const options: PixelRendererOptions = { limits: scene.limits, warmHighlight: true };
   if (num('ss', 3) === 1) options.supersample = 1;
   const resolve = params.get('resolve'), policy = resolve ? ({ majority: 0, near: 1, near3: 2, thin: 1 } as Record<string, number>)[resolve] : undefined;
   if (policy !== undefined) { options.resolvePolicy = policy; options.resolveThinOnly = resolve === 'thin'; }
@@ -168,6 +169,19 @@ async function main() {
     $('pick').textContent = `pixel ${hit.x}, ${hit.y} · ${w ? `world ${f(w.x)}, ${f(w.y)}, ${f(w.z)}` : 'sky'}${hit.object ? ` · object #${hit.object.id}` : ''}`;
   });
 
+  // Hovering a game object highlights it (PixelObject.highlight), as a point-and-click game would. Not while a button
+  // is down (orbiting or panning) or while comparing. The pointer is picked again after every redraw too, since objects
+  // and the camera move under a pointer that keeps still.
+  let hovered: PixelObject | null = null, pointer: { x: number; y: number } | null = null;
+  const hover = () => {
+    const o = pointer && compare === 'off' ? p3.pick(pointer.x, pointer.y)?.object ?? null : null;
+    if (o === hovered) return;
+    if (hovered) hovered.highlight = false;
+    hovered = o; if (o) o.highlight = true;   // style only: the next renderStyle shows it, no redraw needed
+  };
+  $('stage').addEventListener('pointermove', (e) => { pointer = e.buttons ? null : { x: e.clientX, y: e.clientY }; hover(); });
+  $('stage').addEventListener('pointerleave', () => { pointer = null; hover(); });
+
   let last = performance.now(), time = params.has('time') ? num('time', 0) : 0, capturing = false;
   const focus = new THREE.Vector3();
   const render = () => {
@@ -178,6 +192,7 @@ async function main() {
       p3.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); p3.renderGeometry(time);
       left()?.placeCamera(focus, orbit.view.az, orbit.view.el, viewHeight); left()?.renderGeometry(time);
       dirty = false;
+      if (pointer) hover();
     }
     p3.renderStyle(settings, time);
     left()?.renderStyle(settings, time);

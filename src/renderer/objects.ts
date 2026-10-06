@@ -23,11 +23,27 @@ export class PixelObject {
   /** @internal */
   drawnVisible = false;
 
+  private highlighted = false;
+
   /**
    * @internal Created by `PixelRenderer.addObject`. `id` (from 1, never reused by that renderer) is what the
    * G-buffer stores where the object is drawn, so `pick` can tell which object is under a pixel.
    */
-  constructor(readonly batch: ObjectBatch, readonly id: number, private readonly detach: (o: PixelObject) => void) {}
+  constructor(readonly batch: ObjectBatch, readonly id: number, private readonly detach: (o: PixelObject) => void,
+    private readonly onHighlight: (o: PixelObject, on: boolean) => boolean) {}
+
+  /**
+   * Draw a light rim around the object where it is visible, e.g. while the pointer is over it (see `pick`). Per object,
+   * so one of many copies of a geometry can be highlighted alone. At most `MAX_HIGHLIGHTS` objects of a renderer are
+   * highlighted at once: turning on one more throws a RangeError. Cheap to change. A removed object loses its
+   * highlight and can't be highlighted again (setting it does nothing).
+   */
+  get highlight() { return this.highlighted; }
+  set highlight(on: boolean) {
+    if (on === this.highlighted) return;
+    // False for a removed object; throws before anything changes if the renderer is full.
+    if (this.onHighlight(this, on)) this.highlighted = on;
+  }
 
   /** Copy a new transform. `rotation` and `scale` keep their current values when left out. */
   setTransform(position: THREE.Vector3, rotation?: THREE.Quaternion | THREE.Euler, scale?: THREE.Vector3 | number) {
@@ -40,8 +56,11 @@ export class PixelObject {
   }
 
   /** Take the object out of the renderer. Its geometry belongs to the caller and is not disposed. */
-  remove() { this.detach(this); }
+  remove() { this.highlight = false; this.detach(this); }
 }
+
+/** How many objects of one renderer can be highlighted at once (`PixelObject.highlight`). */
+export const MAX_HIGHLIGHTS = 4;
 
 /** The geometry attributes an object needs: what `GeometryCollector` (static, not dynamic) builds, in local space. */
 export const OBJECT_ATTRIBUTES = ['position', 'normal', 'aColor', 'aFlag'] as const;

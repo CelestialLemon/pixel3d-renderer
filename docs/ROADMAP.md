@@ -146,6 +146,18 @@ against the game; its `docs/ROADMAP.md` keeps the current list):
 - **Things that change state:** crops growing through stages, tilled tiles, placed machines. Object swaps, spawning and removing
   objects (done in Phase 1).
 - **Pointing at tiles:** picking and a hover highlight (done in Phase 1).
+- **Pointing at objects:** done (2026-10-06, #22). `PixelObject.highlight` draws a pale one-pixel rim around the object's visible
+  part and lifts its surfaces one band. The post pass finds the object by the id the G-buffer already carries for `pick`, so a
+  change is one uniform write, and a shader variant (`HIGHLIGHT`) keeps the cost at zero while nothing is highlighted. The variant
+  compiles on first use (1.8 s under SwiftShader); the opt-in `PixelRendererOptions.warmHighlight` compiles it in the background
+  once there are objects, bringing the first highlighted frame to about 20 ms there, while a game that never highlights compiles
+  nothing extra. The rim goes
+  outside the object against sky, ground and anything clearly behind it, and inside it against anything nearer and other objects
+  touching it, so it never paints an occluder or a touching copy. The rim colour is the object's own ramp lifted to a pale tint (lightness at least 0.90,
+  chroma ×0.6): the ramp's own top band didn't read on dark objects. Up to `MAX_HIGHLIGHTS` (4) at once. `tools/highlight-check.ts`.
+  - **Limits:** an object cut by the edge of the canvas has no rim along that edge. "Level with" means within the depth threshold
+    the outlines use (`max(0.10, 3 texels)`), so under a camera pitched below about 30° the rim at an object's feet moves from the
+    ground onto the object's lowest row.
 - **Soil colour per tile** that changes with fertility: a per-object tint, or one geometry per band.
 - **Machines that show they are running:** smoke and glow on objects, so ambient motion for objects, and perhaps lamps on them.
 - **Seeing behind buildings:** fading or cutting away buildings and trees, if the 90° views are not enough.
