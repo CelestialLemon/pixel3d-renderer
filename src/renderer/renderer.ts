@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Look } from './look';
 import { resolveLimits, resolveScene, type RendererLimits, type PixelScene, type ResolvedPixelScene } from './scene';
 import { POST_VERT } from './shaders/common';
-import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_OBJECT_VERT, GBUF_STATIC_VERT, POSE } from './shaders/gbuffer';
+import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_OBJECT_MOTION_VERT, GBUF_OBJECT_VERT, GBUF_STATIC_VERT, POSE, POSE_OBJECT } from './shaders/gbuffer';
 import { postFragment } from './shaders/post';
 import { CLEAN_FRAG } from './shaders/cleanup';
 import { RESOLVE_FRAG } from './shaders/resolve';
@@ -11,7 +11,7 @@ import { buildWindowLight, type WindowLight } from './windowLight';
 import { FLUID_FRAG, FLUID_VERT } from './shaders/water';
 import { linearColor } from './geometry';
 import { buildFluidMap, type FluidMap } from './fluidMap';
-import { MAX_HIGHLIGHTS, MIRROR_X, OBJECT_ATTRIBUTES, ObjectBatch, PixelObject } from './objects';
+import { MAX_HIGHLIGHTS, MIRROR_X, MOTION_ATTRIBUTES, OBJECT_ATTRIBUTES, ObjectBatch, PixelObject } from './objects';
 
 /** Stylisation switches. All on is the intended look; the toggles exist for comparison and debugging. */
 export interface RenderSettings {
@@ -63,6 +63,12 @@ export interface PickResult {
   /** The object drawn there, or null for the baked scene, the sky or an object removed since the last `renderGeometry`. */
   object: PixelObject | null;
 }
+
+/** Patch a three.js shader chunk; fail loudly if a three upgrade renames it, rather than silently drawing unposed. */
+const patch = (src: string, find: string, put: string) => {
+  if (!src.includes(find)) throw new Error(`posed shadow: three's shader has no '${find}'`);
+  return src.replace(find, put);
+};
 
 /** Pads `items` to the shader's fixed array length (three.js uploads the whole declared array). */
 const padded = <T,>(items: T[], size: number, fill: () => T) => {
@@ -146,6 +152,13 @@ export class PixelRenderer {
   /** False until `renderGeometry` has filled the G-buffer at the current size: `pick` finds nothing before that. */
   private gbufDrawn = false;
   private objectMat: THREE.ShaderMaterial;
+  /** Objects with ambient motion (see POSE_OBJECT): the G-buffer, their sun-shadow caster and their shadow-mask receiver. */
+  private objectMotionMat: THREE.ShaderMaterial;
+  private objectDepthMat: THREE.MeshDepthMaterial;
+  private objectMaskMat: THREE.ShadowMaterial;
+  /** A visible object spins or swings, so the object shadow map follows the clock; the clock it was last drawn at. */
+  private rigidObjectsShown = false;
+  private objectShadowTime = NaN;
   /**
    * The sun again, with a shadow map of the objects only: the static map then renders only when the sun moves, and
    * this one whenever an object does. The mask pass multiplies the two. Created with the first object, so a scene
@@ -230,20 +243,16 @@ export class PixelRenderer {
     this.setupSun(this.light, radius, this.shadowMapSize);
     this.scene.add(this.light, this.light.target);
 
-    // Writes shadow occlusion (0 = lit, 1 = shadowed) into alpha, no blending.
+    // Writes shadow occlusion (0 = lit, 1 = shadowed) into alpha, no blending. The mask pass gives it to the static world
+    // and the objects in place of their own material, so it also decides their sides in the object shadow map drawn then.
     this.shadowMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1 });
-    this.shadowMat.transparent = false; this.shadowMat.blending = THREE.NoBlending;
+    this.shadowMat.transparent = false; this.shadowMat.blending = THREE.NoBlending; this.shadowMat.shadowSide = THREE.DoubleSide;
     // The same mask for the rigid moving parts (spin, swing): three's shadow shader with each vertex posed by the G-buffer's
     // motion code (POSE), sharing its time uniforms. Other dynamic modes are discarded and keep the mask behind them.
     this.dynShadowMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1, side: THREE.DoubleSide });
     this.dynShadowMat.transparent = false; this.dynShadowMat.blending = THREE.NoBlending;
     this.dynShadowMat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.dynMat.uniforms.uTime; shader.uniforms.uNight = this.dynMat.uniforms.uNight;
-      // Patch three's shadow shader; fail loudly if a three upgrade renames a chunk, rather than silently borrowing again.
-      const patch = (src: string, find: string, put: string) => {
-        if (!src.includes(find)) throw new Error(`moving-part shadow: three's shadow shader has no '${find}'`);
-        return src.replace(find, put);
-      };
       let v = patch(shader.vertexShader, '#include <common>', `#include <common>
 uniform float uTime; uniform float uNight;
 attribute float aMode; attribute vec3 aAnchor; attribute vec4 aAnim;
@@ -254,6 +263,45 @@ ${POSE}`);
       shader.vertexShader = patch(v, '#include <begin_vertex>', 'vec3 transformed = posed;');
       shader.fragmentShader = patch(shader.fragmentShader, 'void main() {', 'varying float vMode;\nvoid main() {\n  if (vMode < 5.5) discard;');
     };
+    // Objects with motion attributes, posed by POSE_OBJECT in every pass: the shared clock, an id-phased copy per instance.
+    const motionUniforms = { uTime: this.dynMat.uniforms.uTime, uNight: this.dynMat.uniforms.uNight };
+    this.objectMotionMat = new THREE.ShaderMaterial({
+      vertexShader: GBUF_OBJECT_MOTION_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide,
+      uniforms: { ...motionUniforms, uSS: { value: 1 } },
+    });
+    this.objectMotionMat.shadowSide = THREE.DoubleSide;
+    const poseHeader = `uniform float uTime; uniform float uNight;
+attribute float aMode; attribute vec3 aAnchor; attribute vec4 aAnim;
+varying float vMode;
+${POSE_OBJECT}`;
+    const posed = 'vec3 posedW, posedN; float posedA;\n  poseObject(modelMatrix * instanceMatrix, instanceColor.r, posedW, posedN, posedA); vMode = aMode;';
+    const project = 'vec4 mvPosition = viewMatrix * vec4(posedW, 1.0);\n  gl_Position = projectionMatrix * mvPosition;';
+    // The caster: spin and swing at their pose, still parts and sway at rest (a gently swaying crop keeps its shadow,
+    // and the map isn't redrawn every frame for it), and the small moving bits (conveyor, smoke, wings) cast none.
+    this.objectDepthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+    this.objectDepthMat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, motionUniforms);
+      let v = patch(shader.vertexShader, '#include <common>', `#include <common>\n${poseHeader}`);
+      v = patch(v, '#include <begin_vertex>', `#include <begin_vertex>\n  ${posed}\n  if (aMode < 5.5) posedW = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;`);
+      shader.vertexShader = patch(v, '#include <project_vertex>', project);
+      shader.fragmentShader = patch(shader.fragmentShader, 'void main() {', 'varying float vMode;\nvoid main() {\n  if (vMode > 1.5 && vMode < 5.5) discard;');
+    };
+    this.objectDepthMat.customProgramCacheKey = () => 'pixel3d-object-depth';
+    // The receiver: the mask at the posed surface. Smoke, wings and fireflies are dropped and borrow the mask behind them,
+    // as the baked ones do.
+    this.objectMaskMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1 });
+    this.objectMaskMat.transparent = false; this.objectMaskMat.blending = THREE.NoBlending; this.objectMaskMat.shadowSide = THREE.DoubleSide;
+    this.objectMaskMat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, motionUniforms);
+      let v = patch(shader.vertexShader, '#include <common>', `#include <common>\n${poseHeader}`);
+      v = patch(v, '#include <beginnormal_vertex>', `${posed}\n  #include <beginnormal_vertex>`);
+      v = patch(v, '#include <defaultnormal_vertex>', 'vec3 transformedNormal = normalize(mat3(viewMatrix) * posedN);');
+      v = patch(v, '#include <project_vertex>', project);
+      shader.vertexShader = patch(v, '#include <worldpos_vertex>', 'vec4 worldPosition = vec4(posedW, 1.0);');
+      shader.fragmentShader = patch(shader.fragmentShader, 'void main() {', 'varying float vMode;\nvoid main() {\n  if (vMode > 2.5 && vMode < 5.5) discard;');
+    };
+    this.objectMaskMat.customProgramCacheKey = () => 'pixel3d-object-mask';
+
     // Only scenes with rigid moving parts need that second mask pass.
     const modes = pixelScene.dynamicGeometry.getAttribute('aMode')?.array ?? [];
     this.hasRigidParts = Array.from(modes).some((m) => m > 5.5);
@@ -350,10 +398,21 @@ ${POSE}`);
    * Add an object the game moves. `geometry` is in the object's local space, with the attributes `GeometryCollector`
    * builds (position, normal, aColor, aFlag; quantise its colours together with the scene's). Many objects may share
    * one geometry; the renderer never disposes it. At most 2^24 objects can be added over the renderer's life (ids are never reused).
+   * A geometry from a dynamic collector (`new GeometryCollector(true)`, a `motion.*` per part, anchors in local space)
+   * has ambient motion, driven by the `renderGeometry` clock; each object's copy is out of step with the others.
+   * The renderer reads the geometry's attributes when its first object is added.
    */
   addObject(geometry: THREE.BufferGeometry): PixelObject {
     const missing = OBJECT_ATTRIBUTES.filter((a) => !geometry.getAttribute(a));
     if (missing.length) throw new Error(`addObject: geometry has no ${missing.join(', ')} attribute`);
+    const motion = MOTION_ATTRIBUTES.filter((a) => geometry.getAttribute(a));
+    if (motion.length && motion.length < MOTION_ATTRIBUTES.length) {
+      throw new Error(`addObject: geometry has ${motion.join(', ')} but not all of ${MOTION_ATTRIBUTES.join(', ')}`);
+    }
+    if (motion.length) for (const [name, size] of [['aMode', 1], ['aAnchor', 3], ['aAnim', 4]] as const) {
+      const n = geometry.getAttribute(name).itemSize;
+      if (n !== size) throw new Error(`addObject: ${name} has ${n} components, not ${size}`);
+    }
     // Ids travel through float32 targets, which hold every integer only up to 2^24.
     if (this.nextObjectId > 2 ** 24) throw new RangeError('addObject: more than 2^24 objects added over this renderer\'s life');
     if (!this.objectLight) {
@@ -365,7 +424,7 @@ ${POSE}`);
     }
     let batch = this.batches.get(geometry);
     if (!batch) {
-      batch = new ObjectBatch(geometry, this.objectMat);
+      batch = new ObjectBatch(geometry, motion.length ? { gbuffer: this.objectMotionMat, depth: this.objectDepthMat } : { gbuffer: this.objectMat });
       this.batches.set(geometry, batch);
       this.scene.add(...batch.meshes);
     }
@@ -407,6 +466,7 @@ ${POSE}`);
     const texel = this.viewHeight / this.height, w = this.camera.matrixWorld;
     const right = new THREE.Vector3().setFromMatrixColumn(w, 0), up = new THREE.Vector3().setFromMatrixColumn(w, 1), fwd = new THREE.Vector3().setFromMatrixColumn(w, 2);
     const p = new THREE.Vector3(), m = new THREE.Matrix4(), mm = new THREE.Matrix4();
+    this.rigidObjectsShown = false;
     for (const batch of this.batches.values()) {
       let n = 0, nm = 0;
       for (const o of batch.objects) {
@@ -429,6 +489,7 @@ ${POSE}`);
         o.drawnVisible = shown;
       }
       batch.mesh.count = n; batch.mirrored.count = nm;
+      if (batch.rigid && n + nm > 0) this.rigidObjectsShown = true;
       for (const mesh of batch.meshes) { mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor!.needsUpdate = true; }
     }
   }
@@ -474,7 +535,7 @@ ${POSE}`);
       this.withFluids = mk({ type: THREE.UnsignedByteType, depthBuffer: false });
       this.linearImage = mk({ type: THREE.FloatType, depthBuffer: false });
     }
-    this.staticMat.uniforms.uSS.value = S; this.objectMat.uniforms.uSS.value = S; this.dynMat.uniforms.uSS.value = S; this.resolveMat.uniforms.uS.value = S;
+    this.staticMat.uniforms.uSS.value = S; this.objectMat.uniforms.uSS.value = S; this.objectMotionMat.uniforms.uSS.value = S; this.dynMat.uniforms.uSS.value = S; this.resolveMat.uniforms.uS.value = S;
     this.postMat.uniforms.uRes.value.set(w, h);
     this.cleanMat.uniforms.uRes.value.set(w, h);
   }
@@ -504,7 +565,10 @@ ${POSE}`);
     this.lampShadows.render(r);
     this.dynMat.uniforms.uTime.value = time;
     this.poseObjects();
-    const objects = [...this.batches.values()].flatMap((b) => b.meshes);
+    // Spinning and swinging objects cast a shadow that moves with the clock.
+    if (this.rigidObjectsShown && time !== this.objectShadowTime) this.objectShadowDirty = true;
+    this.objectShadowTime = time;
+    const batches = [...this.batches.values()], objects = batches.flatMap((b) => b.meshes);
     const setCasters = (staticWorld: boolean, objs: boolean) => { this.staticMesh.castShadow = staticWorld; for (const m of objects) m.castShadow = objs; };
 
     // Each sun shadow map renders only when it changed, during one of the two scene renders below: the static map
@@ -521,12 +585,14 @@ ${POSE}`);
     // The shadow mask comes from the static world and the objects: small moving bits (tufts, puffs) borrow the shadow
     // of whatever surface sits behind them. Rigid moving parts (sails, wheels, signs) are big enough that borrowing
     // shows the shadow pattern of the ground behind them, so they get their own mask at their posed position.
+    // Each mesh swaps in its mask material for this render (objects with motion need their posed one, so no override).
     r.setClearColor(0xffffff, 1);
     const autoClear = r.autoClear;
     try {
       setCasters(false, true);
       this.dynMesh.visible = false;
-      this.scene.overrideMaterial = this.shadowMat;
+      this.staticMesh.material = this.shadowMat;
+      for (const b of batches) for (const m of b.meshes) m.material = b.motion ? this.objectMaskMat : this.shadowMat;
       r.setRenderTarget(this.shadowHi); r.clear(); r.render(this.scene, this.camera);
       if (this.hasRigidParts) {
         // Then the rigid moving parts over it, depth-tested against the static world and the objects (no clear in between).
@@ -536,6 +602,8 @@ ${POSE}`);
       }
     } finally {
       r.autoClear = autoClear; this.scene.overrideMaterial = null;
+      this.staticMesh.material = this.staticMat;
+      for (const b of batches) for (const m of b.meshes) m.material = b.motion ? this.objectMotionMat : this.objectMat;
       r.shadowMap.needsUpdate = false; if (this.objectLight) this.objectLight.shadow.needsUpdate = false;
       setCasters(true, true);
       this.staticMesh.visible = true; this.dynMesh.visible = true;
@@ -674,7 +742,7 @@ ${POSE}`);
     this.fluidMap.texture.dispose(); this.fluidMap.height.dispose(); this.noFluid.dispose();
     for (const m of [this.staticMesh, this.dynMesh, this.fluidMesh, this.quad]) m.geometry.dispose();
     for (const b of this.batches.values()) for (const m of b.meshes) m.dispose();
-    for (const m of [this.staticMat, this.objectMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat]) (m as THREE.Material).dispose();
+    for (const m of [this.staticMat, this.objectMat, this.objectMotionMat, this.objectDepthMat, this.objectMaskMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat]) (m as THREE.Material).dispose();
     // three polls a background compile's materials on a timer, so they and the renderer go only once it has finished.
     const last = () => { this.postHiMat.dispose(); this.cleanHiMat.dispose(); this.renderer.dispose(); };
     if (this.warming) this.warming.then(last); else last();

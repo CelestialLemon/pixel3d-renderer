@@ -64,6 +64,17 @@ export const MAX_HIGHLIGHTS = 4;
 
 /** The geometry attributes an object needs: what `GeometryCollector` (static, not dynamic) builds, in local space. */
 export const OBJECT_ATTRIBUTES = ['position', 'normal', 'aColor', 'aFlag'] as const;
+/**
+ * The attributes a dynamic `GeometryCollector` adds. An object geometry with them has ambient motion (motion.ts), its
+ * anchors in the object's local space.
+ */
+export const MOTION_ATTRIBUTES = ['aMode', 'aAnchor', 'aAnim'] as const;
+
+/** How a batch draws: its G-buffer material, and for animated geometry the material posing it in the sun-shadow map. */
+export interface BatchMaterials {
+  gbuffer: THREE.Material;
+  depth?: THREE.Material;
+}
 
 /** Mirror across x: turns a mirrored instance matrix into an unmirrored one (and back). */
 export const MIRROR_X = new THREE.Matrix4().makeScale(-1, 1, 1);
@@ -80,7 +91,15 @@ export class ObjectBatch {
   mesh: THREE.InstancedMesh;
   mirrored: THREE.InstancedMesh;
 
-  constructor(readonly geometry: THREE.BufferGeometry, private readonly material: THREE.Material, capacity = 16) {
+  /** The geometry has motion attributes (MOTION_ATTRIBUTES). */
+  readonly motion: boolean;
+  /** Some of its parts spin or swing, so its sun shadow moves with the clock. */
+  readonly rigid: boolean;
+
+  constructor(readonly geometry: THREE.BufferGeometry, private readonly materials: BatchMaterials, capacity = 16) {
+    const modes = geometry.getAttribute('aMode');
+    this.motion = !!modes;
+    this.rigid = !!modes && Array.from(modes.array).some((m) => m > 5.5);
     this.mesh = this.makeMesh(capacity, false);
     this.mirrored = this.makeMesh(capacity, true);
   }
@@ -88,7 +107,8 @@ export class ObjectBatch {
   get meshes() { return [this.mesh, this.mirrored]; }
 
   private makeMesh(capacity: number, mirrored: boolean) {
-    const m = new THREE.InstancedMesh(this.geometry, this.material, capacity);
+    const m = new THREE.InstancedMesh(this.geometry, this.materials.gbuffer, capacity);
+    if (this.materials.depth) m.customDepthMaterial = this.materials.depth;
     m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3).setUsage(THREE.DynamicDrawUsage);
     m.castShadow = true; m.receiveShadow = true;

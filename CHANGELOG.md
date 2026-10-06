@@ -23,6 +23,17 @@ Design notes and measurements live in `docs/ROADMAP.md`.
     (about 1.8 s under SwiftShader). After that, switching between none and some reuses them. A game that highlights should
     set the new `PixelRendererOptions.warmHighlight: true`, which compiles them in the background once the renderer has objects.
   - Demo: hover an object in `?scene=objects`.
+- **Ambient motion on objects** ([#23](https://github.com/CelestialLemon/pixel3d-renderer/issues/23)). An object geometry built
+  with `new GeometryCollector(true)` and a `motion.*` per part, with anchors in the object's local space, is animated from the
+  `renderGeometry` clock like the baked dynamic mesh. It stays instanced, and `pick` and `highlight` work on it as before.
+  - Motion follows each object's transform. Spin, swing and conveyor turn with the object. Smoke, butterflies and fireflies leave
+    from the placed anchor and drift in world space, so smoke rises straight up from a turned machine. Sway leans with the world
+    wind, sampled at the object's base. A mirrored object's puffs and wings are mirrored too.
+  - Each object runs on its own clock, shifted by a hash of its id, so copies of one geometry don't move in lockstep.
+  - Spin and swing parts cast and receive sun shadows at their pose; while one is visible, the object shadow map redraws whenever
+    the clock moves. Sway casts at rest. Conveyor items, smoke and wings cast none.
+  - Objects without `aMode`/`aAnchor`/`aAnim` render exactly as before. `addObject` throws on a partial or wrongly sized set.
+  - Demo: `?scene=objects-motion`.
 
 ## 0.1.0 (2026-10-06)
 

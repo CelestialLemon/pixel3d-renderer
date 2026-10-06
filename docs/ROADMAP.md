@@ -61,8 +61,16 @@ time. A game can't move, add or remove anything. This phase fixes that and turns
    - **Sun shadows** (section 4). A second sun light holds a shadow map of the objects only and re-renders when an object, the sun or the
      camera (snapping) changes; the static map still renders only when the sun moves. The mask multiplies the two, so where an object's
      soft shadow edge overlaps the world's, the two penumbras combine slightly differently from one merged map.
-   - **Not yet:** objects neither block lamp light nor cast lamp shadows (the lamp atlas is static), and they have no ambient motion
-     (sway, spin). The object shadow map is a second fixed 4096² map, allocated with the first object (which also recompiles the mask
+   - **Ambient motion (2026-10-06, issue #23).** An object geometry from a dynamic collector (`new GeometryCollector(true)`, a
+     `motion.*` per part, anchors in the object's local space) is animated from the `renderGeometry` clock, still instanced. Each
+     object runs on its own clock, shifted by a hash of its id, so copies don't move in lockstep. Spin, swing and conveyor turn with
+     the object. Smoke, butterflies and fireflies leave from the placed anchor and drift in world space (a mirrored object's puffs are
+     mirrored too). Sway leans with the world wind, sampled at the placed base. Shadows: spin and swing cast and receive at their pose
+     (the object map then redraws whenever the clock moves), sway casts at rest, and the small moving bits (conveyor items, smoke,
+     wings) cast none; smoke and wings also borrow the mask behind them. Objects without motion attributes draw exactly as before. Demo: `?scene=objects-motion`.
+   - **Not yet:** objects neither block lamp light nor cast lamp shadows (the lamp atlas is static). One visible spinning or
+     swinging object redraws the whole object shadow map, every object in it, on each new clock value; if that shows in profiles,
+     give the rigid batches their own light and map so the other objects keep a cached one. The object shadow map is a second fixed 4096² map, allocated with the first object (which also recompiles the mask
      shader once), and it re-renders whenever the camera moves, since snapping moves the objects; a game-chosen size would help on
      phones. Add these when the game needs them.
    - Demo: `?scene=objects` (a cart on a loop, bouncing balls, a turning crate and a field of crops that grow and are harvested).
@@ -159,7 +167,7 @@ against the game; its `docs/ROADMAP.md` keeps the current list):
     the outlines use (`max(0.10, 3 texels)`), so under a camera pitched below about 30° the rim at an object's feet moves from the
     ground onto the object's lowest row.
 - **Soil colour per tile** that changes with fertility: a per-object tint, or one geometry per band.
-- **Machines that show they are running:** smoke and glow on objects, so ambient motion for objects, and perhaps lamps on them.
+- **Machines that show they are running:** smoke and glow on objects (ambient motion on objects done, issue #23), and perhaps lamps on them.
 - **Seeing behind buildings:** fading or cutting away buildings and trees, if the 90° views are not enough.
 - **Animals:** chickens moving about, as rigid parts or skinned meshes.
 - **UI** over the canvas, built in the game.
@@ -170,7 +178,8 @@ Work that matters more once a real game depends on the renderer, in any order th
 
 - **Ambient motion hook.** Make the list of vertex-animation modes pluggable: a scene or game registers a mode (a GLSL snippet with
   the `pose()` contract, a parameter packer, and whether it casts a moving shadow), and the renderer builds `pose()` from the core
-  modes plus the registered ones. The core keeps static, sway, spin and swing. The conveyor, butterfly, smoke and firefly modes move
+  modes plus the registered ones. Object motion (`POSE_OBJECT`) calls the same `poseAt`, so a registered mode works on objects too
+  once it says whether it is posed locally or drifts in world space. The core keeps static, sway, spin and swing. The conveyor, butterfly, smoke and firefly modes move
   out to the scenes. The moving-part shadow pass checks the "casts shadow" setting instead of the mode number (`mode > 5.5` today). It
   should change no pixels, and the golden images prove that.
 - **Performance** on real GPUs and phones (friends may play on either). See section 4.
@@ -314,7 +323,7 @@ asset pipeline and packaging are in Phase 1.
 - **Comparison fairness.** Pass 3 uses its own world (pond, leaf-clump trees, motion), so the comparison mixes renderer and content
   changes. Future passes should all draw the same `PixelScene`; the frozen references cannot.
 - The ambient-motion mesh's small moving bits still take the shadow of whatever static surface is behind them. Game objects
-  (`addObject`) cast and receive real sun shadows (Phase 1, item 1).
+  (`addObject`) cast and receive real sun shadows (Phase 1, item 1), at their pose for spin and swing.
 
 ## 5. Visual and art ideas not yet done
 
