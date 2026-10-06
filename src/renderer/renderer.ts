@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import type { Look } from './look';
-import { LIMITS, type PixelScene } from './scene';
+import { resolveLimits, resolveScene, type RendererLimits, type PixelScene, type ResolvedPixelScene } from './scene';
 import { POST_VERT } from './shaders/common';
 import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_OBJECT_VERT, GBUF_STATIC_VERT, POSE } from './shaders/gbuffer';
-import { POST_FRAG } from './shaders/post';
+import { postFragment } from './shaders/post';
 import { CLEAN_FRAG } from './shaders/cleanup';
 import { RESOLVE_FRAG } from './shaders/resolve';
 import { LampShadows } from './lampShadows';
@@ -25,6 +25,27 @@ export interface RenderSettings {
 }
 
 export const DEFAULT_SETTINGS: RenderSettings = { outlines: true, dither: true, cleanup: true, clouds: true, contacts: true, glow: true, vignette: true };
+
+/** Construction-time budgets. Omitted options preserve the original renderer's output. */
+export interface PixelRendererOptions {
+  /** Positive integer array capacities. Use the same limits when collecting fluids. */
+  limits?: Partial<RendererLimits>;
+  /** Samples per art pixel along each axis. Default 3; 1 is cheaper but thin features can flicker. */
+  supersample?: 1 | 3;
+  /** 0 = majority; k >= 1 = near-priority needing k + 1 of the 9 samples. Default 1. */
+  resolvePolicy?: number;
+  /** Restrict near-priority to thin-marked surfaces. Default true. */
+  resolveThinOnly?: boolean;
+  /** Square sun shadow map side, in texels. Default 4096. Clamped by three.js to the GPU's maximum. */
+  shadowMapSize?: number;
+  /** Square moving-object shadow map side. Defaults to shadowMapSize. Allocated with the first object. */
+  objectShadowMapSize?: number;
+}
+
+const positiveInteger = (name: string, value: number) => {
+  if (!Number.isSafeInteger(value) || value < 1) throw new RangeError(`${name} must be a positive integer`);
+  return value;
+};
 
 /** What `pick` finds under a point of the canvas. */
 export interface PickResult {
@@ -51,6 +72,10 @@ const padded = <T,>(items: T[], size: number, fill: () => T) => {
  * The scene is baked; objects the game moves are added with `addObject`.
  */
 export class PixelRenderer {
+  readonly pixelScene: ResolvedPixelScene;
+  readonly limits: Readonly<RendererLimits>;
+  readonly shadowMapSize: number;
+  readonly objectShadowMapSize: number;
   readonly renderer: THREE.WebGLRenderer;
   readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 300);
   /** Image translation from the snapped camera to the requested camera, in art pixels (+x right, +y down). */
@@ -128,8 +153,36 @@ export class PixelRenderer {
   resolveThinOnly = true;
   sun = new THREE.Vector3(0, 1, 0);
 
-  constructor(readonly canvas: HTMLCanvasElement, readonly pixelScene: PixelScene) {
+  constructor(readonly canvas: HTMLCanvasElement, scene: PixelScene, options: PixelRendererOptions = {}) {
+    const pixelScene = this.pixelScene = resolveScene(scene);
+    this.limits = resolveLimits(options.limits);
+    this.shadowMapSize = positiveInteger('shadowMapSize', options.shadowMapSize ?? 4096);
+    this.objectShadowMapSize = positiveInteger('objectShadowMapSize', options.objectShadowMapSize ?? this.shadowMapSize);
+    this.supersample = options.supersample ?? 3;
+    if (this.supersample !== 1 && this.supersample !== 3) throw new RangeError('supersample must be 1 or 3');
+    this.resolvePolicy = options.resolvePolicy ?? 1;
+    if (!Number.isSafeInteger(this.resolvePolicy) || this.resolvePolicy < 0 || this.resolvePolicy > 8) {
+      throw new RangeError('resolvePolicy must be an integer from 0 to 8');
+    }
+    this.resolveThinOnly = options.resolveThinOnly ?? true;
+    // Fail before allocating a WebGL context or scene resources when a scene exceeds its shader capacities.
+    for (const [key, count] of [
+      ['lamps', pixelScene.lamps.length], ['grooves', pixelScene.grooves?.positions.length ?? 0],
+      ['fluidMaterials', pixelScene.fluids.materials.length], ['fluidSources', pixelScene.fluids.sources.length],
+    ] as const) {
+      if (count > this.limits[key]) throw new RangeError(`Scene ${key}: at most ${this.limits[key]} entries are supported, got ${count}`);
+    }
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    // Count one vector per scalar/vec uniform or array entry, a conservative budget without relying on GPU packing.
+    const uniformVectors = 64 + 2 * this.limits.lamps + this.limits.grooves
+      + 4 * this.limits.fluidMaterials + 2 * this.limits.fluidSources;
+    const context = this.renderer.getContext();
+    const maxUniformVectors = context.getParameter(context.MAX_FRAGMENT_UNIFORM_VECTORS) as number;
+    if (uniformVectors > maxUniformVectors) {
+      this.renderer.forceContextLoss();
+      this.renderer.dispose();
+      throw new RangeError(`Renderer limits need up to ${uniformVectors} fragment uniform vectors, but this GPU supports ${maxUniformVectors}; lower the limits`);
+    }
     this.renderer.setPixelRatio(1);
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
@@ -155,7 +208,7 @@ export class PixelRenderer {
 
     const { center, radius } = pixelScene.shadow;
     this.shadowCenter = center.clone();
-    this.setupSun(this.light, radius);
+    this.setupSun(this.light, radius, this.shadowMapSize);
     this.scene.add(this.light, this.light.target);
 
     // Writes shadow occlusion (0 = lit, 1 = shadowed) into alpha, no blending.
@@ -195,17 +248,20 @@ ${POSE}`);
     this.fluidMesh.frustumCulled = false;
     this.fluidScene.add(this.fluidMesh);
     this.hasFluids = fluids.geometry.attributes.position.count > 0;
-    this.fluidMap = buildFluidMap(fluids, pixelScene.staticGeometry);
+    const maps = pixelScene.maps;
+    this.fluidMap = maps ? { texture: maps.fluids.texture.clone(), height: maps.fluids.height.clone(), bounds: [...maps.fluids.bounds] }
+      : buildFluidMap(fluids, pixelScene.staticGeometry);
     const mats = fluids.materials, src = fluids.sources;
     const fluidVec = (pick: (m: typeof mats[number]) => [number, number, number, number]) =>
-      padded(mats.map((m) => new THREE.Vector4(...pick(m))), LIMITS.fluidMaterials, () => new THREE.Vector4());
+      padded(mats.map((m) => new THREE.Vector4(...pick(m))), this.limits.fluidMaterials, () => new THREE.Vector4());
     const gl = this.renderer.getContext();
     this.lampShadows = new LampShadows(lamps, pixelScene.staticGeometry,
       Math.min(this.renderer.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number));
-    this.windowLight = buildWindowLight(pixelScene.staticGeometry, lamps);
+    this.windowLight = maps ? { texture: maps.windows.texture.clone(), source: maps.windows.source.clone(),
+      bounds: [...maps.windows.bounds], panes: maps.windows.panes } : buildWindowLight(pixelScene.staticGeometry, lamps);
     const common = { glslVersion: THREE.GLSL3, depthTest: false, depthWrite: false } as const;
     this.postMat = new THREE.ShaderMaterial({
-      ...common, vertexShader: POST_VERT, fragmentShader: POST_FRAG,
+      ...common, vertexShader: POST_VERT, fragmentShader: postFragment(this.limits),
       uniforms: {
         tAlbedo: { value: null }, tNormal: { value: null }, tShadow: { value: null },
         uRes: { value: new THREE.Vector2() }, uTexel: { value: 0.05 },
@@ -217,23 +273,23 @@ ${POSE}`);
         uSkyTop: { value: new THREE.Color(0x79b6dc) }, uSkyBot: { value: new THREE.Color(0xf6e6c2) },
         uLampCount: { value: lamps.length },
         tLampShadow: { value: this.lampShadows.target.texture }, uLampAtlas: { value: new THREE.Vector3(this.lampShadows.size.x, this.lampShadows.size.y, this.lampShadows.tile) },
-        // Position and radius share one vec4 per lamp, to keep the fragment uniform count low at LIMITS.lamps.
-        uLamp: { value: padded(lamps.map((l) => new THREE.Vector4(l.position.x, l.position.y, l.position.z, l.radius)), LIMITS.lamps, () => new THREE.Vector4(0, 0, 0, 1)) },
-        uLampCol: { value: padded(lamps.map((l) => new THREE.Vector3(...l.color)), LIMITS.lamps, () => new THREE.Vector3()) },
+        // Position and radius share one vec4 per lamp, to keep the fragment uniform count low.
+        uLamp: { value: padded(lamps.map((l) => new THREE.Vector4(l.position.x, l.position.y, l.position.z, l.radius)), this.limits.lamps, () => new THREE.Vector4(0, 0, 0, 1)) },
+        uLampCol: { value: padded(lamps.map((l) => new THREE.Vector3(...l.color)), this.limits.lamps, () => new THREE.Vector3()) },
         tWindow: { value: this.windowLight.texture }, tWindowSource: { value: this.windowLight.source },
         uWindowBounds: { value: new THREE.Vector4(...this.windowLight.bounds) },
         uPass: { value: 0 }, uDeferGrade: { value: 0 }, tImage: { value: null }, tFluidN: { value: null }, tFluidF: { value: null },
         tFluidMap: { value: this.fluidMap.texture }, tFluidHeight: { value: this.fluidMap.height }, uFluidBounds: { value: new THREE.Vector4(...this.fluidMap.bounds) },
-        // Packed four vec4 per material and one per source (see WATER_GLSL in shaders/water.ts).
+        // Packed four vec4 per material and one per source (see waterGLSL in shaders/water.ts).
         uFluidA: { value: fluidVec((m) => [...linearColor(m.shallow), m.clarity]) },
         uFluidB: { value: fluidVec((m) => [...linearColor(m.deep), m.reflectivity]) },
         uFluidC: { value: fluidVec((m) => [...linearColor(m.foam), m.roughness]) },
         uFluidD: { value: fluidVec((m) => [m.waveScale, m.foamAmount, m.emission, 0]) },
         uSourceCount: { value: src.length },
-        uSources: { value: padded(src.map((o) => new THREE.Vector4(o.x, o.z, o.rings ? o.radius : -o.radius, o.strength)), LIMITS.fluidSources, () => new THREE.Vector4()) },
-        uSourceY: { value: padded(src.map((o) => o.y ?? -1e4), LIMITS.fluidSources, () => -1e4) },
+        uSources: { value: padded(src.map((o) => new THREE.Vector4(o.x, o.z, o.rings ? o.radius : -o.radius, o.strength)), this.limits.fluidSources, () => new THREE.Vector4()) },
+        uSourceY: { value: padded(src.map((o) => o.y ?? -1e4), this.limits.fluidSources, () => -1e4) },
         uGrooveCount: { value: grooves?.positions.length ?? 0 },
-        uGrooves: { value: padded(grooves?.positions ?? [], LIMITS.grooves, () => 0) },
+        uGrooves: { value: padded(grooves?.positions ?? [], this.limits.grooves, () => 0) },
         uGrooveAxis: { value: new THREE.Vector3(...(grooves?.axis ?? [1, 0, 0])) },
         uGrooveY: { value: new THREE.Vector2(...(grooves?.yRange ?? [0, 0])) },
       },
@@ -255,10 +311,10 @@ ${POSE}`);
   }
 
   /** A shadow-casting sun covering the scene's shadow area, rendered only when asked (see `renderGeometry`). */
-  private setupSun(light: THREE.DirectionalLight, radius: number) {
+  private setupSun(light: THREE.DirectionalLight, radius: number, mapSize: number) {
     light.castShadow = true;
     light.shadow.autoUpdate = false;
-    light.shadow.mapSize.set(4096, 4096);
+    light.shadow.mapSize.set(mapSize, mapSize);
     const sc = light.shadow.camera;
     sc.left = -radius; sc.right = radius; sc.top = radius; sc.bottom = -radius; sc.near = 1; sc.far = 140;
     light.shadow.bias = -0.0004; light.shadow.normalBias = 0.03;
@@ -276,7 +332,7 @@ ${POSE}`);
     if (this.nextObjectId > 2 ** 24) throw new RangeError('addObject: more than 2^24 objects added over this renderer\'s life');
     if (!this.objectLight) {
       const light = this.objectLight = new THREE.DirectionalLight(0xffffff, 1);
-      this.setupSun(light, this.pixelScene.shadow.radius);
+      this.setupSun(light, this.pixelScene.shadow.radius, this.objectShadowMapSize);
       light.position.copy(this.light.position); light.target.position.copy(this.light.target.position);
       light.target.updateMatrixWorld();
       this.scene.add(light, light.target);
@@ -472,8 +528,12 @@ ${POSE}`);
     }
   }
 
-  /** Stylise the G-buffer into the final pixel image on the canvas. `time` drives clouds and the fluids. */
-  renderStyle(s: RenderSettings, time: number) {
+  /** Stylise the G-buffer. `renderStyle(time)` uses DEFAULT_SETTINGS; time drives clouds and fluids. */
+  renderStyle(time?: number): void;
+  renderStyle(settings: RenderSettings | undefined, time?: number): void;
+  renderStyle(settings: RenderSettings | number = DEFAULT_SETTINGS, time = 0) {
+    const s = typeof settings === 'number' ? DEFAULT_SETTINGS : settings;
+    if (typeof settings === 'number') time = settings;
     const r = this.renderer, cam = this.camera;
     const u = this.postMat.uniforms;
     u.tAlbedo.value = this.gbuf.textures[0]; u.tNormal.value = this.gbuf.textures[1]; u.tShadow.value = this.gbuf.textures[2];

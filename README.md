@@ -10,9 +10,64 @@ npm install
 npm run browser:install   # the pinned Chromium the check tools use, into .browsers/ (git-ignored)
 npm run dev          # http://127.0.0.1:5180 (pinned: the tools use this address)
 npm run typecheck
-npm run build
+npm test             # builds the package (lib/) and runs the unit tests against it
+npm run build        # the demo pages, into dist/ (`npm run build:baked` bakes the scenes first, for a fast start)
+npm run example      # the example game, http://127.0.0.1:5181
 npm run check        # typecheck + golden images + browser checks (needs the dev server running)
 ```
+
+## Using it in a game
+
+The renderer is a library: the game owns its loop, state, input and UI, and each frame tells the renderer where everything is
+and asks it to draw. [`examples/walker/`](examples/walker/) is a complete small game written against the package the way a
+separate repo would use it (walk with the keyboard, click to place things); start there.
+
+![The walker example: a walled garden with a pond, lamps and the walker](examples/walker/screenshot.png)
+
+Install it from a version tag, with three.js beside it (a peer dependency, so the game and the renderer share one copy; each
+release supports one three.js minor version, 0.180 for now). Installing from git needs Node 22.18 or later, which builds the package:
+
+```sh
+npm install three@0.180 github:CelestialLemon/pixel3d-renderer#v0.1.0
+npm install -D @types/three@0.180     # for TypeScript
+```
+
+npm builds the package (`lib/`, the `prepare` script) when it installs it from git. Recent npm versions warn that the
+package's install scripts aren't approved yet; if yours refuses to run them, approve it with `npm install-scripts approve pixel3d-renderer`. While a game and the renderer change together, point the game at
+a local checkout instead (`npm install ../pixel3d-renderer`, then `npm run build:lib` in the renderer after each change).
+
+```ts
+import * as THREE from 'three';
+import { GeometryCollector, PixelRenderer, quantizePalette, lookAt } from 'pixel3d-renderer';
+
+// Build the world once: collect geometry, reduce the colours (objects too), then hand it to a renderer.
+const world = new GeometryCollector(), crate = new GeometryCollector();
+// ... world.add(geometry, matrix, colour, flag) for every static part; crate.add(...) in local space
+// Only the static geometry and the sun-shadow area are required; lamps, fluids and ambient motion are optional.
+const scene = { staticGeometry: world.build(), shadow: { center: new THREE.Vector3(), radius: 12 } };
+const crateGeometry = crate.build();
+quantizePalette([scene.staticGeometry, crateGeometry], 64);
+const r = new PixelRenderer(canvas, scene, { shadowMapSize: 2048 });
+r.resize(320, 180);                               // art pixels; scale the canvas up with CSS
+const box = r.addObject(crateGeometry);           // things the game moves
+
+function frame(t: number) {
+  box.setTransform(new THREE.Vector3(Math.sin(t), 0, 0));
+  r.setLook(lookAt(17.5));                         // only when the time of day changes: a new sun redraws its shadow map
+  r.placeCamera(target, azimuth, elevation, 11);  // radians; 11 m of world from top to bottom
+  r.renderGeometry(t);
+  r.renderStyle(t);                               // or renderStyle(settings, t) to turn effects off
+}
+canvas.onpointerdown = (e) => console.log(r.pick(e.clientX, e.clientY));   // what is under the pointer
+```
+
+The public API is everything [`src/renderer/index.ts`](src/renderer/index.ts) exports. A game can bring its own day cycle
+(`dayCycle`), shader limits and shadow map sizes (`PixelRendererOptions`), and can bake a built scene to a binary file
+(`encodeScene` / `decodeScene`) to skip building it at load.
+
+**Releases.** The version in `package.json` names the release, and a git tag `v<version>` (e.g. `v0.1.0`) marks it. To release:
+merge to `main`, bump `version`, commit, then `git tag v0.2.0 && git push origin v0.2.0`. Games pin a tag and upgrade when they
+choose; a change that breaks the API gets a new minor version while the major version is 0.
 
 ## Pages
 
@@ -121,12 +176,19 @@ A tool fails rather than quietly fall back to the CPU when a GPU backend is chos
 
 | Command | Checks |
 | --- | --- |
-| `npm run golden` | **Golden images** (`tools/golden.ts`): 37 fixed views with a frozen clock, compared pixel for pixel with the approved images (tracked, so a PR shows reviewers every view it changes). The output is only identical on the same platform, CPU architecture, backend, GPU and browser, so each combination has its own set, `golden/<set>/`; the run prints which one it uses, with the browser version. Sets made with the pinned Chromium have no browser suffix (e.g. `linux-x64-vulkan-amd-radeon-rx-570`); any other browser adds `-chrome`. `darwin-arm64-swiftshader-chrome` came from an M4 MacBook Air's installed Google Chrome, version not recorded; running `npm run browser:install` on that Mac switches it to a new set, `darwin-arm64-swiftshader`. Any difference fails and writes the new image to `golden/diff/<set>/` (git-ignored). A new machine creates its set with `golden:update` from a known-good commit. A Chrome or graphics driver update can also change the output: if many shots fail after one, check the diffs and regenerate the set from a known-good commit. A deliberate visual change updates every set the team uses, so the PR shows each changed view on each set. Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update` on the work's branch, never directly on `main`: new baselines reach `main` only through a PR, where the reviewer sees each changed view. `node tools/golden.ts pass3` runs a subset. |
+| `npm run golden` | **Golden images** (`tools/golden.ts`): 42 fixed views with a frozen clock, compared pixel for pixel with the approved images (tracked, so a PR shows reviewers every view it changes). The output is only identical on the same platform, CPU architecture, backend, GPU and browser, so each combination has its own set, `golden/<set>/`; the run prints which one it uses, with the browser version. Sets made with the pinned Chromium have no browser suffix (e.g. `linux-x64-vulkan-amd-radeon-rx-570`); any other browser adds `-chrome`. `darwin-arm64-swiftshader-chrome` came from an M4 MacBook Air's installed Google Chrome, version not recorded; running `npm run browser:install` on that Mac switches it to a new set, `darwin-arm64-swiftshader`. Any difference fails and writes the new image to `golden/diff/<set>/` (git-ignored). A new machine creates its set with `golden:update` from a known-good commit. A Chrome or graphics driver update can also change the output: if many shots fail after one, check the diffs and regenerate the set from a known-good commit. A deliberate visual change updates every set the team uses, so the PR shows each changed view on each set. Run it before and after every change: a refactor must stay identical, and a deliberate change shows exactly which views it touched. After an intended change, accept it with `npm run golden:update` on the work's branch, never directly on `main`: new baselines reach `main` only through a PR, where the reviewer sees each changed view. `node tools/golden.ts pass3` runs a subset. |
 | `npm run lamp-shadow-check` | Lamp shadow atlas: enclosed shells, back-facing panels, fixture clearance, and fitting small device limits (2048 and 512 px) with smaller faces. |
 | `npm run moving-shadow-check` | Sun-shadow mask on rigid moving parts (`move_spin_`/`move_sway_`): a moving panel at rest, spun 90 degrees and mid-swing gets exactly the mask of the same panel as static geometry at that pose, over striped ground (no borrowing the background) and under a roof (no "always sunlit"), without painting over static geometry in front of it. |
 | `npm run village-check` | Lantern Row: canopies clear every building, backdrop house, street, quay and the water, and buildings don't overlap or stand in the water (`layoutProblems` in `layout.ts`); models tied to layout features follow them; the mill wheel turns across the canal's flow in the main channel; moving parts spin about their node's local X axis; villager splitting keeps nested meshes single and parent prefixes; a missing or corrupt model fails the build visibly. |
 | `npm run camera-check` | Camera snap: the image shift the renderer reports for the camera it snapped to the art-pixel grid (`snapShift`) moves projected landmarks back onto the requested camera, for both signs, with and without a capture margin, at several scales, and repeatably. |
+| `npm run settings-check` | Game-supplied settings: custom and reduced limits compile and draw, invalid scene/capacity inputs are rejected before WebGL allocation and excessive uniform budgets after querying the GPU, shadow map sizes, resolve options, custom day cycles and minimal scene inputs. |
+| `npm run startup-check` | Exact binary/gzip roundtrips for all six scenes, including prepared fluid/window maps and local object geometry; live and decoded first frames must match pixel for pixel. |
+| `GL_BACKEND=swiftshader npm run golden -- --ci` | Ten fixed comparison, day/night, water and object views against `golden/ci-linux-x64-swiftshader/`. CI installs the pinned browser and uses this CPU-rendered set. Its references come from known-good main; existing GPU references stay unchanged. |
+| `npm run bake` / `npm run build:baked` | Generate compressed default scenes in `public/baked/`, then build the optimized production app. The baker starts and closes its own server. Dev always builds live; a regular build without a bake does too. A present but stale bake fails with a regeneration message. |
+| `node tools/startup-bench.ts [--baked]` | Three sequential runs per Cookie Co./village scene, reporting median asset load, renderer setup and first-frame time. `--baked` includes fetching and decompressing the generated asset. Reports go to `out/startup-bench/`. |
 | `npm run pick-check` | Picking (`PixelRenderer.pick`): the art pixel, world position and object under a point at supersample 1 and 3, for the sky, the baked and animated world and objects (instanced, mirrored, hidden, removed, through batch growth), plus the resolve keeping the id of the sample it draws. |
+| `npm test` | Unit tests (`test/`, Node's test runner) for the palette, geometry, day cycle and limits, run against the built package (`lib/`), imported by its name like a game does. No browser. |
+| `npm run example-check` | The example game (`examples/walker/`) against the built package: it starts, walks, stops at walls, and places and removes things by clicking. Serves the example itself; screenshots in `out/example/`. |
 | `node tools/verify.ts` | Comparison page: Pass 0 matches its standalone page; modes; ordered wipe dividers; shared camera, sun and resolution; layouts; PNG export sizes; mobile; time of day; animation toggle; no browser or shader errors. |
 | `node tools/check-viewer.ts` | The viewer page's controls, compare wipe and mobile layout. |
 | `node tools/anim-check.ts` | The world moves between two clock times and renders identically at the same time. |

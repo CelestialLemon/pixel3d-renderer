@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { flip } from './geometry';
-import { LIMITS } from './scene';
+import { resolveLimits, type RendererLimits } from './scene';
 
 // Fluids: water, ponds, acid, lava. A fluid surface is not part of the opaque world: it is rasterised into its own
 // small G-buffer after the opaque one, and a composite pass (shaders/water.ts) draws it over the post-shaded image,
@@ -76,17 +76,21 @@ export const POOL_NORMAL_Y = 0.95;
  * slope at `fall` m/s, so modelled falling water needs no flow data.
  */
 export class FluidCollector {
+  readonly limits: Readonly<RendererLimits>;
   private parts: THREE.BufferGeometry[] = [];
   private materials: FluidMaterial[] = [];
   private keys: string[] = [];
   private sources: FluidSource[] = [];
+
+  /** Use the same limits as the renderer that will draw the collected fluids. */
+  constructor(limits: Partial<RendererLimits> = {}) { this.limits = resolveLimits(limits); }
 
   add(src: THREE.BufferGeometry, m: THREE.Matrix4 | null, material: FluidMaterial, flow: [number, number] = [0, 0], fall = 2.4) {
     // Equal materials share a slot, so a variant spread inline at every call (`{ ...FLUIDS.water, deep }`) uses only one.
     const key = materialKey(material);
     let slot = this.keys.indexOf(key);
     if (slot < 0) {
-      if (this.materials.length >= LIMITS.fluidMaterials) throw new Error(`At most ${LIMITS.fluidMaterials} different fluid materials per scene`);
+      if (this.materials.length >= this.limits.fluidMaterials) throw new Error(`At most ${this.limits.fluidMaterials} different fluid materials per scene`);
       slot = this.materials.length; this.materials.push(material); this.keys.push(key);
     }
     const g = src.index ? src.toNonIndexed() : src.clone();
@@ -109,7 +113,7 @@ export class FluidCollector {
 
   /** Add a stirred spot (see FluidSource). */
   source(x: number, z: number, { y, radius = 0.6, strength = 1, rings = true }: Partial<Omit<FluidSource, 'x' | 'z'>> = {}) {
-    if (this.sources.length >= LIMITS.fluidSources) throw new Error(`At most ${LIMITS.fluidSources} fluid sources per scene`);
+    if (this.sources.length >= this.limits.fluidSources) throw new Error(`At most ${this.limits.fluidSources} fluid sources per scene`);
     this.sources.push({ x, z, y, radius, strength, rings });
   }
 

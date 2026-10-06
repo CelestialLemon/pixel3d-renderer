@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, FluidCollector, collectGltf, collectLamps, GeometryCollector, LIMITS, linearColor as lin, loadGltf, namedMeshRule, place, quantizePalette, type Lamp, type PixelScene } from '../../renderer';
+import { sceneBuilder } from '../shared/baked';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, collectGltf, collectLamps, GeometryCollector, linearColor as lin, loadGltf, namedMeshRule, place, quantizePalette, resolveLimits, type Lamp, type BakedScene as PixelScene } from '../../renderer';
 import type { SceneDefinition, SceneView } from '../types';
 
 // Props gallery: every modeled prop in assets/props/<id>/ (built per docs/ASSET_BRIEF.md, exported to
@@ -30,8 +31,9 @@ function layout() {
 }
 const LAYOUT = layout();
 
-async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
-  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector();
+async function build(paletteSize = propsGallery.paletteSize ?? DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
+  const limits = resolveLimits(propsGallery.limits);
+  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector(limits);
   const tile = new THREE.PlaneGeometry(1, 1), tiles = [lin(0x9c9a8e), lin(0xa5a397)];
   const gx = Math.ceil(LAYOUT.hx), gz = Math.ceil(LAYOUT.hz);
   for (let x = -gx; x < gx; x++) for (let z = -gz; z < gz; z++) s.add(tile, place(x + 0.5, 0, z + 0.5, -Math.PI / 2), tiles[(x + z + 1000) % 2]);
@@ -45,9 +47,9 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
     collectGltf(root, s, d, namedMeshRule, f);
     lamps.push(...collectLamps(root));
   });
-  if (lamps.length > LIMITS.lamps) {
-    console.warn(`props gallery: ${lamps.length} lamps, the renderer supports ${LIMITS.lamps}; the rest are dropped`);
-    lamps = lamps.slice(0, LIMITS.lamps);
+  if (lamps.length > limits.lamps) {
+    console.warn(`props gallery: ${lamps.length} lamps, the renderer supports ${limits.lamps}; the rest are dropped`);
+    lamps = lamps.slice(0, limits.lamps);
   }
 
   const staticGeometry = s.build(), dynamicGeometry = d.build();
@@ -72,4 +74,4 @@ const view: SceneView = {
   ],
 };
 
-export const propsGallery: SceneDefinition = { id: 'props', title: 'Props gallery', hasReference: false, build, view };
+export const propsGallery: SceneDefinition = { id: 'props', title: 'Props gallery', hasReference: false, build: sceneBuilder(() => propsGallery, build), view };

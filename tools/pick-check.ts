@@ -1,7 +1,7 @@
 // GPU picking regression: known surfaces, per-instance identity and the exact resolve representative.
 // Requires the dev server and pinned browser, like the other renderer checks. Goldens are checked separately.
 import assert from 'node:assert/strict';
-import type { PixelScene } from '../src/renderer/index.ts';
+import type { BakedScene as PixelScene } from '../src/renderer/index.ts';
 import { launch, newPage, open } from './lib.ts';
 
 const browser = await launch();

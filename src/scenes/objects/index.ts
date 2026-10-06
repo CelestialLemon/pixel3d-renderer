@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sceneBuilder } from '../shared/baked';
 import { DEFAULT_PALETTE_SIZE, FLAG, FluidCollector, GeometryCollector, linearColor as lin, place, quantizePalette, type Lamp, type PickResult, type PixelRenderer } from '../../renderer';
 import type { BuiltScene, SceneDefinition, SceneGame } from '../types';
 
@@ -57,7 +58,7 @@ const LOOP = { cx: 0, cz: 0, rx: 7, rz: 4.5, speed: 0.17 };   // speed in radian
 const FIELD = { x0: -3.2, z0: -1.6, cols: 8, rows: 5, step: 0.8 };
 const CROP_CYCLE = 12;   // seconds from planting to harvest
 
-async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
+async function build(paletteSize = objectsScene.paletteSize ?? DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
   const s = new GeometryCollector(false), d = new GeometryCollector(true);
   const tile = new THREE.PlaneGeometry(1, 1), tiles = [lin(0x9c9a8e), lin(0xa5a397)];
   for (let x = -GROUND.hx; x < GROUND.hx; x++) for (let z = -GROUND.hz; z < GROUND.hz; z++) {
@@ -79,7 +80,18 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
   const paletteColors = quantizePalette([staticGeometry, dynamicGeometry, ...Object.values(geos)], paletteSize);
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
 
-  const populate = (r: PixelRenderer): SceneGame => {
+
+  return {
+    staticGeometry, dynamicGeometry, lamps, fluids: new FluidCollector(objectsScene.limits).build(), grooves: null,
+    shadow: { center: new THREE.Vector3(0, 0, 0), radius: 13 },
+    stats: { triangles, paletteColors },
+    objectGeometries: geos,
+    populate: populateObjects(geos),
+  };
+}
+
+function populateObjects(geos: Record<string, THREE.BufferGeometry>) {
+  return (r: PixelRenderer): SceneGame => {
     const cartObj = r.addObject(geos.cart), crateObj = r.addObject(geos.crate);
     const balls = [[7.8, 5.6], [8.8, 4.6], [-8.6, 1.5]].map(([x, z]) => ({ x, z, o: r.addObject(geos.ball) }));
     const crops: { o: ReturnType<PixelRenderer['addObject']>; phase: number }[] = [];
@@ -116,12 +128,6 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
     return { update, click };
   };
 
-  return {
-    staticGeometry, dynamicGeometry, lamps, fluids: new FluidCollector().build(), grooves: null,
-    shadow: { center: new THREE.Vector3(0, 0, 0), radius: 13 },
-    stats: { triangles, paletteColors },
-    populate,
-  };
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -130,7 +136,9 @@ export const objectsScene: SceneDefinition = {
   id: 'objects',
   title: 'Moving objects',
   hasReference: false,
-  build,
+  build: sceneBuilder(() => objectsScene, build, (scene) => ({
+    ...scene, populate: populateObjects(scene.objectGeometries!),
+  })),
   hour: 12,
   view: {
     target: { x: 0, z: 0, height: 0.4 },

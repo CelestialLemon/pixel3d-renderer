@@ -157,7 +157,7 @@ const LAMP_COLOURS: [number, number, number][] = [[1, 0.62, 0.22], [1, 0.15, 0.1
 
 /**
  * Terraces at small height steps (seams between flat planes), a closed room lit from inside and seen through a
- * window opening, and a row of lamp posts in different colours. Returns the lamps (eight; the renderer allows `LIMITS.lamps`).
+ * window opening, and a row of lamp posts in different colours. Returns the lamps (eight; the default limit is `DEFAULT_LIMITS.lamps`).
  */
 export function lampsBay(s: C, cx: number, cz: number): Lamp[] {
   [0.02, 0.05, 0.1, 0.2, 0.4, 0.8].forEach((h, i) => box(s, cx - 3.0 + i * 0.8, 0, cz - 1.7, 0.8, h, 2.2, 0xb6ad9a));

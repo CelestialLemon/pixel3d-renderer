@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { PixelPipeline as Pass0 } from '../reference/pass0/pipeline';
 import { PixelPipeline as Pass1, type Settings as RefSettings } from '../reference/pass1/pipeline';
 import { buildWorld, type World } from '../reference/world';
-import { DEFAULT_PALETTE_SIZE, PixelRenderer, type Look, type PixelScene, type RenderSettings } from '../renderer';
+import { DEFAULT_PALETTE_SIZE, PixelRenderer, type Look, type BakedScene, type RenderSettings } from '../renderer';
 import { cookieCo } from '../scenes/cookie-co';
 import { num, paletteSize } from './params';
 
@@ -20,10 +20,10 @@ export interface PassView {
 }
 
 /** Scenes the passes draw, built once per page. */
-export interface PassAssets { reference: World; scene: PixelScene }
+export interface PassAssets { reference: World; scene: BakedScene }
 
 export const loadAssets = async (): Promise<PassAssets> => {
-  const [reference, scene] = await Promise.all([buildWorld('/cookie_factory.glb', num('k', 44)), cookieCo.build(paletteSize('k3', DEFAULT_PALETTE_SIZE))]);
+  const [reference, scene] = await Promise.all([buildWorld('/cookie_factory.glb', num('k', 44)), cookieCo.build(paletteSize('k3', cookieCo.paletteSize ?? DEFAULT_PALETTE_SIZE))]);
   return { reference, scene };
 };
 
@@ -71,5 +71,5 @@ export const PASSES: PassDef[] = [
   { id: 'pass1', label: 'Pass 1', subtitle: 'Refined', summary: 'Refined shadows, colors, contacts and edges',
     create: (canvas, a) => new ReferenceView(new Pass1(canvas, a.reference.geometry)) },
   { id: 'pass3', label: 'Pass 3', subtitle: 'Golden Hour', summary: 'Living world, time of day, lamp light, leaf clumps',
-    create: (canvas, a) => new CurrentView(new PixelRenderer(canvas, a.scene)) },
+    create: (canvas, a) => new CurrentView(new PixelRenderer(canvas, a.scene, { limits: cookieCo.limits })) },
 ];

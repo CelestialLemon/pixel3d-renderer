@@ -3,7 +3,7 @@
 //   node tools/object-check.ts
 import assert from 'node:assert/strict';
 import type * as Three from 'three';
-import type { PixelScene, PixelObject, RGB } from '../src/renderer/index.ts';
+import type { BakedScene as PixelScene, PixelObject, RGB } from '../src/renderer/index.ts';
 import { launch, newPage, open } from './lib.ts';
 
 const browser = await launch();

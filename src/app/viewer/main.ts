@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, hourLabel, lookAt, nearestPreset, PixelRenderer, PRESETS, type Look, type RenderSettings } from '../../renderer';
+import { DEFAULT_DAY_CYCLE, DEFAULT_PALETTE_SIZE, hourLabel, PixelRenderer, type Look, type PixelRendererOptions, type PixelScene, type RenderSettings } from '../../renderer';
 import { buildWorld } from '../../reference/world';
 import { SCENES, sceneById } from '../../scenes';
 import type { SceneGame } from '../../scenes/types';
@@ -16,6 +16,7 @@ const settings: RenderSettings & { pixel: number; animate: boolean } = {
   ...settingsFromParams(), pixel: THREE.MathUtils.clamp(num('px', 3), 1, 8), animate: params.get('anim') !== '0',
 };
 const orbit = new Orbit(scene.view);
+const day = scene.look ?? DEFAULT_DAY_CYCLE;
 let hour = num('hour', scene.hour ?? 17.5), cycle = params.get('cycle') === '1', dirty = true;
 // What the left of the wipe shows: Pass 1, or this renderer with another palette size.
 type Compare = 'off' | 'pass1' | 'palette';
@@ -26,32 +27,28 @@ const LEFT_PALETTE_SIZE = 56;
 if (params.has('clean-ui')) document.body.classList.add('clean');
 
 async function main() {
-  const paletteSize = params.has('k') ? paletteParam('k', DEFAULT_PALETTE_SIZE) : undefined, leftPaletteSize = paletteParam('left-k', LEFT_PALETTE_SIZE);
+  const paletteSize = params.has('k') ? paletteParam('k', scene.paletteSize ?? DEFAULT_PALETTE_SIZE) : undefined, leftPaletteSize = paletteParam('left-k', LEFT_PALETTE_SIZE);
   const pixelScene = await scene.build(paletteSize);
   // Thin-feature resolve (docs/THIN_FEATURES.md). The default is ss=3 with resolve=thin; ?ss=1 turns supersampling off and
   // ?resolve=majority|near|near3 picks another policy for comparison.
-  const configure = (r: PixelRenderer) => {
-    r.supersample = num('ss', r.supersample);
-    const resolve = params.get('resolve');
-    if (resolve) {
-      r.resolvePolicy = ({ majority: 0, near: 1, near3: 2, thin: 1 } as Record<string, number>)[resolve] ?? r.resolvePolicy;
-      r.resolveThinOnly = resolve === 'thin';
-    }
-    return r;
-  };
-  const p3 = configure(new PixelRenderer($<HTMLCanvasElement>('p3-view'), pixelScene));
+  const options: PixelRendererOptions = { limits: scene.limits };
+  if (num('ss', 3) === 1) options.supersample = 1;
+  const resolve = params.get('resolve'), policy = resolve ? ({ majority: 0, near: 1, near3: 2, thin: 1 } as Record<string, number>)[resolve] : undefined;
+  if (policy !== undefined) { options.resolvePolicy = policy; options.resolveThinOnly = resolve === 'thin'; }
+  const create = (id: string, s: PixelScene) => new PixelRenderer($<HTMLCanvasElement>(id), s, options);
+  const p3 = create('p3-view', pixelScene);
   // Scenes with game objects move them to the clock before each frame (see BuiltScene.populate).
   const game = pixelScene.populate?.(p3);
   let p1: PassView | null = null, pOther: PixelRenderer | null = null, otherGame: SceneGame | undefined;
   const left = () => (compare === 'pass1' ? p1 : compare === 'palette' ? pOther : null);
-  let look: Look = lookAt(hour);
+  let look: Look = day.lookAt(hour);
   // Pass 1 has no dusk grade, so it keeps the sun at least 12 degrees up.
   const pass1Look = (): Look => ({ ...look, sunEl: Math.max(look.sunEl, 12) });
   const applyLook = () => {
-    look = lookAt(hour);
+    look = day.lookAt(hour);
     p3.setLook(look); p1?.setLook(pass1Look()); pOther?.setLook(look);
     $<HTMLOutputElement>('clock').value = hourLabel(hour);
-    $('clock-title').textContent = `${nearestPreset(hour)} · ${hourLabel(hour)}`;
+    $('clock-title').textContent = `${day.nearestPreset(hour)} · ${hourLabel(hour)}`;
     $<HTMLInputElement>('hour').value = String(hour);
     dirty = true;
   };
@@ -67,7 +64,7 @@ async function main() {
     if (pOther) return;
     $('loading').classList.remove('done');
     const other = await scene.build(leftPaletteSize);
-    pOther = configure(new PixelRenderer($<HTMLCanvasElement>('pal-view'), other));
+    pOther = create('pal-view', other);
     otherGame = other.populate?.(pOther);
     $('loading').classList.add('done');
     pOther.setLook(look);
@@ -90,7 +87,7 @@ async function main() {
     const el = $<HTMLInputElement>(key); el.checked = settings[key];
     el.onchange = () => { settings[key] = el.checked; dirty = true; };
   }
-  for (const [name, h] of Object.entries(PRESETS)) {
+  for (const [name, h] of Object.entries(day.presets)) {
     const b = document.createElement('button'); b.textContent = name;
     b.onclick = () => { hour = h; cycle = false; $<HTMLInputElement>('cycle').checked = false; applyLook(); };
     $('presets').append(b);
@@ -141,7 +138,7 @@ async function main() {
   $('stats').textContent = `${(triangles / 1000).toFixed(0)}k tris · ${paletteColors} base colors`;
   // Palette sizes for the two sides of the palette wipe. A new size rebuilds the scene, so it reloads the page.
   for (const [id, key, value] of [['k-left', 'left-k', leftPaletteSize], ['k-right', 'k', paletteSize]] as const) {
-    const sel = $<HTMLSelectElement>(id), v = String(value ?? DEFAULT_PALETTE_SIZE);
+    const sel = $<HTMLSelectElement>(id), v = String(value ?? scene.paletteSize ?? DEFAULT_PALETTE_SIZE);
     if (![...sel.options].some((o) => o.value === v)) sel.add(new Option(v, v));
     sel.value = v;
     sel.onchange = () => {

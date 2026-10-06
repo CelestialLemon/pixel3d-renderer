@@ -1,8 +1,33 @@
 import type * as THREE from 'three';
-import type { SceneFluids } from './fluids';
+import { FluidCollector, type SceneFluids } from './fluids';
+import { GeometryCollector } from './geometry';
+import type { FluidMap } from './fluidMap';
+import type { WindowLight } from './windowLight';
 
-/** Shader limits on the per-scene arrays below. Keep in sync with shaders/post.ts. */
-export const LIMITS = { lamps: 64, grooves: 8, fluidMaterials: 8, fluidSources: 8 } as const;
+/** Shader capacities, chosen before collecting fluids and constructing a renderer. All are positive integers. */
+export interface RendererLimits {
+  lamps: number;
+  grooves: number;
+  fluidMaterials: number;
+  fluidSources: number;
+}
+
+export const DEFAULT_LIMITS: Readonly<RendererLimits> = Object.freeze({ lamps: 64, grooves: 8, fluidMaterials: 8, fluidSources: 8 });
+/** Default capacities, retained for callers that use the original name. */
+export const LIMITS = DEFAULT_LIMITS;
+
+/** Fill omitted capacities with defaults and take an immutable copy. Larger budgets need more GPU uniforms. */
+export function resolveLimits(overrides: Partial<RendererLimits> = {}): Readonly<RendererLimits> {
+  const limits = { ...DEFAULT_LIMITS };
+  for (const key of Object.keys(limits) as (keyof RendererLimits)[]) {
+    const value = overrides[key] ?? limits[key];
+    if (!Number.isSafeInteger(value) || value < 1 || value > 4096) {
+      throw new RangeError(`limits.${key} must be a positive integer no greater than 4096`);
+    }
+    limits[key] = value;
+  }
+  return Object.freeze(limits);
+}
 
 /** A light that glows after dusk (window, lantern, oven). Solid static geometry blocks it. */
 export interface Lamp {
@@ -36,12 +61,29 @@ export interface PixelScene {
   /** World-space triangles with aColor and aFlag (see GeometryCollector). Never moves. */
   staticGeometry: THREE.BufferGeometry;
   /** Moving triangles, also with aMode, aAnchor and aAnim (see motion.ts). Animated on the GPU every frame. */
-  dynamicGeometry: THREE.BufferGeometry;
-  lamps: Lamp[];
+  dynamicGeometry?: THREE.BufferGeometry;
+  lamps?: Lamp[];
   /** Water and other fluids: surfaces, their materials and the spots that stir them (see fluids.ts). */
-  fluids: SceneFluids;
-  grooves: Grooves | null;
+  fluids?: SceneFluids;
+  /** Optional precomputed static maps (encodeScene bakes these). The renderer creates its own texture instances. */
+  maps?: { fluids: FluidMap; windows: WindowLight };
+  grooves?: Grooves | null;
   /** Region the sun's shadow map covers: a square of half-size `radius` around `center`. */
   shadow: { center: THREE.Vector3; radius: number };
+  stats?: { triangles: number; paletteColors: number };
+}
+
+/** The scene after optional inputs have their empty defaults. Renderer and baked assets always expose this shape. */
+export interface ResolvedPixelScene extends PixelScene {
+  dynamicGeometry: THREE.BufferGeometry;
+  lamps: Lamp[];
+  fluids: SceneFluids;
+  grooves: Grooves | null;
   stats: { triangles: number; paletteColors: number };
+}
+
+export function resolveScene(scene: PixelScene): ResolvedPixelScene {
+  return { ...scene, dynamicGeometry: scene.dynamicGeometry ?? new GeometryCollector(true).build(),
+    lamps: scene.lamps ?? [], fluids: scene.fluids ?? new FluidCollector().build(), grooves: scene.grooves ?? null,
+    stats: scene.stats ?? { triangles: 0, paletteColors: 0 } };
 }

@@ -82,17 +82,56 @@ time. A game can't move, add or remove anything. This phase fixes that and turns
      that wants to click parts of it (tiles, doors) maps the world position to them itself.
    - Demo: in `?scene=objects`, clicking a crop harvests it early, and the panel shows the pixel, world position and object id.
      `BuiltScene.populate` now returns `{ update, click }`. `npm run pick-check` (`tools/pick-check.ts`) checks the API and the resolve.
-3. **Game-supplied settings.** Look keyframes per game or scene (today `look.ts` is global), the palette size and the limits. The
-   orbit camera stays in the demo app; a game places the camera itself with `placeCamera`.
-4. **Startup cost.** Merge and palette at build time instead of at page load (the asset pipeline: Blender → glTF → naming rules →
-   baked data). Cookie Co. takes seconds to build in the browser, and the canal town's lamp-shadow pass redraws the static mesh 264
-   times (section 1, item 5).
-5. **Package it.** A small public API (`src/renderer/index.ts`), a library build (ES modules plus `.d.ts`, with three.js as a peer
-   dependency), version tags, unit tests for the palette and geometry, and CI that runs the typecheck and tests. Golden images need
-   a set of their own for CI, made once from a known-good commit.
-6. **A minimal example game** in this repo (a character walking around a small level with the keyboard, clicking to place things).
-   It uses only the public API, the way a real game would, and it is the check for this phase: if the example is awkward to write,
-   the API is wrong.
+3. **Done (2026-10-06): game-supplied settings.** With none of them given, the renderer draws exactly as before (the one
+   visible change is a fix: `nearestPreset` now measures around the clock, so 01:00 is "Night", not "Morning").
+   - **Look.** `dayCycle(keys, presets)` (`src/renderer/look.ts`) turns a game's keyframes (`LookKey`: a `Look` at an hour, with
+     sRGB sky colours) into a `DayCycle` with `lookAt(hour)`, its named `presets` and `nearestPreset`. Keys may sit at any hours: the
+     look wraps through midnight, so one key gives a fixed look. `DEFAULT_DAY_CYCLE` is the old table, and `lookAt`/`PRESETS` are
+     its shorthands. A scene can carry its own (`SceneDefinition.look`), which the demo pages use for the look and the time buttons.
+   - **Renderer options.** `new PixelRenderer(canvas, scene, options)` takes `PixelRendererOptions`: `limits` (lamps, grooves,
+     fluid materials and sources; `resolveLimits` fills in `DEFAULT_LIMITS`), `supersample` (1 or 3), the resolve policy, and
+     `shadowMapSize` / `objectShadowMapSize` (4096 by default; smaller maps for phones). The shaders are compiled to the instance's
+     limits, and a scene over them is rejected with a clear error: its lamp, groove and fluid counts before a WebGL context is
+     created, and the limits against the device's fragment uniform budget right after. Collect fluids with the same limits
+     (`new FluidCollector(limits)`); `SceneDefinition.limits` does this for the demo scenes. `npm run settings-check` checks them.
+   - **Palette size** was already the game's: `quantizePalette(geometries, size)`. A demo scene's default is
+     `SceneDefinition.paletteSize`, which the viewer shows when `?k=` is absent.
+   - **Camera.** The orbit camera stays in the demo app; a game places the camera itself with `placeCamera`.
+4. **Done (2026-10-06): startup cost.** Measured on the RX 570 (median of 3 warm-cache runs, 160×120 first frame, default 4096²
+   shadows, `node tools/startup-bench.ts [--baked]`): from loading the scene's assets to the first frame (not counting page and
+   module start-up or a cold network cache), Cookie Co. went from 1101 ms to 449 ms and the
+   canal town from 3451 ms to 450 ms.
+   - **Baked scenes.** `npm run bake` (`tools/bake.ts`) builds each demo scene once in the browser, through its real asset
+     pipeline, and writes it as an exact binary (`encodeScene`: attribute bytes, quantized colours, fluid slots, lamps, the
+     prepared fluid and window-light maps, and objects' local geometry), gzip-compressed, to `public/baked/<scene>-<hash>.p3dz`
+     (about 6 MiB each; git-ignored). The production build (`npm run build:baked` = bake, then `vite build`) loads it with
+     `decodeScene`: about 210 ms to fetch and decompress, and the renderer no longer scans the geometry for its maps (the canal
+     town's constructor now takes 33 ms). A palette size or limits other than the baked defaults build live.
+   - **Staleness.** The bake records a SHA-256 of the scene and renderer sources and the GLB assets. Dev always builds live; a
+     build with no bake builds live too (so CI needs no browser); a build with a stale bake fails and says to rebake.
+   - **Lamp-shadow pass.** It no longer draws the triangles the lamp shader discards anyway (DECOR and the other non-occluders):
+     Cookie Co. 512,688 → 330,198 triangles per cube face, the canal town 497,810 → 342,310. Every solid occluder stays, with no
+     cut-off by lamp radius, because lamp reflections on water look up occlusion far from the lamp.
+   - `npm run startup-check` checks every scene's binary round trip and that the live and decoded first frames match pixel for
+     pixel. Games can bake their own scenes with the same `encodeScene` / `decodeScene`.
+5. **Done (2026-10-06): package it.** `src/renderer/index.ts` is the public API, grouped into drawing, building a scene and time
+   of day. Internals only the check tools need (`buildFluidMap`, `atlasLayout`, `POOL_NORMAL_Y`, `fluidFromName`) are no longer
+   exported. `npm run build:lib` builds `lib/pixel3d-renderer.js` (one ES module, three.js external) and `lib/types/*.d.ts`
+   (`tools/lib-types.ts` adds `.js` to their relative imports, for games on `"moduleResolution": "nodenext"`). `package.json` has
+   `exports`, three.js as a peer dependency (`@types/three` an optional one) and a `prepare` script, so installing from a git tag
+   builds `lib/`. `npm test` runs unit tests (`test/`, Node's test runner, no browser) for the palette, geometry, day cycle and
+   limits against the built package, imported by its name as a game would. CI (`.github/workflows/ci.yml`) runs the typecheck,
+   the unit tests and the demo build on every PR, and a second job checks ten pinned views rendered in software (SwiftShader)
+   against a golden set made once from a known-good commit (`npm run golden -- --ci`). Releases are `v<version>` tags (README, "Using it in a game"); the first,
+   `v0.1.0`, is tagged once this phase is merged.
+6. **Done (2026-10-06): a minimal example game,** `examples/walker/` (`npm run example`). A walker on a walled garden with a pond,
+   lamps and swaying flowers: WASD or arrows walk (relative to the camera, sliding along walls), Q/E turn the camera in 45°
+   steps, a click places a crate, pumpkin or lantern on the tile under the pointer (a hover frame shows it) and a click on a
+   placed thing removes it, and the day passes. It imports only `pixel3d-renderer`, which its Vite config points at the built
+   `lib/`, and its `tsconfig` resolves the types through the package's `exports`. `npm run example-check` drives it in the browser.
+   **What it showed about the API:** a game with no ambient motion, fluids or grooves had to fill in empty ones and the demo's
+   `stats` in `PixelScene`, and import `DEFAULT_SETTINGS` just to draw. Now `PixelScene` needs only `staticGeometry` and `shadow`
+   (the renderer fills in the rest), and `renderStyle(time)` uses the default settings.
 
 **Done when:** the example game runs against the package, and a separate repo can install it from a tag.
 

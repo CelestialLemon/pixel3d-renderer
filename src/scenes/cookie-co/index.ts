@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, loadGltf, quantizePalette, type PixelScene } from '../../renderer';
+import { sceneBuilder } from '../shared/baked';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, loadGltf, quantizePalette, type BakedScene as PixelScene } from '../../renderer';
 import { mulberry32 } from '../shared/random';
 import type { SceneDefinition } from '../types';
 import { addFactory } from './factory';
@@ -11,11 +12,11 @@ import { buildTrees } from './trees';
 
 // Cookie Co.: the cookie factory from Harvest Frenzy in a meadow with a pond, trees and wildlife.
 
-async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
+async function build(paletteSize = cookieCo.paletteSize ?? DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const root = await loadGltf('/cookie_factory_current.glb');
   // One generator for the whole build, consumed in a fixed order: the scene is reproducible.
   const rnd = mulberry32(11);
-  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector();
+  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector(cookieCo.limits);
   addFactory(root, s, d);
   const flowerSpots = buildMeadow(s, d, f, rnd);
   for (const [x, z] of RIPPLES) f.source(x, z, { y: GROUND_Y - 0.07, radius: 0.4, strength: 0.4 });   // the pond's surface (meadow.ts)
@@ -38,7 +39,7 @@ export const cookieCo: SceneDefinition = {
   id: 'cookie-co',
   title: 'Cookie Co.',
   hasReference: true,
-  build,
+  build: sceneBuilder(() => cookieCo, build),
   view: {
     target: { x: 0.8, z: 0.4, height: 1.3 },
     groundY: GROUND_Y,
