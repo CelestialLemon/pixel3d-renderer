@@ -1,8 +1,30 @@
 import type * as THREE from 'three';
 import type { SceneFluids } from './fluids';
 
-/** Shader limits on the per-scene arrays below. Keep in sync with shaders/post.ts. */
-export const LIMITS = { lamps: 64, grooves: 8, fluidMaterials: 8, fluidSources: 8 } as const;
+/** Shader capacities, chosen before collecting fluids and constructing a renderer. All are positive integers. */
+export interface RendererLimits {
+  lamps: number;
+  grooves: number;
+  fluidMaterials: number;
+  fluidSources: number;
+}
+
+export const DEFAULT_LIMITS: Readonly<RendererLimits> = Object.freeze({ lamps: 64, grooves: 8, fluidMaterials: 8, fluidSources: 8 });
+/** Default capacities, retained for callers that use the original name. */
+export const LIMITS = DEFAULT_LIMITS;
+
+/** Fill omitted capacities with defaults and take an immutable copy. Larger budgets need more GPU uniforms. */
+export function resolveLimits(overrides: Partial<RendererLimits> = {}): Readonly<RendererLimits> {
+  const limits = { ...DEFAULT_LIMITS };
+  for (const key of Object.keys(limits) as (keyof RendererLimits)[]) {
+    const value = overrides[key] ?? limits[key];
+    if (!Number.isSafeInteger(value) || value < 1 || value > 4096) {
+      throw new RangeError(`limits.${key} must be a positive integer no greater than 4096`);
+    }
+    limits[key] = value;
+  }
+  return Object.freeze(limits);
+}
 
 /** A light that glows after dusk (window, lantern, oven). Solid static geometry blocks it. */
 export interface Lamp {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, LIMITS, MODE, quantizePalette, type PixelScene } from '../../renderer';
+import { DEFAULT_PALETTE_SIZE, FluidCollector, GeometryCollector, MODE, quantizePalette, resolveLimits, type PixelScene } from '../../renderer';
 import { mulberry32 } from '../shared/random';
 import type { SceneDefinition } from '../types';
 import { buildGround, CANAL_FLOW } from './ground';
@@ -13,10 +13,11 @@ import { buildTrees } from './trees';
 // gardens, a smithy, a barn and an orchard fill the south bank. The buildings are modelled in Blender (assets/village/, built
 // to the footprints in layout.ts); everything that depends on the layout (paving, quays, walls, stairs, water, plants) is built here.
 
-async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
+async function build(paletteSize = village.paletteSize ?? DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   // One generator for the whole build, consumed in a fixed order: the scene is reproducible.
   const rnd = mulberry32(23);
-  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector();
+  const limits = resolveLimits(village.limits);
+  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector(limits);
   // The models first (into their own collectors), to learn which way the mill wheel turns: the canal runs with it.
   const ms = new GeometryCollector(false), md = new GeometryCollector(true);
   const placed = await placeModels(ms, md, f);
@@ -32,9 +33,9 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   }
   if (wheel) f.source(wheel.x, wheel.z, { y: CANAL.waterY, radius: 1.8, strength: 1, rings: false });
   let lamps = placed.lamps;
-  if (lamps.length > LIMITS.lamps) {
-    console.warn(`village: ${lamps.length} lamps, the renderer supports ${LIMITS.lamps}; the rest are dropped`);
-    lamps = lamps.slice(0, LIMITS.lamps);
+  if (lamps.length > limits.lamps) {
+    console.warn(`village: ${lamps.length} lamps, the renderer supports ${limits.lamps}; the rest are dropped`);
+    lamps = lamps.slice(0, limits.lamps);
   }
 
   const staticGeometry = s.build(), dynamicGeometry = d.build();

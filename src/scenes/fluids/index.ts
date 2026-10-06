@@ -28,8 +28,8 @@ const BOX = new THREE.BoxGeometry(1, 1, 1);
 const box = (s: GeometryCollector, x: number, y: number, z: number, w: number, h: number, d: number, hex: number, flag: number = FLAG.NORMAL) =>
   s.add(BOX, place(x, y + h / 2, z, 0, 0, 0, w, h, d), lin(hex), flag);
 
-async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
-  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector();
+async function build(paletteSize = fluidsScene.paletteSize ?? DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
+  const s = new GeometryCollector(false), d = new GeometryCollector(true), f = new FluidCollector(fluidsScene.limits);
   const tile = new THREE.PlaneGeometry(1, 1), tiles = [lin(0x9c9a8e), lin(0xa5a397)];
   for (let x = -GROUND.hx; x < GROUND.hx; x++) for (let z = -GROUND.hz; z < GROUND.hz; z++) {
     s.add(tile, place(x + 0.5, 0, z + 0.5, -Math.PI / 2), tiles[(x + z + 100) % 2]);

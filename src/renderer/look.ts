@@ -15,11 +15,81 @@ export interface Look {
   skyTop: THREE.Color; skyBot: THREE.Color;
 }
 
-type Key = [hour: number, az: number, el: number, sunI: number, ambient: number, expo: number, chroma: number,
-  litA: number, litB: number, shA: number, shB: number, lamp: number, night: number, top: number, bot: number];
+/**
+ * One keyframe of a day cycle: the look at `hour` (0-24). Sky colours given as a number or CSS string are sRGB (e.g. `0x79b6dc`);
+ * a `THREE.Color` is taken as it is, i.e. already linear (`new THREE.Color(0x79b6dc)` converts; `setRGB` does not).
+ */
+export interface LookKey extends Omit<Look, 'skyTop' | 'skyBot'> {
+  skyTop: THREE.ColorRepresentation; skyBot: THREE.ColorRepresentation;
+}
 
-// The default day cycle, smoothly interpolated between keys.
-const KEYS: Key[] = [
+/** A game's or scene's looks through the day: keyframes smoothly interpolated, plus named hours for its UI. */
+export interface DayCycle<P extends Readonly<Record<string, number>> = Readonly<Record<string, number>>> {
+  readonly keys: readonly LookKey[];
+  /** Named hours (e.g. `{ Noon: 12 }`), in display order. */
+  readonly presets: Readonly<P>;
+  /** The look at `hour` (wraps around 24). */
+  lookAt(hour: number): Look;
+  /** Name of the preset closest to `hour` around the clock (23:30 is nearer midnight than 20:00), or '' if there are none. */
+  nearestPreset(hour: number): string;
+}
+
+const mix = (a: number, b: number, t: number) => a + (b - a) * t;
+const colorMix = (a: THREE.ColorRepresentation, b: THREE.ColorRepresentation, t: number) =>
+  new THREE.Color(a).lerp(new THREE.Color(b), t); // linear working space, blended in linear
+
+/**
+ * A day cycle from keyframes at strictly increasing hours in [0, 24]. Between the last key and the first the look
+ * wraps around midnight, so a cycle may give as few as one key, or keys only at the hours it cares about.
+ */
+export function dayCycle<const P extends Readonly<Record<string, number>> = {}>(keys: readonly LookKey[], presets: P = {} as P): DayCycle<P> {
+  if (keys.length === 0) throw new Error('A day cycle needs at least one key');
+  for (const [name, h] of Object.entries(presets)) if (!(h >= 0 && h <= 24)) throw new Error(`Day cycle preset "${name}" is at hour ${h}, outside 0-24`);
+  keys.forEach((k, i) => {
+    if (!(k.hour >= 0 && k.hour <= 24)) throw new Error(`Day cycle key ${i} is at hour ${k.hour}, outside 0-24`);
+    if (i > 0 && !(k.hour > keys[i - 1].hour)) throw new Error(`Day cycle key ${i} (hour ${k.hour}) is not after the one before it`);
+  });
+  // Own copies, so changing the caller's keys later doesn't change the cycle.
+  // `isColor`, not `instanceof`: the caller's Color may come from another copy of three.js.
+  const own = (c: THREE.ColorRepresentation) => (typeof c === 'object' && (c as THREE.Color).isColor ? new THREE.Color().copy(c as THREE.Color) : c);
+  const frozen = Object.freeze(keys.map((k) => Object.freeze({
+    ...k, litTint: Object.freeze([...k.litTint]) as [number, number], shadeTint: Object.freeze([...k.shadeTint]) as [number, number],
+    skyTop: own(k.skyTop), skyBot: own(k.skyBot),
+  })));
+  const named = Object.freeze({ ...presets });
+  const wrap = (h: number) => ((h % 24) + 24) % 24;
+  const first = frozen[0], last = frozen[frozen.length - 1];
+  // The wrap keys make the list cover [0, 24], so every hour falls between two keys.
+  const span = [...(first.hour > 0 ? [{ ...last, hour: last.hour - 24 }] : []), ...frozen, ...(last.hour < 24 ? [{ ...first, hour: first.hour + 24 }] : [])];
+
+  const lookAt = (hour: number): Look => {
+    const h = wrap(hour);
+    let i = 0;
+    while (i < span.length - 2 && h >= span[i + 1].hour) i++;
+    const a = span[i], b = span[i + 1];
+    const t0 = b.hour > a.hour ? (h - a.hour) / (b.hour - a.hour) : 0, t = t0 * t0 * (3 - 2 * t0);
+    const m = (k: 'sunAz' | 'sunEl' | 'sunI' | 'ambient' | 'expo' | 'chroma' | 'lampOn' | 'night') => mix(a[k], b[k], t);
+    return {
+      hour: h, sunAz: m('sunAz'), sunEl: m('sunEl'), sunI: m('sunI'), ambient: m('ambient'), expo: m('expo'), chroma: m('chroma'),
+      litTint: [mix(a.litTint[0], b.litTint[0], t), mix(a.litTint[1], b.litTint[1], t)],
+      shadeTint: [mix(a.shadeTint[0], b.shadeTint[0], t), mix(a.shadeTint[1], b.shadeTint[1], t)],
+      lampOn: m('lampOn'), night: m('night'),
+      skyTop: colorMix(a.skyTop, b.skyTop, t), skyBot: colorMix(a.skyBot, b.skyBot, t),
+    };
+  };
+  const distance = (a: number, b: number) => { const d = wrap(a - b); return Math.min(d, 24 - d); };
+  const nearestPreset = (hour: number) =>
+    Object.entries(named).sort((a, b) => distance(a[1], hour) - distance(b[1], hour))[0]?.[0] ?? '';
+  return { keys: frozen, presets: named, lookAt, nearestPreset };
+}
+
+type Row = [hour: number, az: number, el: number, sunI: number, ambient: number, expo: number, chroma: number,
+  litA: number, litB: number, shA: number, shB: number, lamp: number, night: number, top: number, bot: number];
+const key = ([hour, sunAz, sunEl, sunI, ambient, expo, chroma, litA, litB, shA, shB, lampOn, night, skyTop, skyBot]: Row): LookKey =>
+  ({ hour, sunAz, sunEl, sunI, ambient, expo, chroma, litTint: [litA, litB], shadeTint: [shA, shB], lampOn, night, skyTop, skyBot });
+
+/** The renderer's own day: the Golden Hour look the demo scenes are tuned for. */
+export const DEFAULT_DAY_CYCLE = dayCycle(([
   [0,    -50, 38, 0.34, 0.30, 0.58, 0.95, -0.006, -0.044, 0.012, -0.070, 1.00, 1.00, 0x0d1838, 0x2b4272],
   [5.5,  -50, 38, 0.34, 0.30, 0.58, 0.95, -0.006, -0.044, 0.012, -0.070, 1.00, 1.00, 0x0d1838, 0x2b4272],
   [6.4,   88,  9, 0.78, 0.34, 0.88, 1.04,  0.014,  0.030, 0.016, -0.040, 0.70, 0.35, 0x7d8fd0, 0xffc9a0],
@@ -31,35 +101,12 @@ const KEYS: Key[] = [
   [19.8, -92,  3, 0.40, 0.31, 0.74, 1.00, -0.004, -0.020, 0.012, -0.050, 1.00, 0.65, 0x24357a, 0x8a6aa8],
   [21.0, -50, 38, 0.34, 0.30, 0.58, 0.95, -0.006, -0.044, 0.012, -0.070, 1.00, 1.00, 0x0d1838, 0x2b4272],
   [24,   -50, 38, 0.34, 0.30, 0.58, 0.95, -0.006, -0.044, 0.012, -0.070, 1.00, 1.00, 0x0d1838, 0x2b4272],
-];
+] as Row[]).map(key), { Morning: 8, Noon: 12, 'Golden hour': 17.5, Dusk: 19.5, Night: 22 });
 
-export const PRESETS = { Morning: 8, Noon: 12, 'Golden hour': 17.5, Dusk: 19.5, Night: 22 } as const;
-
-const mix = (a: number, b: number, t: number) => a + (b - a) * t;
-const hexMix = (a: number, b: number, t: number, out: THREE.Color) => {
-  const ca = new THREE.Color(a), cb = new THREE.Color(b); // linear working space, blended in linear
-  return out.copy(ca).lerp(cb, t);
-};
-
-/** The look at `hour` (0-24, wraps). */
-export function lookAt(hour: number): Look {
-  const h = ((hour % 24) + 24) % 24;
-  let i = 0;
-  while (i < KEYS.length - 2 && h >= KEYS[i + 1][0]) i++;
-  const a = KEYS[i], b = KEYS[i + 1];
-  const t0 = (h - a[0]) / (b[0] - a[0]), t = t0 * t0 * (3 - 2 * t0);
-  const m = (k: number) => mix(a[k] as number, b[k] as number, t);
-  return {
-    hour: h, sunAz: m(1), sunEl: m(2), sunI: m(3), ambient: m(4), expo: m(5), chroma: m(6),
-    litTint: [m(7), m(8)], shadeTint: [m(9), m(10)], lampOn: m(11), night: m(12),
-    skyTop: hexMix(a[13] as number, b[13] as number, t, new THREE.Color()),
-    skyBot: hexMix(a[14] as number, b[14] as number, t, new THREE.Color()),
-  };
-}
-
-/** Name of the preset closest to `hour`. */
-export const nearestPreset = (hour: number) =>
-  Object.entries(PRESETS).sort((a, b) => Math.abs(a[1] - hour) - Math.abs(b[1] - hour))[0][0];
+/** The default cycle's presets, look and preset names (`DEFAULT_DAY_CYCLE`). */
+export const PRESETS = DEFAULT_DAY_CYCLE.presets;
+export const lookAt = (hour: number) => DEFAULT_DAY_CYCLE.lookAt(hour);
+export const nearestPreset = (hour: number) => DEFAULT_DAY_CYCLE.nearestPreset(hour);
 
 export const hourLabel = (h: number) => {
   const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);

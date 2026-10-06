@@ -57,7 +57,7 @@ const LOOP = { cx: 0, cz: 0, rx: 7, rz: 4.5, speed: 0.17 };   // speed in radian
 const FIELD = { x0: -3.2, z0: -1.6, cols: 8, rows: 5, step: 0.8 };
 const CROP_CYCLE = 12;   // seconds from planting to harvest
 
-async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
+async function build(paletteSize = objectsScene.paletteSize ?? DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
   const s = new GeometryCollector(false), d = new GeometryCollector(true);
   const tile = new THREE.PlaneGeometry(1, 1), tiles = [lin(0x9c9a8e), lin(0xa5a397)];
   for (let x = -GROUND.hx; x < GROUND.hx; x++) for (let z = -GROUND.hz; z < GROUND.hz; z++) {
@@ -117,7 +117,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<BuiltScene> {
   };
 
   return {
-    staticGeometry, dynamicGeometry, lamps, fluids: new FluidCollector().build(), grooves: null,
+    staticGeometry, dynamicGeometry, lamps, fluids: new FluidCollector(objectsScene.limits).build(), grooves: null,
     shadow: { center: new THREE.Vector3(0, 0, 0), radius: 13 },
     stats: { triangles, paletteColors },
     populate,

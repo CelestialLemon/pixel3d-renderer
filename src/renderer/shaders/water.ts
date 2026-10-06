@@ -1,11 +1,11 @@
 import { POOL_NORMAL_Y } from '../fluids';
-import { LIMITS } from '../scene';
+import type { RendererLimits } from '../scene';
 
 // Fluids (see fluids.ts). Two pieces:
 // 1. FLUID_VERT/FRAG rasterise the fluid surfaces into their own small G-buffer at art resolution, after the opaque
 //    G-buffer has been resolved, so the opaque one keeps what lies under the surface. The opaque depth test is done by
 //    hand against the resolved depth, so a fluid edge agrees with the pixel the resolve chose.
-// 2. WATER_GLSL is the composite: post.ts runs a second time with uPass = 1, and every pixel a fluid covers is drawn
+// 2. waterGLSL is the composite: post.ts runs a second time with uPass = 1, and every pixel a fluid covers is drawn
 //    from the first pass's image (the bed, seen through the fluid, and the world above it, mirrored in it).
 
 export const FLUID_VERT = /* glsl */ `
@@ -35,9 +35,9 @@ void main(){
 }`;
 
 /** Uniform declarations and the composite. Included by post.ts after its lighting functions. */
-export const WATER_GLSL = /* glsl */ `
-#define MAX_FLUIDS ${LIMITS.fluidMaterials}
-#define MAX_SOURCES ${LIMITS.fluidSources}
+export const waterGLSL = (limits: Readonly<RendererLimits>) => /* glsl */ `
+#define MAX_FLUIDS ${limits.fluidMaterials}
+#define MAX_SOURCES ${limits.fluidSources}
 #define POOL_NORMAL_Y ${POOL_NORMAL_Y.toFixed(4)}
 uniform int uPass;
 uniform sampler2D tImage;                       // pass 0's output: linear, unclipped, alpha 1 where it takes the grade

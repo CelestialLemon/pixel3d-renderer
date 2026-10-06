@@ -1,4 +1,4 @@
-import type { PickResult, PixelRenderer, PixelScene } from '../renderer';
+import type { DayCycle, PickResult, PixelRenderer, PixelScene, RendererLimits } from '../renderer';
 
 /** Default camera framing and limits for a scene. Angles in degrees, sizes in world units of visible height. */
 export interface SceneView {
@@ -38,4 +38,10 @@ export interface SceneDefinition {
   hasReference: boolean;
   /** Hour the demo pages start at when the URL gives none (default 17.5, golden hour). */
   hour?: number;
+  /** The scene's day cycle (default `DEFAULT_DAY_CYCLE`): its looks and the demo pages' time presets. */
+  look?: DayCycle;
+  /** The scene's number of base colours when `build` is given none (default `DEFAULT_PALETTE_SIZE`). */
+  paletteSize?: number;
+  /** Capacities the scene needs beyond the defaults. `build` collects against them and the demo pages pass them to the renderer. */
+  limits?: Partial<RendererLimits>;
 }

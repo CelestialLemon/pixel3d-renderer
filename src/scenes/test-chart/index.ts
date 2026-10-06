@@ -15,7 +15,7 @@ export const BAYS = {
 } as const;
 const HALF = 3.5, GROUND = { hx: 13, hz: 9.5 };
 
-async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
+async function build(paletteSize = testChart.paletteSize ?? DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const s = new GeometryCollector(false), d = new GeometryCollector(true);
   // Checker ground: two close neutrals, so the tiles read as scale without stealing attention.
   const tile = new THREE.PlaneGeometry(1, 1), tiles = [lin(0x9c9a8e), lin(0xa5a397)];
@@ -34,7 +34,7 @@ async function build(paletteSize = DEFAULT_PALETTE_SIZE): Promise<PixelScene> {
   const paletteColors = quantizePalette([staticGeometry, dynamicGeometry], paletteSize);
   const triangles = (staticGeometry.attributes.position.count + dynamicGeometry.attributes.position.count) / 3;
   return {
-    staticGeometry, dynamicGeometry, lamps, fluids: new FluidCollector().build(), grooves: null,
+    staticGeometry, dynamicGeometry, lamps, fluids: new FluidCollector(testChart.limits).build(), grooves: null,
     shadow: { center: new THREE.Vector3(0, 0, 0), radius: 16 },
     stats: { triangles, paletteColors },
   };

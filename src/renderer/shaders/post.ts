@@ -1,13 +1,13 @@
-import { LIMITS } from '../scene';
+import type { RendererLimits } from '../scene';
 import { BAYER4 } from './common';
-import { WATER_GLSL } from './water';
+import { waterGLSL } from './water';
 
 // The pixel-art "brain": turns the G-buffer into a palette-controlled, outlined, dithered image with
 // hue-shifted shading ramps and a time-of-day grade.
-export const POST_FRAG = /* glsl */ `
+export const postFragment = (limits: Readonly<RendererLimits>) => /* glsl */ `
 precision highp float; precision highp int;
-#define MAX_LAMPS ${LIMITS.lamps}
-#define MAX_GROOVES ${LIMITS.grooves}
+#define MAX_LAMPS ${limits.lamps}
+#define MAX_GROOVES ${limits.grooves}
 uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform sampler2D tShadow;
 uniform vec2 uRes; uniform float uTexel;
 uniform vec3 uRight; uniform vec3 uUp; uniform vec3 uFwd; uniform vec3 uCamPos;
@@ -242,7 +242,7 @@ vec4 emitColor(vec3 lin, ivec2 p, bool graded){
   return vec4(toSRGB(graded ? finish(lin, p) : lin), 1.0);
 }
 
-${WATER_GLSL}
+${waterGLSL(limits)}
 
 void main(){
   ivec2 p = ivec2(gl_FragCoord.xy);

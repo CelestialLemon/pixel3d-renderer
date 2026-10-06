@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { hourLabel, lookAt, nearestPreset, PRESETS, type Look, type RenderSettings } from '../../renderer';
+import { DEFAULT_DAY_CYCLE, hourLabel, type Look, type RenderSettings } from '../../renderer';
 import { cookieCo } from '../../scenes/cookie-co';
 import { Orbit } from '../orbit';
 import { $, num, params, settingsFromParams } from '../params';
@@ -14,8 +14,9 @@ const ids = PASSES.map((p) => p.id);
 const requested = params.get('mode');
 let mode: Mode = ids.includes(requested!) ? requested! : 'compare';
 let layout: Layout = params.get('layout') === 'wipe' ? 'wipe' : 'grid';
-let hour = num('hour', 17.5), cycle = params.get('cycle') === '1', dirty = true;
-const initialLook = lookAt(hour);
+const day = cookieCo.look ?? DEFAULT_DAY_CYCLE;
+let hour = num('hour', cookieCo.hour ?? 17.5), cycle = params.get('cycle') === '1', dirty = true;
+const initialLook = day.lookAt(hour);
 const settings: RenderSettings & { pixel: number; animate: boolean; sunAz: number; sunEl: number } = {
   ...settingsFromParams(),
   pixel: THREE.MathUtils.clamp(num('px', mode === 'compare' && layout === 'grid' ? 2 : 3), 1, 8), animate: params.get('anim') !== '0',
@@ -56,7 +57,7 @@ async function main() {
   const passes: Record<string, PassView> = {};
   const activeIds = () => (mode === 'compare' ? ids : [mode]);
   // One shared sun for every pass; the current renderer also takes its grade, sky and lamps from the hour.
-  const currentLook = (): Look => ({ ...lookAt(hour), sunAz: settings.sunAz, sunEl: settings.sunEl });
+  const currentLook = (): Look => ({ ...day.lookAt(hour), sunAz: settings.sunAz, sunEl: settings.sunEl });
   const ensure = (id: string) => {
     passes[id] ??= PASSES.find((p) => p.id === id)!.create(canvases[id], assets);
     passes[id].setLook(currentLook());
@@ -149,12 +150,12 @@ async function main() {
   // The hour drives the current renderer's grade, and moves the sun for every pass so the lighting stays comparable.
   const setHour = (h: number, moveSun = true) => {
     hour = ((h % 24) + 24) % 24;
-    if (moveSun) { const l = lookAt(hour); settings.sunAz = l.sunAz; settings.sunEl = l.sunEl; sun.value = String(Math.round(l.sunAz)); }
-    $<HTMLOutputElement>('hour-value').value = `${nearestPreset(hour)} ${hourLabel(hour)}`;
+    if (moveSun) { const l = day.lookAt(hour); settings.sunAz = l.sunAz; settings.sunEl = l.sunEl; sun.value = String(Math.round(l.sunAz)); }
+    $<HTMLOutputElement>('hour-value').value = `${day.nearestPreset(hour)} ${hourLabel(hour)}`;
     $<HTMLInputElement>('hour').value = String(hour);
     applyLooks();
   };
-  for (const [name, h] of Object.entries(PRESETS)) {
+  for (const [name, h] of Object.entries(day.presets)) {
     const b = document.createElement('button'); b.textContent = name;
     b.onclick = () => { cycle = false; $<HTMLInputElement>('cycle').checked = false; setHour(h); };
     $('presets').append(b);

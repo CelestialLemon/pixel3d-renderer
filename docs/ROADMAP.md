@@ -82,8 +82,19 @@ time. A game can't move, add or remove anything. This phase fixes that and turns
      that wants to click parts of it (tiles, doors) maps the world position to them itself.
    - Demo: in `?scene=objects`, clicking a crop harvests it early, and the panel shows the pixel, world position and object id.
      `BuiltScene.populate` now returns `{ update, click }`. `npm run pick-check` (`tools/pick-check.ts`) checks the API and the resolve.
-3. **Game-supplied settings.** Look keyframes per game or scene (today `look.ts` is global), the palette size and the limits. The
-   orbit camera stays in the demo app; a game places the camera itself with `placeCamera`.
+3. **Done (2026-10-06): game-supplied settings.** With none of them given, the renderer draws exactly as before.
+   - **Look.** `dayCycle(keys, presets)` (`src/renderer/look.ts`) turns a game's keyframes (`LookKey`: a `Look` at an hour, with
+     sRGB sky colours) into a `DayCycle` with `lookAt(hour)`, its named `presets` and `nearestPreset`. Keys may sit at any hours: the
+     look wraps through midnight, so one key gives a fixed look. `DEFAULT_DAY_CYCLE` is the old table, and `lookAt`/`PRESETS` are
+     its shorthands. A scene can carry its own (`SceneDefinition.look`), which the demo pages use for the look and the time buttons.
+   - **Renderer options.** `new PixelRenderer(canvas, scene, options)` takes `PixelRendererOptions`: `limits` (lamps, grooves,
+     fluid materials and sources; `resolveLimits` fills in `DEFAULT_LIMITS`), `supersample` (1 or 3), the resolve policy, and
+     `shadowMapSize` / `objectShadowMapSize` (4096 by default; smaller maps for phones). The shaders are compiled to the instance's
+     limits, and a scene over them is rejected before any GPU work. Collect fluids with the same limits
+     (`new FluidCollector(limits)`); `SceneDefinition.limits` does this for the demo scenes. `npm run settings-check` checks them.
+   - **Palette size** was already the game's: `quantizePalette(geometries, size)`. A demo scene's default is
+     `SceneDefinition.paletteSize`, which the viewer shows when `?k=` is absent.
+   - **Camera.** The orbit camera stays in the demo app; a game places the camera itself with `placeCamera`.
 4. **Startup cost.** Merge and palette at build time instead of at page load (the asset pipeline: Blender → glTF → naming rules →
    baked data). Cookie Co. takes seconds to build in the browser, and the canal town's lamp-shadow pass redraws the static mesh 264
    times (section 1, item 5).
