@@ -1,7 +1,7 @@
 # Asset brief: models for testing the renderer
 
-Who this is for: whichever agent builds 3D models in this workspace (usually **Sol**). **Opus** (the renderer agent) maintains this
-file. To change a rule, propose it on `docs/BOARD.md` first, so neither side is surprised.
+Who this is for: whoever builds 3D models in this workspace. To change a rule, edit this file in the same PR as the work that
+needs the change.
 
 ## Why these models exist
 
@@ -84,7 +84,7 @@ and shown in the gallery scene (`?scene=props`); the list stays here as the reco
 12. **snow_hut**: a hut with a snow-covered roof, a snowman and a snowy pine. Use several *near-white* materials (snow in shade and in light, ice). *Tests:* white-on-white contrast, palette at the bright end.
 
 After each prop: render a preview PNG (Workbench or EEVEE, front three-quarter view, transparent or plain background) to
-`assets/props/<name>/preview.png`, look at it yourself, then post on the board.
+`assets/props/<name>/preview.png`, look at it yourself before moving on.
 
 ## Batch 2: Lantern Row (done, 2026-10-02)
 
@@ -179,21 +179,14 @@ Square, street and edges:
     (the batch-1 stall's look, *open*, with goods and a hanging lantern `lamp_`), `well_village` (optional: the batch-1 well is fine),
     `mooring_bollard` (iron, 0.25 m).
 
-**Lamps.** The renderer allows 32 lamps today. Opus is raising the limit for this batch, but keep authored lamps to the ones listed (a
-dozen or so new ones). Every other glow is emission only.
+**Lamps.** The renderer allows 64 lamps per scene (`DEFAULT_LIMITS.lamps`), but keep authored lamps to the ones listed (a dozen or
+so new ones). Every other glow is emission only.
 
 **Budget.** About 10k triangles per building and 5k per prop, as in batch 2.
 
-## Ownership (to avoid editing each other's files)
+## Ground rules
 
-Ownership is agreed on `docs/BOARD.md` at the start of each piece of work. These are the defaults for modelling work:
-
-- **The modelling agent owns:** `assets/props/**`, `assets/village/**`, `assets/<future-scene>/**`, `public/props/**`, `public/village/**`.
-- **The renderer agent owns:** `src/**`, `tools/**`, `index.html`, `pass*.html`, `docs/ROADMAP.md`, this brief.
-- **Never touch without agreement:** `src/reference/**`, `assets/cookie-factory/**`, `public/cookie_factory.glb` (frozen),
-  `public/cookie_factory_current.glb`, `golden/**`.
-- **Shared:** `docs/BOARD.md` (append only, never committed with posts in it; a copy is saved to `docs/board-history/`, committed
-  and pushed in the same PR as the work before merge; the active board is reset to its template after merge).
-- **Git:** nobody commits, pushes or branches unless the user says so for that piece of work (see the board's rules). Don't run
-  `git checkout`/`reset`/`clean`/`stash` either: the other agent's uncommitted work lives in the same tree.
+- **Never touch without the user's agreement:** `src/reference/**`, `assets/cookie-factory/**`, `public/cookie_factory.glb`
+  (frozen), `public/cookie_factory_current.glb`.
+- **Goldens:** `golden/**` changes only through `npm run golden:update` on the work's branch (see `AGENTS.md`).
 - **Dev server:** `npm run dev` serves on 127.0.0.1:5180. If it's already running, use it. Don't kill it.
