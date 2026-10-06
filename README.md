@@ -51,6 +51,7 @@ quantizePalette([scene.staticGeometry, crateGeometry], 64);
 const r = new PixelRenderer(canvas, scene, { shadowMapSize: 2048 });
 r.resize(320, 180);                               // art pixels; scale the canvas up with CSS
 const box = r.addObject(crateGeometry);           // things the game moves
+// An object geometry from new GeometryCollector(true), with a motion.* (local anchors) per part, sways, spins or smokes by itself.
 
 function frame(t: number) {
   box.setTransform(new THREE.Vector3(Math.sin(t), 0, 0));

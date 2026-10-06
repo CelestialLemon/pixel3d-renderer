@@ -31,17 +31,19 @@ void main(){
   gl_Position = projectionMatrix * vp;
 }`;
 
-// The dynamic mesh's motion, shared by the G-buffer pass and the moving-part shadow mask (renderer.ts), so the two always
-// pose a vertex identically. Modes and parameter layouts match motion.ts. The including shader declares uTime, uNight
-// and the aMode / aAnchor / aAnim attributes.
+// Ambient motion, shared by the G-buffer passes and the sun-shadow passes (renderer.ts), so they always pose a vertex
+// identically. Modes and parameter layouts match motion.ts. The including shader declares uTime, uNight and the
+// aMode / aAnchor / aAnim attributes.
 export const POSE = /* glsl */ `
 float wind(vec2 p, float t){ return sin(p.x*0.42 + p.y*0.27 + t*1.5)*0.6 + sin(p.x*0.91 - p.y*0.63 + t*2.6)*0.4; }
 // Rotate v by angle a about the unit axis k (Rodrigues).
 vec3 rotateAxis(vec3 v, vec3 k, float a){ float c = cos(a), s = sin(a); return v * c + cross(k, v) * s + k * dot(k, v) * (1.0 - c); }
-// Move a vertex (position, normal) by its motion mode at uTime; alpha < 1 fades it out by dithering.
-void pose(inout vec3 pos, inout vec3 nrm, out float alpha){
+// Move a vertex (pos, nrm: its rest pose) by motion mode m at time uTime; alpha < 1 fades it out by dithering.
+// The parameters shadow the attributes and the clock, so the mode code reads the same for every caller.
+void poseAt(inout vec3 pos, inout vec3 nrm, out float alpha, float m, vec3 aAnchor, vec4 aAnim, float uTime){
+  vec3 position = pos, normal = nrm;
   alpha = 1.0;
-  int mode = int(aMode + 0.5);
+  int mode = int(m + 0.5);
   if (mode == 1) {                       // sway: tips lean with travelling gusts. anim = (weight, base x, base z)
     float w = aAnim.x, g = wind(aAnim.yz, uTime);
     pos.xz += vec2(1.0, 0.35) * g * 0.13 * w;
@@ -79,6 +81,53 @@ void pose(inout vec3 pos, inout vec3 nrm, out float alpha){
     pos = aAnchor + rotateAxis(position - aAnchor, aAnim.xyz, a);
     nrm = rotateAxis(normal, aAnim.xyz, a);
   }
+}
+// The baked dynamic mesh: world space, the scene clock.
+void pose(inout vec3 pos, inout vec3 nrm, out float alpha){ poseAt(pos, nrm, alpha, aMode, aAnchor, aAnim, uTime); }`;
+
+// The same motion on an object (objects.ts), whose anchors and sway bases are in its local space. Each instance runs on
+// its own clock, shifted by a hash of its id (stable however the object moves), so copies of one geometry don't move in
+// lockstep. Spin, swing and conveyor are posed locally, then placed by `model`. Smoke, butterflies and fireflies leave
+// from the placed anchor and drift in world space, their shape neither turned nor scaled. Sway leans in world space, with
+// the gust sampled at the placed base, like the baked grass beside it. Gives the world position and normal; the normal is
+// left unnormalised, like the plain object shader's, so a still part shades exactly as on a plain object.
+export const POSE_OBJECT = /* glsl */ `${POSE}
+float instancePhase(float id){ return float((uint(id) * 2654435761u) >> 8u) / 16777216.0; }
+void poseObject(mat4 model, float id, out vec3 wpos, out vec3 wnrm, out float alpha){
+  float t = uTime + instancePhase(id) * 97.0;
+  mat3 nm = transpose(inverse(mat3(model)));
+  int mode = int(aMode + 0.5);
+  if (mode >= 3 && mode <= 5) {
+    // A mirrored instance is drawn with its front faces reversed (objects.ts); mirror the shape too, so it still faces out.
+    vec3 mirror = vec3(determinant(mat3(model)) < 0.0 ? -1.0 : 1.0, 1.0, 1.0);
+    wpos = position * mirror; wnrm = normal * mirror;
+    poseAt(wpos, wnrm, alpha, aMode, (model * vec4(aAnchor, 1.0)).xyz, aAnim, t);
+  } else if (mode == 1) {
+    wpos = (model * vec4(position, 1.0)).xyz; wnrm = nm * normal;
+    vec2 base = (model * vec4(aAnim.y, 0.0, aAnim.z, 1.0)).xz;
+    poseAt(wpos, wnrm, alpha, aMode, aAnchor, vec4(aAnim.x, base, aAnim.w), t);
+  } else {
+    vec3 pos = position, nrm = normal;
+    poseAt(pos, nrm, alpha, aMode, aAnchor, aAnim, t);
+    wpos = (model * vec4(pos, 1.0)).xyz; wnrm = nm * nrm;
+  }
+}`;
+
+// An object whose geometry carries motion attributes.
+export const GBUF_OBJECT_MOTION_VERT = /* glsl */ `
+uniform float uTime; uniform float uNight;
+in vec3 aColor; in float aFlag; in float aMode; in vec3 aAnchor; in vec4 aAnim;
+out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+flat out float vObjectId;
+${POSE_OBJECT}
+void main(){
+  vObjectId = instanceColor.r;
+  vec3 pos, nrm; float alpha;
+  poseObject(modelMatrix * instanceMatrix, instanceColor.r, pos, nrm, alpha);
+  vN = nrm; vC = aColor; vF = aFlag; vA = alpha;
+  vec4 vp = viewMatrix * vec4(pos, 1.0);
+  vD = -vp.z;
+  gl_Position = projectionMatrix * vp;
 }`;
 
 export const GBUF_DYN_VERT = /* glsl */ `

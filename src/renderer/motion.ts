@@ -1,6 +1,8 @@
-// Vertex animation for the dynamic mesh. Every dynamic vertex carries a mode, an anchor point and four
-// parameters; the G-buffer vertex shader (shaders/gbuffer.ts) moves it. Keep the modes and parameter
-// layouts in sync with that shader.
+// Vertex animation for the dynamic mesh and for objects (`PixelRenderer.addObject`). Every dynamic vertex carries a mode,
+// an anchor point and four parameters; the G-buffer vertex shader (shaders/gbuffer.ts) moves it. Positions are in world
+// space for the scene's dynamic mesh and in the object's local space for an object geometry. Keep the modes and parameter
+// layouts in sync with that shader. On objects, spin and swing parts cast sun shadows at their pose and sway casts at
+// rest; conveyor items, smoke, butterflies and fireflies cast none (as in the baked mesh, which casts none at all).
 export const MODE = { STATIC: 0, SWAY: 1, CONVEYOR: 2, SMOKE: 3, BUTTERFLY: 4, FIREFLY: 5, SPIN: 6, SWING: 7 } as const;
 
 export type Vec3 = [number, number, number];
@@ -8,9 +10,9 @@ export type Vec4 = [number, number, number, number];
 
 export interface Motion {
   mode: number;
-  /** Anchor point in world space (aAnchor). */
+  /** Anchor point (aAnchor): world space, or local space in an object geometry. */
   anchor?: Vec3;
-  /** Mode parameters (aAnim): constant, or computed per vertex from its world position. */
+  /** Mode parameters (aAnim): constant, or computed per vertex from its position. */
   anim?: Vec4 | ((x: number, y: number, z: number) => Vec4);
 }
 
