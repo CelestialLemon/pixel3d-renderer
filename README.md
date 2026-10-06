@@ -2,7 +2,8 @@
 
 A WebGL (three.js) renderer that draws 3D scenes as proper pixel art: a low-resolution G-buffer, palette-controlled hue-shifted ramps,
 selective outlines, gradient-aware dithering, time of day and a living, animated world. It started as an experiment inside the Farm
-Frenzy / Harvest Frenzy repo, moved here on 2026-10-01, and is on its way to becoming a module that several games can use.
+Frenzy / Harvest Frenzy repo, moved here on 2026-10-01, and is now a library that games install from a release tag. The first game on it is
+[Soil n Silo](https://github.com/CelestialLemon/Soil-n-Silo).
 Next steps are in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ```sh
