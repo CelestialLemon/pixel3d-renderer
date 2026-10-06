@@ -8,7 +8,7 @@ export interface BakeManifest {
   scenes: Record<string, { url: string; paletteSize: number; limits: Record<string, number> }>;
 }
 
-/** Content hash of every geometry-building input. Board/docs edits and generated outputs do not invalidate a bake. */
+/** Content hash of every geometry-building input. Docs edits and generated outputs do not invalidate a bake. */
 export async function bakeFingerprint(root: string): Promise<string> {
   const files: string[] = [];
   const walk = async (dir: string, accept: (path: string) => boolean) => {

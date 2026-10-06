@@ -13,7 +13,7 @@ node assets/props/gallery-check.mjs
 
 Cart wheel assemblies export several material primitives below a `move_spin_wheel_*` node. The twenty `thin_spoke_*` children share their wheel's axle origin. Blender wheel axes are local X (also X after Y-up export); future spin motion should rotate about that axis. The fence set is nearly 8 m wide, so its gallery slot needs more width than the other initial props.
 
-Assets deliberately called `thin_*` have sub-pixel features for flicker checks. Read `docs/ASSET_BRIEF.md` for the agreed scene-import naming contract and `docs/BOARD.md` for how the two agents coordinate.
+Assets deliberately called `thin_*` have sub-pixel features for flicker checks. Read `docs/ASSET_BRIEF.md` for the agreed scene-import naming contract.
 
 `build-all.mjs` launches one fresh Blender process per prop; `--verify` checks exported GLBs against their SHA-256 before rebuilding. Set `BLENDER_PATH` to override the executable. `validate.mjs` checks exported triangles through Three's GLTFLoader, including ground/centering, material/UV contract, lamp extras, wheel children, windmill shaft orientation, open bridge arch and hollow well.
 

@@ -52,7 +52,7 @@ Results at zoom 20 (texel 0.075 m):
 | `resolve=majority` | 19.3 | 12.6 |
 | **default** (`resolve=thin`) | **2.6** | **3.8** |
 
-Fence-gap audit (Sol: 21 slits × 12 heights, share of slits that stay open / toggle %):
+Fence-gap audit (21 slits × 12 heights, share of slits that stay open / toggle %):
 
 | zoom | `ss=1` | majority and default |
 |---|---|---|
