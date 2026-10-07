@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.2.0 (2026-10-08)
+
 ### Added
 
 - **Object highlight** ([#22](https://github.com/CelestialLemon/pixel3d-renderer/issues/22)). Set `PixelObject.highlight = true`
