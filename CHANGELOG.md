@@ -35,6 +35,14 @@ Design notes and measurements live in `docs/ROADMAP.md`.
   - Objects without `aMode`/`aAnchor`/`aAnim` render exactly as before. `addObject` throws on a partial or wrongly sized set.
   - Demo: `?scene=objects-motion`.
 
+### Fixed
+
+- **Blank canvas on Windows Chrome (Direct3D 11)** ([#27](https://github.com/CelestialLemon/pixel3d-renderer/issues/27)). The
+  post shader failed to compile under ANGLE's Direct3D 11 backend, so every frame failed and the canvas stayed white. Lamp
+  shadows built their cube-face vectors with constructors mixing a float and int literals (`vec3(sign(v.x), 0, 0)`), which the
+  HLSL compiler rejects as an ambiguous call. They now use float literals; output on other backends is unchanged. A unit test
+  (`test/glsl.test.ts`) now rejects such constructors in the renderer's shaders.
+
 ## 0.1.0 (2026-10-06)
 
 The first version a game can install (Phase 1 in `docs/ROADMAP.md`).

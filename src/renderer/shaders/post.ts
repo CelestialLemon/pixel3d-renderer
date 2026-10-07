@@ -142,9 +142,9 @@ float lampVisible(int i, vec3 wp, vec3 n){
   vec3 v = wp + n * 0.03 - uLamp[i].xyz;          // nudge off the surface against self-shadowing
   vec3 av = abs(v);
   int face; vec3 F, U;
-  if (av.x >= av.y && av.x >= av.z) { face = v.x > 0.0 ? 0 : 1; F = vec3(sign(v.x), 0, 0); U = vec3(0, 1, 0); }
-  else if (av.y >= av.z)            { face = v.y > 0.0 ? 2 : 3; F = vec3(0, sign(v.y), 0); U = vec3(0, 0, 1); }
-  else                              { face = v.z > 0.0 ? 4 : 5; F = vec3(0, 0, sign(v.z)); U = vec3(0, 1, 0); }
+  if (av.x >= av.y && av.x >= av.z) { face = v.x > 0.0 ? 0 : 1; F = vec3(sign(v.x), 0.0, 0.0); U = vec3(0, 1, 0); }
+  else if (av.y >= av.z)            { face = v.y > 0.0 ? 2 : 3; F = vec3(0.0, sign(v.y), 0.0); U = vec3(0, 0, 1); }
+  else                              { face = v.z > 0.0 ? 4 : 5; F = vec3(0.0, 0.0, sign(v.z)); U = vec3(0, 1, 0); }
   vec3 R = cross(F, U);
   float fw = dot(v, F);
   vec2 uv = clamp(vec2(dot(v, R), dot(v, U)) / fw * 0.5 + 0.5, 0.0, 0.9999);
