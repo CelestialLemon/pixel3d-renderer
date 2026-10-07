@@ -29,7 +29,7 @@ Install it from a version tag, with three.js beside it (a peer dependency, so th
 release supports one three.js minor version, 0.180 for now). Installing from git needs Node 22.18 or later, which builds the package:
 
 ```sh
-npm install three@0.180 github:CelestialLemon/pixel3d-renderer#v0.1.0
+npm install three@0.180 github:CelestialLemon/pixel3d-renderer#v0.2.0
 npm install -D @types/three@0.180     # for TypeScript
 ```
 
