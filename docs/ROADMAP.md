@@ -69,8 +69,9 @@ time. A game can't move, add or remove anything. This phase fixes that and turns
      (the object map then redraws whenever the clock moves), sway casts at rest, and the small moving bits (conveyor items, smoke,
      wings) cast none; smoke and wings also borrow the mask behind them. Objects without motion attributes draw exactly as before. Demo: `?scene=objects-motion`.
    - **Not yet:** objects neither block lamp light nor cast lamp shadows (the lamp atlas is static). One visible spinning or
-     swinging object redraws the whole object shadow map, every object in it, on each new clock value; if that shows in profiles,
-     give the rigid batches their own light and map so the other objects keep a cached one. The object shadow map is a second fixed 4096² map, allocated with the first object (which also recompiles the mask
+     swinging object that casts redraws the whole object shadow map, every object in it, on each new clock value; if that shows in profiles,
+     give the rigid batches their own light and map so the other objects keep a cached one. (Objects that don't need a shadow
+     can opt out with `castShadow = false`, Phase 2.) The object shadow map is a second fixed 4096² map, allocated with the first object (which also recompiles the mask
      shader once), and it re-renders whenever the camera moves, since snapping moves the objects; a game-chosen size would help on
      phones. Add these when the game needs them.
    - Demo: `?scene=objects` (a cart on a loop, bouncing balls, a turning crate and a field of crops that grow and are harvested).
@@ -166,7 +167,32 @@ against the game; its `docs/ROADMAP.md` keeps the current list):
   - **Limits:** an object cut by the edge of the canvas has no rim along that edge. "Level with" means within the depth threshold
     the outlines use (`max(0.10, 3 texels)`), so under a camera pitched below about 30° the rim at an object's feet moves from the
     ground onto the object's lowest row.
-- **Soil colour per tile** that changes with fertility: a per-object tint, or one geometry per band.
+- **Soil colour per tile** that changes with fertility: done (2026-10-09, #30), with `PixelObject.tint` below.
+- **Build previews, building state and overlays:** done (2026-10-09, #30). `PixelObject.tint` (a colour or null) and
+  `tintStrength` (0 to 1, default 0.5) mix the object's colours towards the tint in linear RGB in the G-buffer, so the post pass
+  shades the result with its ramps like any albedo. `PixelObject.opacity` (0 to 1) drops pixels by the same 4 × 4 ordered
+  dither as the renderer's other transparency (16 steps, constant per art pixel at any supersampling). Both ride per instance in
+  `instanceColor` next to the object id (g: 24-bit sRGB tint; b: 8-bit strength and 8-bit `1 - opacity`; an opaque, untinted
+  object has zeros there and draws exactly as before), so a copy of an instanced geometry can be tinted or faded alone and a
+  change costs only the next `renderGeometry`.
+  - A see-through object casts no sun shadow. Its pixels the dither drops are dropped from the shadow mask too, so the mask
+    there is the surface behind.
+  - `pick` sees through it: when the picked pixel shows a see-through object, the renderer draws the last frame again, without
+    the see-through objects, into the 4 × 4 block of art pixels around it (aligned so other dithered surfaces keep their
+    pattern), at the same supersampling and through the same resolve, and reads the pixel there. Batch meshes replaced or emptied
+    since that frame stay in the scene until the next `renderGeometry`, so this redraw is the frame `pick` describes. A game placing a build preview under the pointer therefore keeps picking the ground
+    under it. A pick that lands elsewhere costs what it did.
+  - Demo: `?scene=object-looks`. `tools/object-look-check.ts` checks the colours, the coverage, the mask, the shadow-map
+    redraws and the pick.
+- **Many small moving objects:** done (2026-10-09, #31). `PixelObject.castShadow = false` leaves an object out of the object
+  shadow map (it still receives shadows), so moving it never redraws the map; each batch keeps its non-casting copies in
+  instanced meshes of their own that three's shadow pass skips. Measured on the RX 570 with the second part of
+  `tools/object-bench.ts` (the full `addObject` path: poseObjects, G-buffer, mask, resolve, post and clean-up at 480×270 art
+  pixels with supersample 3, 4096² sun maps, 100 still buildings, 1,500 small items moving along belts every frame, median /
+  p95 per frame, synchronised with a one-pixel read-back): no items 4.1 / 4.8 ms; items casting 5.4 / 5.8 ms (the object map
+  redraws every frame, buildings and all); items casting none 4.7–4.9 / 5.1–5.3 ms. CPU time to submit a frame: 0.9 ms, 1.5–1.7 ms and 1.4–1.5 ms. So on
+  this GPU 1,500 moving items cost about 1.3 ms a frame when they cast and 0.6–0.8 ms when they don't; the redraw they avoid
+  grows with the number of casting objects in the map.
 - **Machines that show they are running:** smoke and glow on objects (ambient motion on objects done, issue #23), and perhaps lamps on them.
 - **Seeing behind buildings:** fading or cutting away buildings and trees, if the 90° views are not enough.
 - **Animals:** chickens moving about, as rigid parts or skinned meshes.

@@ -1,6 +1,11 @@
-// Isolated submission/GPU cost of per-object meshes versus one InstancedMesh, with shared geometry.
-// Same G-buffer + sun depth + shadow mask workload, all objects visible and moving, no style/resolve passes.
-// gl.finish includes completed GPU work in the measurement; this is not a whole-game frame-rate estimate.
+// Two measurements of objects the game moves.
+// 1. Isolated submission/GPU cost of per-object meshes versus one InstancedMesh, with shared geometry.
+//    Same G-buffer + sun depth + shadow mask workload, all objects visible and moving, no style/resolve passes.
+// 2. The full addObject path (PixelRenderer: poseObjects, G-buffer, shadow mask, resolve, post, clean-up): 1,500 small
+//    items moving along belts every frame beside 100 still buildings, with the items casting sun shadows (the object
+//    shadow map redraws every frame, buildings and all) and not casting (PixelObject.castShadow = false: it never redraws).
+// Part 1 ends each frame with gl.finish, part 2 with a one-pixel readPixels of the canvas, which waits for the GPU to finish
+// the frame. Neither is a whole-game frame-rate estimate.
 //   node tools/object-bench.ts
 import assert from 'node:assert/strict';
 import { launch, newPage, open, glRenderer } from './lib.ts';
@@ -98,6 +103,51 @@ try {
       geometry.dispose(); material.dispose(); maskMaterial.dispose(); gbuffer.dispose(); mask.dispose(); renderer.dispose();
     }
   });
-  assert.deepEqual(errors, [], 'No browser or shader errors');
   console.table(results);
+
+  const full = await page.evaluate(async () => {
+    const THREE = await import('/node_modules/three/build/three.module.js');
+    const { PixelRenderer, GeometryCollector, place, lookAt } = await import('/src/renderer/index.ts');
+    const box = new THREE.BoxGeometry(1, 1, 1);
+    const collect = (w: number, h: number, color: [number, number, number]) => {
+      const c = new GeometryCollector(); c.add(box, place(0, h / 2, 0, 0, 0, 0, w, h, w), color); return c.build();
+    };
+    const ground = new GeometryCollector(); ground.add(box, place(0, -0.1, 0, 0, 0, 0, 40, 0.2, 40), [0.4, 0.42, 0.36]);
+    const item = collect(0.22, 0.18, [0.8, 0.5, 0.2]), building = collect(1.4, 1.2, [0.6, 0.55, 0.5]);
+    const ITEMS = 1500, BELTS = 30, PER_BELT = ITEMS / BELTS, LENGTH = 24;
+    const output = [];
+    for (const mode of ['no items', 'items cast', 'items cast none'] as const) {
+      const r = new PixelRenderer(document.createElement('canvas'), { staticGeometry: ground.build(), shadow: { center: new THREE.Vector3(), radius: 20 } });
+      try {
+        r.resize(480, 270); r.setLook(lookAt(15)); r.placeCamera(new THREE.Vector3(), 0.7, 0.6, 30);
+        for (let i = 0; i < 100; i++) r.addObject(building).position.set((i % 10 - 4.5) * 3.6, 0, (Math.floor(i / 10) - 4.5) * 3.6 + 1.6);
+        const items = mode === 'no items' ? [] : Array.from({ length: ITEMS }, () => {
+          const o = r.addObject(item); o.castShadow = mode === 'items cast'; return o;
+        });
+        const gl = r.renderer.getContext(), frame = (t: number) => {
+          items.forEach((o, i) => {
+            const belt = Math.floor(i / PER_BELT), u = ((i % PER_BELT) / PER_BELT + t * 0.05) % 1;
+            o.position.set(u * LENGTH - LENGTH / 2, 0.05, (belt - BELTS / 2) * 1.2);
+          });
+          r.renderGeometry(t); r.renderStyle(t);
+        };
+        const samples: number[] = [], cpu: number[] = [], pixel = new Uint8Array(4);
+        for (let f = 0; f < 84; f++) {
+          const start = performance.now();
+          frame(f / 60);
+          const submitted = performance.now();
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);   // waits for the GPU, unlike gl.finish in Chrome
+          if (f >= 12) { samples.push(performance.now() - start); cpu.push(submitted - start); }
+        }
+        const median = (a: number[]) => +a.sort((x, y) => x - y)[Math.floor(a.length / 2)].toFixed(2);
+        output.push({ mode, objects: 100 + items.length, medianMs: median([...samples]),
+          p95Ms: +samples.sort((x, y) => x - y)[Math.floor(samples.length * 0.95)].toFixed(2), cpuMedianMs: median(cpu) });
+      } finally { r.dispose(); }
+    }
+    for (const g of [item, building, box]) g.dispose();
+    return output;
+  });
+  assert.deepEqual(errors, [], 'No browser or shader errors');
+  console.log('Full addObject path: 480x270 art pixels (supersample 3), 4096² sun maps, 100 still buildings, 1,500 moving items');
+  console.table(full);
 } finally { await browser.close(); }

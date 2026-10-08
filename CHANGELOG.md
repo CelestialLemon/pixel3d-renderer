@@ -7,6 +7,38 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Added
+
+- **Per-object tint** ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30)). `PixelObject.tint` (a
+  `THREE.Color`, or null for none, the default) and `PixelObject.tintStrength` (0 to 1, default 0.5) mix the object's surface
+  colours towards the tint in linear RGB: `mix(colour, tint, strength)`. The mixed colour goes through the same shading ramps
+  as any other, so a tinted object keeps the pixel look. Per object, so one of many copies of a geometry can be tinted alone.
+  For build previews, selected or unpowered buildings, and ground overlays (fertility, power coverage) without one geometry per
+  colour band.
+  - The tint is read at each `renderGeometry`, so it can be changed in place (`o.tint.set(...)`). It is stored at 8 bits per
+    channel (sRGB) and the strength at 8 bits.
+  - `tintStrength` outside 0 to 1 (or NaN) throws a `RangeError` and changes nothing.
+- **Per-object dithered opacity** ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30)).
+  `PixelObject.opacity` (0 to 1, default 1) draws the object see-through with ordered-dither discard, like the renderer's
+  other transparency: a 4 x 4 pattern per art pixel, so 16 visible steps. Outside 0 to 1 it throws a `RangeError`.
+  - Below 1, the object casts no sun shadow and `pick` sees through it: it returns the surface (and object) behind, or the sky.
+    The pick then renders the last frame again, without the see-through objects, into the 4 x 4 block of art pixels around the
+    point, at the same supersampling and through the same resolve, so it finds exactly what a frame without them would show;
+    only picks that land on a see-through object pay for it. At 0 the object is not drawn at all.
+  - Where the dither drops a pixel, the shadow mask is the surface behind, as in the G-buffer.
+- **Objects that cast no sun shadow** ([#31](https://github.com/CelestialLemon/pixel3d-renderer/issues/31)).
+  `PixelObject.castShadow` (default true). An object with `castShadow = false` still receives shadows, but it is left out of
+  the object shadow map, so moving it (or spinning parts on it) never redraws that map. For many small moving things: items on
+  belts, drones, build previews. Turning it on or off redraws the map once.
+  - Measured with `node tools/object-bench.ts` (new second part, the full `addObject` path, see `docs/ROADMAP.md`).
+- Demo: `?scene=object-looks` (fertility-tinted soil, selected and unpowered workshops, see-through build previews, a belt of
+  crates that cast no shadow), with two golden views.
+
+### Changed
+
+- Opaque, untinted objects draw exactly as before. Internally each object batch now has four instanced meshes (casting or not,
+  mirrored or not) instead of two, and uploads only the instances it draws each frame.
+
 ## 0.2.0 (2026-10-08)
 
 ### Added
