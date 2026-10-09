@@ -51,6 +51,8 @@ quantizePalette([scene.staticGeometry, crateGeometry], 64);
 const r = new PixelRenderer(canvas, scene, { shadowMapSize: 2048 });
 r.resize(320, 180);                               // art pixels; scale the canvas up with CSS
 const box = r.addObject(crateGeometry);           // things the game moves
+// Per object: box.tint / box.tintStrength (mix its colours towards a colour), box.opacity (dithered see-through; pick looks
+// through it), box.castShadow = false (items that move every frame without redrawing the shadow map), box.highlight.
 // An object geometry from new GeometryCollector(true), with a motion.* (local anchors) per part, sways, spins or smokes by itself.
 
 function frame(t: number) {

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Look } from './look';
 import { resolveLimits, resolveScene, type RendererLimits, type PixelScene, type ResolvedPixelScene } from './scene';
-import { POST_VERT } from './shaders/common';
+import { BAYER4, POST_VERT } from './shaders/common';
 import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_OBJECT_MOTION_VERT, GBUF_OBJECT_VERT, GBUF_STATIC_VERT, POSE, POSE_OBJECT } from './shaders/gbuffer';
 import { postFragment } from './shaders/post';
 import { CLEAN_FRAG } from './shaders/cleanup';
@@ -11,7 +11,7 @@ import { buildWindowLight, type WindowLight } from './windowLight';
 import { FLUID_FRAG, FLUID_VERT } from './shaders/water';
 import { linearColor } from './geometry';
 import { buildFluidMap, type FluidMap } from './fluidMap';
-import { MAX_HIGHLIGHTS, MIRROR_X, MOTION_ATTRIBUTES, OBJECT_ATTRIBUTES, ObjectBatch, PixelObject } from './objects';
+import { instanceData, MAX_HIGHLIGHTS, MIRROR_X, MOTION_ATTRIBUTES, OBJECT_ATTRIBUTES, ObjectBatch, PixelObject } from './objects';
 
 /** Stylisation switches. All on is the intended look; the toggles exist for comparison and debugging. */
 export interface RenderSettings {
@@ -56,11 +56,17 @@ const positiveInteger = (name: string, value: number) => {
 export interface PickResult {
   /** The art pixel, from the top left of the canvas. */
   x: number; y: number;
-  /** World position of the surface drawn at the pixel's centre, or null over the sky. Fluids are seen through: this is the surface below. */
+  /**
+   * World position of the surface drawn at the pixel's centre, or null over the sky. Fluids are seen through: this is the
+   * surface below. So are objects drawn with an opacity below 1: this is the surface behind them.
+   */
   world: THREE.Vector3 | null;
   /** Its world normal, or null over the sky. */
   normal: THREE.Vector3 | null;
-  /** The object drawn there, or null for the baked scene, the sky or an object removed since the last `renderGeometry`. */
+  /**
+   * The object drawn there, or null for the baked scene, the sky or an object removed since the last `renderGeometry`.
+   * Never an object that was drawn with an opacity below 1.
+   */
   object: PixelObject | null;
 }
 
@@ -122,6 +128,8 @@ export class PixelRenderer {
   private dynShadowMat: THREE.ShadowMaterial;
   private hasRigidParts: boolean;
   private shadowMat: THREE.ShadowMaterial;
+  /** The same mask for objects without motion, dropping the pixels a see-through object's dither drops. */
+  private objectShadowMat: THREE.ShadowMaterial;
   private postMat: THREE.ShaderMaterial;
   private cleanMat: THREE.ShaderMaterial;
   /** The same two with the highlight code (`HIGHLIGHT`) and the same uniforms, drawn while an object is highlighted. */
@@ -149,6 +157,19 @@ export class PixelRenderer {
   /** The camera the G-buffer was last rendered with (`placeCamera` may have moved it since): what `pick` reads against. */
   private drawnCamera = { position: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(), fwd: new THREE.Vector3(), texel: 1 };
   private pickBuf = new Float32Array(4);
+  /** The ids of the objects drawn see-through (opacity below 1) by the last `renderGeometry`: `pick` looks behind them. */
+  private seeThroughIds = new Set<number>();
+  /** A copy of the camera the G-buffer was last rendered with, and the small G-buffer `pick` renders behind see-through objects. */
+  private pickCamera = new THREE.OrthographicCamera();
+  /** The night level the last G-buffer was drawn at (fireflies show only at night); `setLook` may change it before a pick. */
+  private drawnNight = 0;
+  private pickTargets?: { hi: THREE.WebGLRenderTarget; resolved: THREE.WebGLRenderTarget };
+  /**
+   * Batch meshes replaced (growth) or emptied (last object removed) since the last `renderGeometry`. They stay in the scene,
+   * still holding that frame's instances, until the next one, so `pick` can render the frame it describes behind a
+   * see-through object; `renderGeometry` then drops them.
+   */
+  private retired: THREE.InstancedMesh[] = [];
   /** False until `renderGeometry` has filled the G-buffer at the current size: `pick` finds nothing before that. */
   private gbufDrawn = false;
   private objectMat: THREE.ShaderMaterial;
@@ -227,7 +248,7 @@ export class PixelRenderer {
     this.staticMesh = new THREE.Mesh(pixelScene.staticGeometry, smat);
     this.staticMesh.castShadow = true; this.staticMesh.receiveShadow = true; this.staticMesh.frustumCulled = false;
 
-    this.objectMat = new THREE.ShaderMaterial({ vertexShader: GBUF_OBJECT_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide, uniforms: { uSS: { value: 1 } } });
+    this.objectMat = new THREE.ShaderMaterial({ vertexShader: GBUF_OBJECT_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide, uniforms: { uSS: { value: 1 }, uSeeThrough: { value: 0 } } });
     this.objectMat.shadowSide = THREE.DoubleSide;
 
     this.dynMat = new THREE.ShaderMaterial({
@@ -247,6 +268,20 @@ export class PixelRenderer {
     // and the objects in place of their own material, so it also decides their sides in the object shadow map drawn then.
     this.shadowMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1 });
     this.shadowMat.transparent = false; this.shadowMat.blending = THREE.NoBlending; this.shadowMat.shadowSide = THREE.DoubleSide;
+    // Objects drawn see-through (PixelObject.opacity) drop the same pixels from the mask as from the G-buffer, so the mask
+    // there is the surface behind. Opaque objects drop none.
+    const opacityVarying = 'flat varying float vOpacity;';
+    const opacity = 'vOpacity = 1.0 - float(uint(instanceColor.b) & 255u) / 255.0;';
+    const ditherOut = `${opacityVarying}\nuniform int uSS;\n${BAYER4}\nvoid main() {\n  if (vOpacity < 0.999 && vOpacity < bayer4(ivec2(gl_FragCoord.xy) / uSS)) discard;`;
+    this.objectShadowMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1 });
+    this.objectShadowMat.transparent = false; this.objectShadowMat.blending = THREE.NoBlending; this.objectShadowMat.shadowSide = THREE.DoubleSide;
+    this.objectShadowMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uSS = this.objectMat.uniforms.uSS;
+      const v = patch(shader.vertexShader, '#include <common>', `#include <common>\n${opacityVarying}`);
+      shader.vertexShader = patch(v, '#include <begin_vertex>', `#include <begin_vertex>\n  ${opacity}`);
+      shader.fragmentShader = patch(shader.fragmentShader, 'void main() {', ditherOut);
+    };
+    this.objectShadowMat.customProgramCacheKey = () => 'pixel3d-object-shadow';
     // The same mask for the rigid moving parts (spin, swing): three's shadow shader with each vertex posed by the G-buffer's
     // motion code (POSE), sharing its time uniforms. Other dynamic modes are discarded and keep the mask behind them.
     this.dynShadowMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1, side: THREE.DoubleSide });
@@ -267,7 +302,7 @@ ${POSE}`);
     const motionUniforms = { uTime: this.dynMat.uniforms.uTime, uNight: this.dynMat.uniforms.uNight };
     this.objectMotionMat = new THREE.ShaderMaterial({
       vertexShader: GBUF_OBJECT_MOTION_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide,
-      uniforms: { ...motionUniforms, uSS: { value: 1 } },
+      uniforms: { ...motionUniforms, uSS: { value: 1 }, uSeeThrough: this.objectMat.uniforms.uSeeThrough },
     });
     this.objectMotionMat.shadowSide = THREE.DoubleSide;
     const poseHeader = `uniform float uTime; uniform float uNight;
@@ -292,13 +327,13 @@ ${POSE_OBJECT}`;
     this.objectMaskMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1 });
     this.objectMaskMat.transparent = false; this.objectMaskMat.blending = THREE.NoBlending; this.objectMaskMat.shadowSide = THREE.DoubleSide;
     this.objectMaskMat.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, motionUniforms);
-      let v = patch(shader.vertexShader, '#include <common>', `#include <common>\n${poseHeader}`);
-      v = patch(v, '#include <beginnormal_vertex>', `${posed}\n  #include <beginnormal_vertex>`);
+      Object.assign(shader.uniforms, motionUniforms, { uSS: this.objectMat.uniforms.uSS });
+      let v = patch(shader.vertexShader, '#include <common>', `#include <common>\n${poseHeader}\n${opacityVarying}`);
+      v = patch(v, '#include <beginnormal_vertex>', `${posed}\n  ${opacity}\n  #include <beginnormal_vertex>`);
       v = patch(v, '#include <defaultnormal_vertex>', 'vec3 transformedNormal = normalize(mat3(viewMatrix) * posedN);');
       v = patch(v, '#include <project_vertex>', project);
       shader.vertexShader = patch(v, '#include <worldpos_vertex>', 'vec4 worldPosition = vec4(posedW, 1.0);');
-      shader.fragmentShader = patch(shader.fragmentShader, 'void main() {', 'varying float vMode;\nvoid main() {\n  if (vMode > 2.5 && vMode < 5.5) discard;');
+      shader.fragmentShader = patch(shader.fragmentShader, 'void main() {', `varying float vMode;\n${ditherOut}\n  if (vMode > 2.5 && vMode < 5.5) discard;`);
     };
     this.objectMaskMat.customProgramCacheKey = () => 'pixel3d-object-mask';
 
@@ -432,7 +467,7 @@ ${POSE_OBJECT}`;
     batch.objects.push(o);
     this.objectsById.set(o.id, o);
     const old = batch.grow();
-    if (old.length) { for (const m of old) { this.scene.remove(m); m.dispose(); } this.scene.add(...batch.meshes); }
+    if (old.length) { this.retired.push(...old); this.scene.add(...batch.meshes); }
     this.objectShadowDirty = true;
     return o;
   }
@@ -454,23 +489,26 @@ ${POSE_OBJECT}`;
     if (i < 0) return;
     batch.objects.splice(i, 1);
     this.objectsById.delete(o.id);
-    if (o.drawnVisible) this.objectShadowDirty = true;
-    if (!batch.objects.length) { for (const m of batch.meshes) { this.scene.remove(m); m.dispose(); } this.batches.delete(batch.geometry); }
+    if (o.drawnCasts) this.objectShadowDirty = true;
+    if (!batch.objects.length) { this.retired.push(...batch.meshes); this.batches.delete(batch.geometry); }
   }
 
   /**
-   * Pack every visible object's transform into its batch for this frame, its origin snapped to the art-pixel grid,
-   * and note whether any of them changed. An object with a zero scale component is not drawn.
+   * Pack every visible object's transform, id, tint and opacity into its batch for this frame, its origin snapped to the
+   * art-pixel grid, and note whether the object shadow map changed: a caster moved, appeared or went. An object with a
+   * zero scale component or a zero opacity is not drawn.
    */
   private poseObjects() {
     const texel = this.viewHeight / this.height, w = this.camera.matrixWorld;
     const right = new THREE.Vector3().setFromMatrixColumn(w, 0), up = new THREE.Vector3().setFromMatrixColumn(w, 1), fwd = new THREE.Vector3().setFromMatrixColumn(w, 2);
     const p = new THREE.Vector3(), m = new THREE.Matrix4(), mm = new THREE.Matrix4();
     this.rigidObjectsShown = false;
+    this.seeThroughIds.clear();
     for (const batch of this.batches.values()) {
-      let n = 0, nm = 0;
+      const counts = [0, 0, 0, 0];
       for (const o of batch.objects) {
-        const shown = o.visible && o.scale.x !== 0 && o.scale.y !== 0 && o.scale.z !== 0;
+        const shown = o.visible && o.opacity > 0 && o.scale.x !== 0 && o.scale.y !== 0 && o.scale.z !== 0;
+        const casts = shown && o.castShadow && o.opacity >= 1;
         if (shown) {
           p.copy(o.position);
           if (o.snap) {
@@ -481,16 +519,24 @@ ${POSE_OBJECT}`;
             if (Math.abs(fwd.y) > 0.05) p.addScaledVector(fwd, (o.position.y - p.y) / fwd.y);
           }
           m.compose(p, o.quaternion, o.scale);
-          if (m.determinant() < 0) { batch.mirrored.instanceColor!.setX(nm, o.id); batch.mirrored.setMatrixAt(nm++, mm.multiplyMatrices(MIRROR_X, m)); }
-          else { batch.mesh.instanceColor!.setX(n, o.id); batch.mesh.setMatrixAt(n++, m); }
-          if (!o.drawnVisible || !m.equals(o.drawn)) this.objectShadowDirty = true;
-          o.drawn.copy(m);
-        } else if (o.drawnVisible) this.objectShadowDirty = true;
-        o.drawnVisible = shown;
+          const mirrored = m.determinant() < 0, slot = ObjectBatch.slot(mirrored, casts), i = counts[slot]++;
+          const mesh = batch.meshes[slot], [id, tint, extra] = instanceData(o);
+          mesh.instanceColor!.setXYZ(i, id, tint, extra);
+          mesh.setMatrixAt(i, mirrored ? mm.multiplyMatrices(MIRROR_X, m) : m);
+          if (o.opacity < 1) this.seeThroughIds.add(o.id);
+        }
+        if (casts !== o.drawnCasts || (casts && !m.equals(o.drawn))) this.objectShadowDirty = true;
+        if (shown) o.drawn.copy(m);
+        o.drawnVisible = shown; o.drawnCasts = casts;
       }
-      batch.mesh.count = n; batch.mirrored.count = nm;
-      if (batch.rigid && n + nm > 0) this.rigidObjectsShown = true;
-      for (const mesh of batch.meshes) { mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor!.needsUpdate = true; }
+      batch.meshes.forEach((mesh, k) => {
+        mesh.count = counts[k];
+        if (!counts[k]) return;   // nothing of it is drawn, so its stale instances don't matter
+        for (const a of [mesh.instanceMatrix, mesh.instanceColor!]) {
+          a.clearUpdateRanges(); a.addUpdateRange(0, counts[k] * a.itemSize); a.needsUpdate = true;
+        }
+      });
+      if (batch.rigid && counts[0] + counts[1] > 0) this.rigidObjectsShown = true;
     }
   }
 
@@ -562,14 +608,17 @@ ${POSE_OBJECT}`;
   /** Rasterise into the G-buffer (+ shadow mask) with the dynamic mesh posed at `time` seconds and the objects where the game put them. */
   renderGeometry(time: number) {
     const r = this.renderer;
+    for (const m of this.retired) { this.scene.remove(m); m.dispose(); }
+    this.retired = [];
     this.lampShadows.render(r);
     this.dynMat.uniforms.uTime.value = time;
     this.poseObjects();
     // Spinning and swinging objects cast a shadow that moves with the clock.
     if (this.rigidObjectsShown && time !== this.objectShadowTime) this.objectShadowDirty = true;
     this.objectShadowTime = time;
-    const batches = [...this.batches.values()], objects = batches.flatMap((b) => b.meshes);
-    const setCasters = (staticWorld: boolean, objs: boolean) => { this.staticMesh.castShadow = staticWorld; for (const m of objects) m.castShadow = objs; };
+    const batches = [...this.batches.values()], objects = batches.flatMap((b) => b.meshes), casters = batches.flatMap((b) => b.casters);
+    // Only the casting meshes go in the object shadow map; the others never cast.
+    const setCasters = (staticWorld: boolean, objs: boolean) => { this.staticMesh.castShadow = staticWorld; for (const m of casters) m.castShadow = objs; };
 
     // Each sun shadow map renders only when it changed, during one of the two scene renders below: the static map
     // (static world only) during the G-buffer render, the object map (objects only) during the mask render.
@@ -592,7 +641,7 @@ ${POSE_OBJECT}`;
       setCasters(false, true);
       this.dynMesh.visible = false;
       this.staticMesh.material = this.shadowMat;
-      for (const b of batches) for (const m of b.meshes) m.material = b.motion ? this.objectMaskMat : this.shadowMat;
+      for (const b of batches) for (const m of b.meshes) m.material = b.motion ? this.objectMaskMat : this.objectShadowMat;
       r.setRenderTarget(this.shadowHi); r.clear(); r.render(this.scene, this.camera);
       if (this.hasRigidParts) {
         // Then the rigid moving parts over it, depth-tested against the static world and the objects (no clear in between).
@@ -622,6 +671,7 @@ ${POSE_OBJECT}`;
     const dc = this.drawnCamera;
     this.gbufDrawn = true;
     dc.position.copy(this.camera.position); dc.right.copy(ru.uRight.value); dc.up.copy(ru.uUp.value); dc.fwd.copy(ru.uFwd.value); dc.texel = ru.uTexel.value;
+    if (this.seeThroughIds.size) { this.pickCamera.copy(this.camera); this.drawnNight = this.dynMat.uniforms.uNight.value; }
 
     // The fluids, into their own G-buffer, hidden by hand behind the resolved opaque world.
     if (this.fluidBuf) {
@@ -713,7 +763,13 @@ ${POSE_OBJECT}`;
     };
     const res: PickResult = { x, y, world: null, normal: null, object: null };
     if (read(0)[3] < 0.5) return res;   // albedo alpha 0: sky (flags.ts)
-    const [nx, ny, nz, depth] = read(1);
+    let [nx, ny, nz, depth] = read(1);
+    let id = Math.round(read(2)[0]);
+    if (this.seeThroughIds.has(id)) {   // a see-through object: what is behind it
+      const behind = this.pickBehind(x, gy);
+      if (behind[0][3] < 0.5) return res;   // sky behind it
+      [nx, ny, nz, depth] = behind[1]; id = Math.round(behind[2][0]);
+    }
     // The resolved depth is the surface's depth at the pixel centre, as in post.ts's worldAt().
     const c = this.drawnCamera;
     res.normal = new THREE.Vector3(nx, ny, nz);
@@ -721,8 +777,47 @@ ${POSE_OBJECT}`;
       .addScaledVector(c.right, (x + 0.5 - 0.5 * this.width) * c.texel)
       .addScaledVector(c.up, (gy + 0.5 - 0.5 * this.height) * c.texel)
       .addScaledVector(c.fwd, depth);
-    res.object = this.objectsById.get(Math.round(read(2)[0])) ?? null;
+    res.object = this.objectsById.get(id) ?? null;
     return res;
+  }
+
+  /**
+   * The resolved G-buffer at art pixel (x, gy) (rows bottom up) without the see-through objects, as of the last
+   * `renderGeometry`: albedo + flag, normal + depth and object id. Renders the scene again, at the same supersampling, into
+   * the 4 x 4 block of art pixels holding it (aligned so dithered surfaces keep their pattern), and resolves it as
+   * `renderGeometry` does.
+   */
+  private pickBehind(x: number, gy: number): [Float32Array, Float32Array, Float32Array] {
+    const r = this.renderer, x0 = x - (x & 3), y0 = gy - (gy & 3), cam = this.pickCamera;
+    const S = this.staticMat.uniforms.uSS.value as number;
+    const make = (size: number) => new THREE.WebGLRenderTarget(size, size, { count: 3, type: THREE.FloatType, minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter, depthBuffer: true, generateMipmaps: false });
+    if (this.pickTargets?.hi.width !== 4 * S) {
+      this.pickTargets?.hi.dispose(); this.pickTargets?.resolved.dispose();
+      this.pickTargets = { hi: make(4 * S), resolved: make(4) };
+    }
+    const { hi, resolved } = this.pickTargets;
+    cam.setViewOffset(this.width, this.height, x0, this.height - y0 - 4, 4, 4);
+    const ru = this.resolveMat.uniforms, inputs = [ru.tAlbedo.value, ru.tNormal.value, ru.tShadow.value, ru.tObjectId.value];
+    const target = r.getRenderTarget(), clear = r.getClearColor(new THREE.Color()), alpha = r.getClearAlpha();
+    const night = this.dynMat.uniforms.uNight, nightNow = night.value;
+    try {
+      this.objectMat.uniforms.uSeeThrough.value = 1; night.value = this.drawnNight;
+      r.setClearColor(0x000000, 0); r.setRenderTarget(hi); r.clear(); r.render(this.scene, cam);
+      // The shadow input is unused here (only the albedo, normal and id are read back).
+      ru.tAlbedo.value = hi.textures[0]; ru.tNormal.value = hi.textures[1]; ru.tShadow.value = hi.textures[0]; ru.tObjectId.value = hi.textures[2];
+      this.quad.material = this.resolveMat;
+      r.setRenderTarget(resolved); r.render(this.quadScene, this.quadCam);
+    } finally {
+      this.objectMat.uniforms.uSeeThrough.value = 0; night.value = nightNow;
+      [ru.tAlbedo.value, ru.tNormal.value, ru.tShadow.value, ru.tObjectId.value] = inputs;
+      r.setRenderTarget(target); r.setClearColor(clear, alpha);
+    }
+    return [0, 1, 2].map((i) => {
+      const out = new Float32Array(4);
+      r.readRenderTargetPixels(resolved, x - x0, gy - y0, 1, 1, out, undefined, i);
+      return out;
+    }) as [Float32Array, Float32Array, Float32Array];
   }
 
   /** Debug and tools: the albedo + flag G-buffer the post shader reads (RGBA float, bottom row first). */
@@ -737,12 +832,13 @@ ${POSE_OBJECT}`;
     if (this.disposed) return;   // once: a second call would queue a second deferred release
     this.disposed = true;
     this.gbufDrawn = false; this.objectsById.clear(); this.highlightWarmPending = false;
-    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage]) t?.dispose();
+    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage, this.pickTargets?.hi, this.pickTargets?.resolved]) t?.dispose();
     this.light.shadow.map?.dispose(); this.objectLight?.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();
     this.fluidMap.texture.dispose(); this.fluidMap.height.dispose(); this.noFluid.dispose();
     for (const m of [this.staticMesh, this.dynMesh, this.fluidMesh, this.quad]) m.geometry.dispose();
     for (const b of this.batches.values()) for (const m of b.meshes) m.dispose();
-    for (const m of [this.staticMat, this.objectMat, this.objectMotionMat, this.objectDepthMat, this.objectMaskMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat]) (m as THREE.Material).dispose();
+    for (const m of this.retired) m.dispose();
+    for (const m of [this.staticMat, this.objectMat, this.objectMotionMat, this.objectDepthMat, this.objectMaskMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.objectShadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat]) (m as THREE.Material).dispose();
     // three polls a background compile's materials on a timer, so they and the renderer go only once it has finished.
     const last = () => { this.postHiMat.dispose(); this.cleanHiMat.dispose(); this.renderer.dispose(); };
     if (this.warming) this.warming.then(last); else last();

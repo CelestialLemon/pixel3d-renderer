@@ -45,6 +45,8 @@ const SHOTS = [
   ...['yard', 'field', 'balls'].map((v) => ({ name: `objects-${v}`, path: `pass3.html?${VIEW}&scene=objects&view=${v}&hour=12`, canvas: 'p3-view' })),
   { name: 'objects-yard-time2', path: `pass3.html?auto=0&clean-ui=1&time=2&px=3&scene=objects&view=yard&hour=12`, canvas: 'p3-view' },
   { name: 'objects-yard-night', path: `pass3.html?${VIEW}&scene=objects&view=yard&hour=22`, canvas: 'p3-view' },
+  // Per-object tint, see-through build previews and belt items that cast no shadow (src/scenes/object-looks).
+  ...['yard', 'workshops'].map((v) => ({ name: `object-looks-${v}`, path: `pass3.html?${VIEW}&scene=object-looks&view=${v}&hour=12`, canvas: 'p3-view' })),
 ];
 
 process.chdir(fileURLToPath(new URL('..', import.meta.url)));   // golden/ paths are relative to the repo root

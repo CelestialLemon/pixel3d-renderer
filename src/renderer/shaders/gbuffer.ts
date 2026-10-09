@@ -16,19 +16,40 @@ void main(){
   gl_Position = projectionMatrix * vp;
 }`;
 
+// An object's tint and opacity, packed per instance in instanceColor.gb by instanceData (objects.ts): g is the tint as
+// 24-bit sRGB, b the tint strength (8 bits, high) and 1 - opacity (8 bits, low). An untinted, opaque object (g = b = 0)
+// keeps its colour and alpha exactly. uSeeThrough is 1 only in pick's see-through pass, which leaves out every object
+// with an opacity below 1 (renderer.ts).
+export const INSTANCE_DATA = /* glsl */ `
+uniform float uSeeThrough;
+float instanceOpacity(){ return 1.0 - float(uint(instanceColor.b) & 255u) / 255.0; }
+vec3 instanceTint(vec3 c){
+  uint strength = uint(instanceColor.b) >> 8u;
+  if (strength == 0u) return c;
+  uint t = uint(instanceColor.g);
+  vec3 s = vec3((uvec3(t) >> uvec3(16u, 8u, 0u)) & 255u) / 255.0;
+  vec3 lin = mix(s / 12.92, pow((s + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), s));
+  return mix(c, lin, float(strength) / 255.0);
+}
+// Moves the vertex out of the clip volume in the see-through pass, so the whole object is dropped.
+void seeThrough(float opacity){ if (opacity < 1.0 && uSeeThrough > 0.5) gl_Position = vec4(0.0, 0.0, 2.0, 1.0); }`;
+
 // Objects the game moves (objects.ts): local-space geometry, instanced, placed by each instance's matrix. The inverse
 // transpose keeps normals right under non-uniform scale.
 export const GBUF_OBJECT_VERT = /* glsl */ `
 in vec3 aColor; in float aFlag;
 out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
 flat out float vObjectId;
+${INSTANCE_DATA}
 void main(){
   vObjectId = instanceColor.r;
   mat4 model = modelMatrix * instanceMatrix;
-  vN = transpose(inverse(mat3(model))) * normal; vC = aColor; vF = aFlag; vA = 1.0;
+  float opacity = instanceOpacity();
+  vN = transpose(inverse(mat3(model))) * normal; vC = instanceTint(aColor); vF = aFlag; vA = opacity;
   vec4 vp = viewMatrix * model * vec4(position, 1.0);
   vD = -vp.z;
   gl_Position = projectionMatrix * vp;
+  seeThrough(opacity);
 }`;
 
 // Ambient motion, shared by the G-buffer passes and the sun-shadow passes (renderer.ts), so they always pose a vertex
@@ -120,14 +141,17 @@ in vec3 aColor; in float aFlag; in float aMode; in vec3 aAnchor; in vec4 aAnim;
 out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
 flat out float vObjectId;
 ${POSE_OBJECT}
+${INSTANCE_DATA}
 void main(){
   vObjectId = instanceColor.r;
   vec3 pos, nrm; float alpha;
   poseObject(modelMatrix * instanceMatrix, instanceColor.r, pos, nrm, alpha);
-  vN = nrm; vC = aColor; vF = aFlag; vA = alpha;
+  float opacity = instanceOpacity();
+  vN = nrm; vC = instanceTint(aColor); vF = aFlag; vA = alpha * opacity;
   vec4 vp = viewMatrix * vec4(pos, 1.0);
   vD = -vp.z;
   gl_Position = projectionMatrix * vp;
+  seeThrough(opacity);
 }`;
 
 export const GBUF_DYN_VERT = /* glsl */ `
