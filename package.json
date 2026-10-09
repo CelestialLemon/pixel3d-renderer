@@ -1,7 +1,7 @@
 {
   "name": "pixel3d-renderer",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Pixel-art 3D renderer for three.js games: a library, not an engine.",
   "sideEffects": false,
