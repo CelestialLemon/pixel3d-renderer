@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.3.0 (2026-10-09)
+
 ### Added
 
 - **Per-object tint** ([#30](https://github.com/CelestialLemon/pixel3d-renderer/issues/30)). `PixelObject.tint` (a
