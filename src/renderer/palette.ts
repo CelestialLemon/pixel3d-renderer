@@ -22,17 +22,19 @@ export const DEFAULT_PALETTE_SIZE = 80;
  * moves its furthest member the least, until `K` are left. This bounds the worst shift of any input colour, so no
  * colour is pushed far just because few vertices use it (k-means, used before, absorbed small objects' colours into
  * clearly different ones). A merged colour is the mean of its members weighted by the square root of their surface
- * area. Geometry must be non-indexed (as GeometryCollector builds it). Returns how many colours are actually used.
+ * area. Each geometry is counted and recoloured once, even if repeated in `geos`. Geometry must be non-indexed
+ * (as GeometryCollector builds it). Returns how many colours are actually used.
  */
 export function quantizePalette(geos: THREE.BufferGeometry[], K: number): number {
   if (!Number.isInteger(K) || K < 1) throw new RangeError(`palette size must be a whole number of at least 1, got ${K}`);
+  const geometries = new Set(geos);
   const key = (col: THREE.BufferAttribute, flag: THREE.BufferAttribute, i: number) => {
     const q = (v: number) => Math.round(v * 1023);
     return q(col.getX(i)) * 1048576 + q(col.getY(i)) * 1024 + q(col.getZ(i)) + Math.round(flag.getX(i)) * 1e10;   // rounded: the thin mark is not a colour
   };
   const uniq = new Map<number, Point>();
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
-  for (const g of geos) {
+  for (const g of geometries) {
     const col = g.attributes.aColor as THREE.BufferAttribute, flag = g.attributes.aFlag as THREE.BufferAttribute, pos = g.attributes.position;
     for (let i = 0; i < col.count; i++) {
       const k = key(col, flag, i);
@@ -45,7 +47,7 @@ export function quantizePalette(geos: THREE.BufferGeometry[], K: number): number
   const pts = [...uniq.values()];
   if (pts.length <= K) return pts.length;
   const out = mergeMinimax(pts, K).map((c) => fromLab(c).map((v) => Math.min(1, Math.max(0, v))) as RGB);
-  for (const g of geos) {
+  for (const g of geometries) {
     const col = g.attributes.aColor as THREE.BufferAttribute, flag = g.attributes.aFlag as THREE.BufferAttribute;
     for (let i = 0; i < col.count; i++) { const c = out[uniq.get(key(col, flag, i))!.idx]; col.setXYZ(i, c[0], c[1], c[2]); }
   }

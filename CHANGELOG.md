@@ -7,6 +7,12 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Fixed
+
+- **Repeated geometry in palette reduction** ([#35](https://github.com/CelestialLemon/pixel3d-renderer/issues/35)).
+  `quantizePalette` counts and recolours each geometry once, even when the input array contains it more than once, avoiding
+  a crash and keeping surface-area weighting consistent with a deduplicated input.
+
 ## 0.3.0 (2026-10-09)
 
 ### Added
