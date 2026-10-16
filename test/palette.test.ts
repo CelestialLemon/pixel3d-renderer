@@ -33,6 +33,18 @@ test('reduces to the budget, consistently across geometries, and is stable when 
   assert.deepEqual([a.attributes.aColor.array, b.attributes.aColor.array], before);
 });
 
+test('repeated geometries give the same palette as each geometry passed once', () => {
+  const a = squares([{ color: [0.1, 0.3, 0.1], size: 2 }, { color: [0.1, 0.4, 0.1] }]);
+  const b = squares([{ color: [0.1, 0.5, 0.1], size: 3 }, { color: [0.1, 0.6, 0.1] }]);
+  const once = [a.clone(), b.clone()];
+  const input = [a, b, a, b, a];
+  assert.equal(quantizePalette(once, 1), 1);
+  assert.equal(quantizePalette(input, 1), 1);
+  assert.deepEqual(a.attributes.aColor.array, once[0].attributes.aColor.array);
+  assert.deepEqual(b.attributes.aColor.array, once[1].attributes.aColor.array);
+  assert.deepEqual(input, [a, b, a, b, a]);
+});
+
 test('a small, clearly different colour keeps its own palette entry (minimax, not area-weighted k-means)', () => {
   const greens = Array.from({ length: 8 }, (_, i) => ({ color: [0.1, 0.3 + i * 0.05, 0.1] as RGB, size: 10 }));
   const g = squares([...greens, { color: [0.9, 0.05, 0.05], size: 0.05 }]);
