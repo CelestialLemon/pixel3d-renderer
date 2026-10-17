@@ -34,7 +34,7 @@ export const glRenderer = (page: Page) => page.evaluate((): string => {
 
 /**
  * Name of the golden-image set for this machine: platform, CPU architecture, backend, the GPU model on a GPU, and "chrome"
- * for any browser other than the pinned Chromium, e.g. "linux-x64-vulkan-amd-radeon-rx-570" or "darwin-arm64-swiftshader-chrome".
+ * for any browser other than the pinned Chromium, e.g. "linux-x64-vulkan-amd-radeon-rx-570" or "linux-x64-swiftshader-chrome".
  * Output is only pixel-identical within one set. `launch()` has already checked that the renderer matches GL_BACKEND.
  */
 export function goldenSet(renderer: string) {
