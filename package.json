@@ -38,6 +38,7 @@
     "village-check": "node tools/village-check.ts",
     "moving-shadow-check": "node tools/moving-shadow-check.ts",
     "resolve-check": "node tools/resolve-check.ts",
+    "fold-check": "node tools/fold-check.ts",
     "smooth-normal-check": "node tools/smooth-normal-check.ts",
     "window-light-check": "node tools/window-light-check.ts",
     "water-check": "node tools/water-check.ts",
@@ -51,7 +52,7 @@
     "startup-check": "node tools/startup-check.ts",
     "object-bench": "node tools/object-bench.ts",
     "verify": "node tools/verify.ts && node tools/check-viewer.ts && node tools/anim-check.ts",
-    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run smooth-normal-check && npm run window-light-check && npm run water-check && npm run camera-check && npm run object-check && npm run object-motion-check && npm run object-look-check && npm run pick-check && npm run highlight-check && npm run settings-check && npm run startup-check && npm run example-check && npm run golden && npm run verify",
+    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run smooth-normal-check && npm run fold-check && npm run window-light-check && npm run water-check && npm run camera-check && npm run object-check && npm run object-motion-check && npm run object-look-check && npm run pick-check && npm run highlight-check && npm run settings-check && npm run startup-check && npm run example-check && npm run golden && npm run verify",
     "example-check": "npm run build:lib && node tools/example-check.ts"
   },
   "devDependencies": {

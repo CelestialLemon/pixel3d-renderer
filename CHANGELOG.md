@@ -7,6 +7,12 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Fixed
+
+- **Gentle terrain folds** ([#41](https://github.com/CelestialLemon/pixel3d-renderer/issues/41)). Outline ink and contact
+  darkening tolerate shallow joined geometric planes, including diagonal folds in 1 m tiles with 0.25 m corner steps.
+  Lighting stays smooth; sharp creases, silhouettes, separate objects and offset parallel surfaces retain their depth effects.
+
 ## 0.3.2 (2026-10-17)
 
 ### Fixed

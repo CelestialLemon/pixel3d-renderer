@@ -83,11 +83,12 @@ ivec2 clampP(ivec2 q){ return clamp(q, ivec2(0), ivec2(uRes) - 1); }
 vec4 A(ivec2 q){ return texelFetch(tAlbedo, clampP(q), 0); }
 vec4 N(ivec2 q){ return texelFetch(tNormal, clampP(q), 0); }
 
+float objectId(ivec2 q){ return texelFetch(tShadow, clampP(q), 0).r; }
+
 #ifdef HIGHLIGHT
 // Highlighted objects (PixelObject.highlight): their ids, 0 for an unused slot. The resolved G-buffer keeps each
-// pixel's object id in tShadow.r (0: no object). Only this variant of the shader reads it.
+// pixel's object id in tShadow.r (0: no object).
 uniform vec4 uHighlight;
-float objectId(ivec2 q){ return texelFetch(tShadow, clampP(q), 0).r; }
 bool highlit(ivec2 q){
   float id = objectId(q);
   return id > 0.5 && any(lessThan(abs(uHighlight - id), vec4(0.5)));
@@ -109,6 +110,59 @@ float predictDepth(vec3 n, float d, vec2 o){
   nf = (nf < 0.0 ? -1.0 : 1.0) * max(abs(nf), 0.25);
   return d - (dot(n, uRight) * o.x + dot(n, uUp) * o.y) * uTexel / nf;
 }
+vec3 separationAt(vec2 offset, float depthDifference){
+  return (uRight * offset.x + uUp * offset.y) * uTexel + uFwd * depthDifference;
+}
+// Joined shallow planes straddle their intersection: the signed distances have opposite signs.
+// A 1 mm tolerance covers raster precision, but rejects parallel offset surfaces and hovering boards.
+// 20 degrees includes the 19.75-degree diagonal bends between 1 m tiles with 0.25 m corner steps.
+bool joinedPlanes(vec3 face, vec3 other, vec3 separation){
+  if (dot(face, other) < 0.9396926) return false;
+  float a = dot(face, separation), b = dot(other, separation);
+  return min(a, b) <= 0.001 && max(a, b) >= -0.001;
+}
+bool shallowStep(ivec2 p, ivec2 q, vec3 face, float d, vec3 other, float dq){
+  if (dot(face, other) < 0.9396926) return false;
+  if (joinedPlanes(face, other, separationAt(vec2(q - p), dq - d))) return true;
+  // A pixel at a tile corner can span two bends. An adjacent visible face must connect both legs;
+  // merely allowing more depth error would also erase the edge of a separate sloping board.
+  ivec2 offset = q - p;
+  for (int k = 0; k < 4; k++) {
+    if (offset.x != 0 && offset.y != 0 && k >= 2) break;
+    int i = (k % 2) * 2 - 1;
+    ivec2 side = offset.x != 0 && offset.y != 0 ?
+      (i < 0 ? ivec2(offset.x, 0) : ivec2(0, offset.y)) : ivec2(-offset.y, offset.x) * i;
+    ivec2 r = (k < 2 ? p : q) + side;
+    if (any(lessThan(r, ivec2(0))) || any(greaterThanEqual(r, ivec2(uRes)))) continue;
+    vec4 ar = A(r);
+    if (ar.a < 0.5 || !solid(flagOf(ar.a)) || objectId(r) != objectId(p)) continue;
+    vec3 middle = G(r); float dr = N(r).w;
+    // A detour on either endpoint's own plane would jump across the gap below a hovering board.
+    if (dot(middle, face) > 0.99999 || dot(middle, other) > 0.99999) continue;
+    if (joinedPlanes(face, middle, separationAt(vec2(r - p), dr - d)) &&
+        joinedPlanes(middle, other, separationAt(vec2(q - r), dq - dr))) return true;
+  }
+  return false;
+}
+bool shallowFold(ivec2 p, ivec2 q, vec3 face){
+  float id = objectId(p);
+  if (id != objectId(q) || dot(face, G(q)) < 0.9396926) return false;
+  // Contact taps can cross an extrapolated intersection without crossing a real join. Check the visible
+  // path one art pixel at a time, so the gap below a disconnected static board remains a contact.
+  ivec2 offset = q - p, previous = p;
+  int steps = max(abs(offset.x), abs(offset.y));
+  float depth = N(p).w;
+  for (int i = 1; i <= steps; i++) {
+    ivec2 r = p + ivec2(round(vec2(offset) * (float(i) / float(steps))));
+    vec4 ar = A(r);
+    if (ar.a < 0.5 || !solid(flagOf(ar.a)) || objectId(r) != id) return false;
+    vec3 other = G(r); float dr = N(r).w;
+    if (!shallowStep(previous, r, face, depth, other, dr)) return false;
+    previous = r; face = other; depth = dr;
+  }
+  return true;
+}
+
 vec3 worldAt(vec2 pc, float d){
   return uCamPos + uRight * ((pc.x - 0.5 * uRes.x) * uTexel) + uUp * ((pc.y - 0.5 * uRes.y) * uTexel) + uFwd * d;
 }
@@ -232,9 +286,11 @@ float contactAt(ivec2 p, vec3 face, float d){
     if (any(lessThan(q, ivec2(0))) || any(greaterThanEqual(q, ivec2(uRes)))) continue;
     vec4 aq = A(q), nq = N(q);
     if (aq.a < 0.5 || !solid(flagOf(aq.a))) continue;
-    vec3 separation = (uRight * float(offset.x) + uUp * float(offset.y)) * uTexel + uFwd * (nq.w - d);
+    vec3 separation = separationAt(vec2(offset), nq.w - d);
     float rangeWeight = 1.0 - smoothstep(0.43, 0.55, length(separation));
     float delta = predictDepth(face, d, vec2(offset)) - nq.w;
+    if (rangeWeight == 0.0 || delta <= 0.025 || delta >= 1.35) continue;
+    if (shallowFold(p, q, face)) continue;
     occ += rangeWeight * smoothstep(0.025, 0.09, delta) * (1.0 - smoothstep(0.5, 1.35, delta));
   }
   return occ / 12.0;
@@ -310,7 +366,8 @@ void main(){
       if (aq.a < 0.5 || !inkSource(flagOf(aq.a))) continue;     // sky, or decor that never casts ink
       float dn = N(q).w;
       float dp = sky ? 1e4 : predictDepth(face, d, vec2(OFF[i]));
-      if (dn < dp - THR && dn < bestD) { bestD = dn; bestQ = q; sil = true; }
+      if (dn < dp - THR && dn < bestD &&
+          (sky || !shallowFold(p, q, face))) { bestD = dn; bestQ = q; sil = true; }
     }
   }
   if (sil) {
