@@ -1,16 +1,17 @@
-import { BAYER4 } from './common';
+import { BAYER4, SURFACE_NORMAL } from './common';
 
-// G-buffer pass. Albedo(rgb) + flag, world normal(xyz) + linear view depth, and object id (R32F).
+// G-buffer pass. Albedo(rgb) + flag, world normal(xyz) + linear view depth, and object id + geometric plane (RGBA32F).
 // The static world is one merged mesh; a small dynamic mesh carries the ambient motion (wind, wheels, smoke) and is
 // animated here; objects the game moves are meshes of their own. Transparency is "pixel art transparency": ordered-dither discard.
 
 export const GBUF_STATIC_VERT = /* glsl */ `
 in vec3 aColor; in float aFlag;
-out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+out vec3 vP; out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
 flat out float vObjectId;
 void main(){
   vObjectId = 0.0;
   vN = normal; vC = aColor; vF = aFlag; vA = 1.0;
+  vP = position;
   vec4 vp = viewMatrix * vec4(position, 1.0);
   vD = -vp.z;
   gl_Position = projectionMatrix * vp;
@@ -38,7 +39,7 @@ void seeThrough(float opacity){ if (opacity < 1.0 && uSeeThrough > 0.5) gl_Posit
 // transpose keeps normals right under non-uniform scale.
 export const GBUF_OBJECT_VERT = /* glsl */ `
 in vec3 aColor; in float aFlag;
-out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+out vec3 vP; out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
 flat out float vObjectId;
 ${INSTANCE_DATA}
 void main(){
@@ -46,6 +47,7 @@ void main(){
   mat4 model = modelMatrix * instanceMatrix;
   float opacity = instanceOpacity();
   vN = transpose(inverse(mat3(model))) * normal; vC = instanceTint(aColor); vF = aFlag; vA = opacity;
+  vP = (model * vec4(position, 1.0)).xyz;
   vec4 vp = viewMatrix * model * vec4(position, 1.0);
   vD = -vp.z;
   gl_Position = projectionMatrix * vp;
@@ -138,7 +140,7 @@ void poseObject(mat4 model, float id, out vec3 wpos, out vec3 wnrm, out float al
 export const GBUF_OBJECT_MOTION_VERT = /* glsl */ `
 uniform float uTime; uniform float uNight;
 in vec3 aColor; in float aFlag; in float aMode; in vec3 aAnchor; in vec4 aAnim;
-out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+out vec3 vP; out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
 flat out float vObjectId;
 ${POSE_OBJECT}
 ${INSTANCE_DATA}
@@ -148,6 +150,7 @@ void main(){
   poseObject(modelMatrix * instanceMatrix, instanceColor.r, pos, nrm, alpha);
   float opacity = instanceOpacity();
   vN = nrm; vC = instanceTint(aColor); vF = aFlag; vA = alpha * opacity;
+  vP = pos;
   vec4 vp = viewMatrix * vec4(pos, 1.0);
   vD = -vp.z;
   gl_Position = projectionMatrix * vp;
@@ -157,7 +160,7 @@ void main(){
 export const GBUF_DYN_VERT = /* glsl */ `
 uniform float uTime; uniform float uNight;
 in vec3 aColor; in float aFlag; in float aMode; in vec3 aAnchor; in vec4 aAnim;
-out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+out vec3 vP; out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
 flat out float vObjectId;
 ${POSE}
 void main(){
@@ -165,6 +168,7 @@ void main(){
   vec3 pos = position; vec3 nrm = normal; float alpha;
   pose(pos, nrm, alpha);
   vN = nrm; vC = aColor; vF = aFlag; vA = alpha;
+  vP = pos;
   vec4 vp = viewMatrix * vec4(pos, 1.0);
   vD = -vp.z;
   gl_Position = projectionMatrix * vp;
@@ -173,16 +177,25 @@ void main(){
 export const GBUF_FRAG = /* glsl */ `
 precision highp float;
 uniform int uSS;   // samples per art pixel along each axis: the dither threshold stays per art pixel
-in vec3 vN; in vec3 vC; in float vF; in float vD; in float vA;
+in vec3 vP; in vec3 vN; in vec3 vC; in float vF; in float vD; in float vA;
 flat in float vObjectId;
 layout(location = 0) out vec4 gAlbedo;
 layout(location = 1) out vec4 gNormal;
-layout(location = 2) out float gObjectId;
+layout(location = 2) out vec4 gSurface;
 ${BAYER4}
+${SURFACE_NORMAL}
 void main(){
+  // Derivatives run before any discard, on the rasterized triangle (helper invocations included), never across
+  // neighbouring visible surfaces. This also follows vertex motion and mirrored/non-uniform object transforms.
+  vec3 n = normalize(vN);
+  vec3 face = cross(dFdx(vP), dFdy(vP));
+  float area = length(face);
+  face = area > 0.0 ? face / area : n;
+  if (dot(face, n) < 0.0) face = -face;
+  vec2 plane = encodeSurface(face);
   if (vA < 0.999 && vA < bayer4(ivec2(gl_FragCoord.xy) / uSS)) discard;
   float f = floor(vF + 0.5);
   gAlbedo = vec4(vC, 1.0 + f + (vF - f > 0.1 ? 0.25 : 0.0));   // + 0.25: thin mark (flags.ts)
-  gNormal = vec4(normalize(vN), vD);
-  gObjectId = vObjectId;
+  gNormal = vec4(n, vD);
+  gSurface = vec4(vObjectId, plane, 0.0);
 }`;

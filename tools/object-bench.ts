@@ -34,7 +34,7 @@ try {
     const material = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3, fragmentShader: GBUF_FRAG, uniforms: { uSS: { value: 3 } },
       vertexShader: `in vec3 aColor; in float aFlag;
-        out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
+        out vec3 vP; out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
         flat out float vObjectId;
         void main() {
           vObjectId = 0.0;
@@ -42,6 +42,7 @@ try {
           #ifdef USE_INSTANCING
             p = instanceMatrix * p; n = mat3(instanceMatrix) * n;
           #endif
+          vP = (modelMatrix * p).xyz;
           vec4 vp = modelViewMatrix * p;
           vN = mat3(modelMatrix) * n; vC = aColor; vF = aFlag; vA = 1.0; vD = -vp.z;
           gl_Position = projectionMatrix * vp;

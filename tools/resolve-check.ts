@@ -16,22 +16,26 @@ try {
     const renderer = new THREE.WebGLRenderer({ canvas: document.createElement('canvas') });
     const TEXEL = 0.075, D0 = 10;
     // Camera basis: right +x, up +y, forward +z. Depth is measured along forward.
-    type Sample = { albedo: number[]; normal: number[]; depth: number };
+    type Sample = { albedo: number[]; normal: number[]; depth: number; geometric?: number[]; id?: number };
     const texture = (rows: number[][]) => {
       const t = new THREE.DataTexture(new Float32Array(rows.flat()), 3, 3, THREE.RGBAFormat, THREE.FloatType);
       t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t;
     };
     // sample(sx, sy) -> { albedo: [r, g, b, a], normal: [x, y, z], depth }; sub-sample offsets are (s - 1) / 3 art pixels.
     const resolve = (sample: (sx: number, sy: number) => Sample) => {
-      const albedo: number[][] = [], normal: number[][] = [];
+      const albedo: number[][] = [], normal: number[][] = [], surface: number[][] = [];
       for (let sy = 0; sy < 3; sy++) for (let sx = 0; sx < 3; sx++) {
         const s = sample(sx, sy); albedo.push(s.albedo); normal.push([...s.normal, s.depth]);
+        const n = s.geometric, l = n ? n.reduce((v, x) => v + Math.abs(x), 0) : 1;
+        const e = n ? n.map((x) => x / l) : [0, 0, 1];
+        const enc = n ? (e[2] >= 0 ? e.slice(0, 2) : [(1 - Math.abs(e[1])) * (e[0] < 0 ? -1 : 1), (1 - Math.abs(e[0])) * (e[1] < 0 ? -1 : 1)]).map((x) => x + 2) : [0, 0];
+        surface.push([s.id ?? 0, ...enc, 0]);
       }
       const mat = new THREE.ShaderMaterial({
         glslVersion: THREE.GLSL3, depthTest: false, depthWrite: false, vertexShader: POST_VERT, fragmentShader: RESOLVE_FRAG,
         uniforms: {
           tAlbedo: { value: texture(albedo) }, tNormal: { value: texture(normal) }, tShadow: { value: texture(albedo.map(() => [0, 0, 0, 1])) },
-          tObjectId: { value: texture(albedo.map(() => [0, 0, 0, 0])) },
+          tObjectId: { value: texture(surface) },
           uS: { value: 3 }, uPolicy: { value: 1 }, uThinOnly: { value: 1 }, uTexel: { value: TEXEL },
           uRight: { value: new THREE.Vector3(1, 0, 0) }, uUp: { value: new THREE.Vector3(0, 1, 0) }, uFwd: { value: new THREE.Vector3(0, 0, 1) },
         },
@@ -40,11 +44,13 @@ try {
       const scene = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
       scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat));
       renderer.setRenderTarget(target); renderer.render(scene, cam); renderer.setRenderTarget(null);
-      const a = new Float32Array(4), n = new Float32Array(4);
+      const a = new Float32Array(4), n = new Float32Array(4), s = new Float32Array(4);
       renderer.readRenderTargetPixels(target, 0, 0, 1, 1, a, undefined, 0);
       renderer.readRenderTargetPixels(target, 0, 0, 1, 1, n, undefined, 1);
+      renderer.readRenderTargetPixels(target, 0, 0, 1, 1, s, undefined, 2);
+      Object.values(mat.uniforms).forEach((u) => { if (u.value instanceof THREE.Texture) u.value.dispose(); });
       target.dispose(); mat.dispose();
-      return { albedo: Array.from(a), depth: n[3] };
+      return { albedo: Array.from(a), depth: n[3], normal: Array.from(n.slice(0, 3)), surface: Array.from(s) };
     };
     // A plane through depth D0 at the pixel centre with normal n: its depth at a sub-sample (exact, no clamping).
     const plane = (n: number[], colour: number[]) => (sx: number, sy: number): Sample => ({
@@ -60,6 +66,8 @@ try {
     try {
       return {
         grazing: resolve(withNearColumn(grazing)),
+        smooth: resolve((sx, sy) => ({ ...withNearColumn(grazing)(sx, sy), normal: [0, 0, -1],
+          geometric: sx === 1 ? [0, 0, -1] : grazing, id: sx === 1 ? 7 : 42 })),
         flat: resolve(withNearColumn([0, 0, -1])),
         edgeOn: resolve(withNearColumn(edgeOn)),
         edgeOnSampleDepth: plane(edgeOn, A)(0, 1).depth,
@@ -71,6 +79,12 @@ try {
   const isA = (r: { albedo: number[] }, label: string) => assert.ok(r.albedo.slice(0, 3).every((v, i) => Math.abs(v - cases.A[i]) < 1e-4), `${label}: expected the 6-sample plane to win, got albedo ${r.albedo}`);
   isA(cases.grazing, 'grazing plane');
   assert.ok(Math.abs(cases.grazing.depth - cases.D0) < 1e-3, `grazing plane: centre depth ${cases.grazing.depth}, expected ${cases.D0}`);
+  isA(cases.smooth, 'smooth grazing plane');
+  assert.ok(Math.abs(cases.smooth.depth - cases.D0) < 1e-3, 'Smooth normals must not move resolved depth off the geometric plane');
+  assert.deepEqual(cases.smooth.normal, [0, 0, -1], 'Resolve preserves the shading normal');
+  assert.equal(cases.smooth.surface[0], 42, 'Resolve carries the winning surface id');
+  assert.ok(cases.smooth.surface[1] >= 1 && cases.smooth.surface[2] >= 1, 'Resolve carries the winning geometric plane');
+  assert.equal(cases.smooth.surface[3], 1, 'Resolve preserves shadow alpha');
   isA(cases.flat, 'flat plane');
   assert.ok(Math.abs(cases.flat.depth - cases.D0) < 1e-4, `flat plane: centre depth ${cases.flat.depth}, expected ${cases.D0}`);
   // Near edge-on: the move to the centre is capped instead of extrapolating ~25 units along the plane.

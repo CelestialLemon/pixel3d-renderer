@@ -193,6 +193,11 @@ against the game; its `docs/ROADMAP.md` keeps the current list):
   redraws every frame, buildings and all); items casting none 4.7–4.9 / 5.1–5.3 ms. CPU time to submit a frame: 0.9 ms, 1.5–1.7 ms and 1.4–1.5 ms. So on
   this GPU 1,500 moving items cost about 1.3 ms a frame when they cast and 0.6–0.8 ms when they don't; the redraw they avoid
   grows with the number of casting objects in the map.
+- **Smooth terrain depth tests:** done (2026-10-17, #38). The G-buffer derives the rasterized triangle's geometric plane
+  from position derivatives, then resolve, outlines, contact occlusion, creases, dither plane tests and highlight cleanup
+  use it for depth predictions. Lighting and picked normals stay smooth. The supersampled id target is now RGBA32F
+  (id plus the encoded plane), and resolve carries the plane in the shadow target's unused green/blue channels.
+  `npm run smooth-normal-check` compares smooth and faceted heightfields across all four geometry paths and both sample rates.
 - **Machines that show they are running:** smoke and glow on objects (ambient motion on objects done, issue #23), and perhaps lamps on them.
 - **Seeing behind buildings:** fading or cutting away buildings and trees, if the 90° views are not enough.
 - **Animals:** chickens moving about, as rigid parts or skinned meshes.

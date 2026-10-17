@@ -117,8 +117,11 @@ docs/ROADMAP.md
 
 Each frame, `PixelRenderer` (`src/renderer/renderer.ts`):
 
-1. **Rasterises a G-buffer** at art resolution (one canvas pixel per art pixel; CSS scales it up with nearest-neighbour). Two targets:
-   albedo + surface flag, and world normal + linear view depth. The static world is one merged mesh. A second, dynamic mesh holds
+1. **Rasterises a G-buffer** at art resolution (one canvas pixel per art pixel; CSS scales it up with nearest-neighbour). Three targets:
+   albedo + surface flag, shading normal + linear view depth, and object id + geometric plane. The geometric plane comes
+   from position derivatives on each rasterized triangle; depth tests use it while lighting keeps the shading normal.
+   Resolve carries the plane in the shadow target's spare channels. The supersampled id target is RGBA32F (12 more bytes
+   per sub-sample than the previous R32F target). The static world is one merged mesh. A second, dynamic mesh holds
    everything that moves and is animated in its vertex shader. Transparency is ordered-dither discard.
 2. **Renders a shadow mask** from the sun's shadow map (static world only; moving bits take the shadow of the surface behind them).
 3. **Stylises** in one post shader: silhouette ink drawn on the far pixel, a banded sky, water, hue-shifted OKLab ramps, gradient-aware
@@ -184,6 +187,7 @@ A tool fails rather than quietly fall back to the CPU when a GPU backend is chos
 | `npm run lamp-shadow-check` | Lamp shadow atlas: enclosed shells, back-facing panels, fixture clearance, and fitting small device limits (2048 and 512 px) with smaller faces. |
 | `npm run moving-shadow-check` | Sun-shadow mask on rigid moving parts (`move_spin_`/`move_sway_`): a moving panel at rest, spun 90 degrees and mid-swing gets exactly the mask of the same panel as static geometry at that pose, over striped ground (no borrowing the background) and under a roof (no "always sunlit"), without painting over static geometry in front of it. |
 | `npm run village-check` | Lantern Row: canopies clear every building, backdrop house, street, quay and the water, and buildings don't overlap or stand in the water (`layoutProblems` in `layout.ts`); models tied to layout features follow them; the mill wheel turns across the canal's flow in the main channel; moving parts spin about their node's local X axis; villager splitting keeps nested meshes single and parent prefixes; a missing or corrupt model fails the build visibly. |
+| `npm run smooth-normal-check` | Smooth versus faceted sine terrain: identical depth effects and resolve depths with smooth lighting normals preserved, at supersample 1 and 3, for static/animated geometry and mirrored, non-uniformly scaled objects; includes highlight cleanup. |
 | `npm run camera-check` | Camera snap: the image shift the renderer reports for the camera it snapped to the art-pixel grid (`snapShift`) moves projected landmarks back onto the requested camera, for both signs, with and without a capture margin, at several scales, and repeatably. |
 | `npm run settings-check` | Game-supplied settings: custom and reduced limits compile and draw, invalid scene/capacity inputs are rejected before WebGL allocation and excessive uniform budgets after querying the GPU, shadow map sizes, resolve options, custom day cycles and minimal scene inputs. |
 | `npm run startup-check` | Exact binary/gzip roundtrips for all six scenes, including prepared fluid/window maps and local object geometry; live and decoded first frames must match pixel for pixel. |

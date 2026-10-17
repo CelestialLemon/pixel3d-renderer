@@ -1,3 +1,5 @@
+import { SURFACE_NORMAL } from './common';
+
 // Resolve: turns the S x S supersampled G-buffer and sun-shadow mask into one coherent sample per art pixel.
 // Samples are grouped into surfaces: same flag and albedo AND on one plane (a palette colour is not an object id,
 // so two overlapping slabs of one colour stay apart). The winning surface's sample nearest the pixel centre is
@@ -28,32 +30,33 @@ float planeDepth(vec3 n, float d, vec2 o){
 // Sub-sample position relative to the art-pixel centre, in art pixels.
 vec2 offsetOf(int i){ return (vec2(ORD[i]) - 1.0) / 3.0; }
 
-vec4 a[9]; vec4 nd[9];
+${SURFACE_NORMAL}
+vec4 a[9]; vec4 nd[9]; vec3 face[9];
 float margin(){ return max(0.10, uTexel * 3.0); }
 bool sameSurface(int i, int j){
   if (a[i].a < 0.5 || a[j].a < 0.5) return a[i].a < 0.5 && a[j].a < 0.5;   // sky matches only sky
   if (abs(a[i].a - a[j].a) > 0.5 || any(greaterThan(abs(a[i].rgb - a[j].rgb), vec3(1e-4)))) return false;
-  // Same plane within prediction precision (sub-texel offsets, smooth normals), far tighter than the silhouette
+  // Same plane within prediction precision (sub-texel offsets, rasterization), far tighter than the silhouette
   // margin: two same-colour slabs a centimetre apart are different surfaces.
-  return abs(nd[j].w - planeDepth(nd[i].xyz, nd[i].w, offsetOf(j) - offsetOf(i))) < 0.004 + 0.1 * uTexel;
+  return abs(nd[j].w - planeDepth(face[i], nd[i].w, offsetOf(j) - offsetOf(i))) < 0.004 + 0.1 * uTexel;
 }
 
 void emit(ivec2 q, int i){
   // A near edge-on plane would extrapolate far past where the surface ends: cap the move at two silhouette margins
   // (exact down to |n.fwd| ~ 0.1 for a corner sample at any zoom).
   float m = 2.0 * margin();
-  float dc = clamp(planeDepth(nd[i].xyz, nd[i].w, -offsetOf(i)), nd[i].w - m, nd[i].w + m);
+  float dc = clamp(planeDepth(face[i], nd[i].w, -offsetOf(i)), nd[i].w - m, nd[i].w + m);
   oAlbedo = a[i];
   oNormal = vec4(nd[i].xyz, a[i].a < 0.5 ? nd[i].w : dc);
   // Carry the representative's id without changing surface grouping or the shadow alpha used by post/water.
-  oShadow = vec4(texelFetch(tObjectId, q, 0).r, 0.0, 0.0, texelFetch(tShadow, q, 0).a);
+  oShadow = vec4(texelFetch(tObjectId, q, 0).rgb, texelFetch(tShadow, q, 0).a);
 }
 
 void main(){
   ivec2 p = ivec2(gl_FragCoord.xy);
   if (uS == 1) {
     oAlbedo = texelFetch(tAlbedo, p, 0); oNormal = texelFetch(tNormal, p, 0);
-    oShadow = vec4(texelFetch(tObjectId, p, 0).r, 0.0, 0.0, texelFetch(tShadow, p, 0).a);
+    oShadow = vec4(texelFetch(tObjectId, p, 0).rgb, texelFetch(tShadow, p, 0).a);
     return;
   }
   ivec2 base = p * 3;
@@ -61,6 +64,7 @@ void main(){
   for (int i = 0; i < 9; i++) {
     a[i] = texelFetch(tAlbedo, base + ORD[i], 0);
     nd[i] = texelFetch(tNormal, base + ORD[i], 0);
+    face[i] = surfaceNormal(nd[i].xyz, texelFetch(tObjectId, base + ORD[i], 0).gb);
     d[i] = a[i].a < 0.5 ? 1e9 : nd[i].w;
   }
   // Per key, its representative is the first sample in ORD order (nearest the centre).
@@ -82,7 +86,7 @@ void main(){
     for (int i = 0; i < 9; i++) {
       if (cnt[i] < uPolicy + 1 || i != rep[i]) continue;
       if (uThinOnly == 1 && fract(a[i].a) < 0.1) continue;
-      float behind = a[m].a < 0.5 ? 1e9 : planeDepth(nd[m].xyz, nd[m].w, offsetOf(i) - offsetOf(m));
+      float behind = a[m].a < 0.5 ? 1e9 : planeDepth(face[m], nd[m].w, offsetOf(i) - offsetOf(m));
       if (d[i] < behind - margin() && d[i] < d[rep[fg]]) fg = i;
     }
     best = fg;
