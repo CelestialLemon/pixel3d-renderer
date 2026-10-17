@@ -198,6 +198,13 @@ against the game; its `docs/ROADMAP.md` keeps the current list):
   use it for depth predictions. Lighting and picked normals stay smooth. The supersampled id target is now RGBA32F
   (id plus the encoded plane), and resolve carries the plane in the shadow target's unused green/blue channels.
   `npm run smooth-normal-check` compares smooth and faceted heightfields across all four geometry paths and both sample rates.
+- **Gentle piecewise-planar folds:** done (2026-10-17, #41). Outline and contact taps reject joined geometric planes
+  within 20 degrees (including the roughly 14-degree axis slopes and up to 19.75-degree diagonal folds of 0.25 m tile steps).
+  Both signed plane distances must straddle the join, within 1 mm raster precision. Contact taps trace the visible
+  path in art-pixel steps; a corner can connect through an adjacent plane. This keeps separate static sloping boards,
+  parallel offset surfaces and separate object ids from borrowing the fold tolerance. No surface opt-in or extra
+  G-buffer data is needed. As with other screen-space effects, geometry hidden between samples cannot be reconstructed.
+  `npm run fold-check` covers both shading modes and sample rates, three camera elevations, and sharp box/roof controls.
 - **Machines that show they are running:** smoke and glow on objects (ambient motion on objects done, issue #23), and perhaps lamps on them.
 - **Seeing behind buildings:** fading or cutting away buildings and trees, if the 90° views are not enough.
 - **Animals:** chickens moving about, as rigid parts or skinned meshes.
