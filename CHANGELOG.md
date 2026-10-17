@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.3.1 (2026-10-17)
+
 ### Fixed
 
 - **Repeated geometry in palette reduction** ([#35](https://github.com/CelestialLemon/pixel3d-renderer/issues/35)).
