@@ -1,5 +1,5 @@
 import type { RendererLimits } from '../scene';
-import { BAYER4 } from './common';
+import { BAYER4, SURFACE_NORMAL } from './common';
 import { waterGLSL } from './water';
 
 // The pixel-art "brain": turns the G-buffer into a palette-controlled, outlined, dithered image with
@@ -99,6 +99,9 @@ vec3 highlightInk(vec3 albedo){
   return fromLab(lab);
 }
 #endif
+
+${SURFACE_NORMAL}
+vec3 G(ivec2 q){ return surfaceNormal(N(q).xyz, texelFetch(tShadow, clampP(q), 0).gb); }
 
 // depth a neighbour at pixel offset o would have if it lay on the plane of (n, d)
 float predictDepth(vec3 n, float d, vec2 o){
@@ -215,7 +218,7 @@ vec4 lampAt(vec3 wp, vec3 n, float jit){
 // Sparse screen-space contact occlusion. Plane-relative depth rejects coplanar
 // tiles; a world-distance bound keeps screen taps from shadowing unrelated surfaces
 // far along the view ray (e.g. a parapet coping across a curved bridge deck).
-float contactAt(ivec2 p, vec3 n, float d){
+float contactAt(ivec2 p, vec3 face, float d){
   if (uContact == 0) return 0.0;
   const vec2 taps[12] = vec2[12](
     vec2(1,0), vec2(-1,0), vec2(0,1), vec2(0,-1),
@@ -231,7 +234,7 @@ float contactAt(ivec2 p, vec3 n, float d){
     if (aq.a < 0.5 || !solid(flagOf(aq.a))) continue;
     vec3 separation = (uRight * float(offset.x) + uUp * float(offset.y)) * uTexel + uFwd * (nq.w - d);
     float rangeWeight = 1.0 - smoothstep(0.43, 0.55, length(separation));
-    float delta = predictDepth(n, d, vec2(offset)) - nq.w;
+    float delta = predictDepth(face, d, vec2(offset)) - nq.w;
     occ += rangeWeight * smoothstep(0.025, 0.09, delta) * (1.0 - smoothstep(0.5, 1.35, delta));
   }
   return occ / 12.0;
@@ -273,7 +276,7 @@ void main(){
   bool sky = a.a < 0.5;
   int fl = sky ? -1 : flagOf(a.a);
   vec4 nd = N(p);
-  vec3 n = nd.xyz; float d = sky ? 1e4 : nd.w;
+  vec3 n = nd.xyz, face = G(p); float d = sky ? 1e4 : nd.w;
   const ivec2 OFF[4] = ivec2[4](ivec2(1,0), ivec2(-1,0), ivec2(0,1), ivec2(0,-1));
   float THR = max(0.10, uTexel * 3.0);
 
@@ -291,9 +294,9 @@ void main(){
     if (highlit(q) == lifted) continue;
     vec4 aq = A(q), nq = N(q);
     bool rim = lifted ? aq.a > 0.5 && (nq.w < d - THR || (nq.w <= d + THR &&                                  // inner
-                          (objectId(q) > 0.5 || predictDepth(nq.xyz, nq.w, -vec2(OFF[i])) < d - 0.5 * uTexel)))
+                          (objectId(q) > 0.5 || predictDepth(G(q), nq.w, -vec2(OFF[i])) < d - 0.5 * uTexel)))
                       : sky || d > nq.w + THR || (d >= nq.w - THR &&                                          // outer
-                          objectId(p) < 0.5 && predictDepth(n, d, vec2(OFF[i])) >= nq.w - 0.5 * uTexel);
+                          objectId(p) < 0.5 && predictDepth(face, d, vec2(OFF[i])) >= nq.w - 0.5 * uTexel);
     if (rim) { outColor = emitColor(highlightInk(lifted ? a.rgb : aq.rgb), p, true); return; }
   }
 #endif
@@ -306,7 +309,7 @@ void main(){
       vec4 aq = A(q);
       if (aq.a < 0.5 || !inkSource(flagOf(aq.a))) continue;     // sky, or decor that never casts ink
       float dn = N(q).w;
-      float dp = sky ? 1e4 : predictDepth(n, d, vec2(OFF[i]));
+      float dp = sky ? 1e4 : predictDepth(face, d, vec2(OFF[i]));
       if (dn < dp - THR && dn < bestD) { bestD = dn; bestQ = q; sil = true; }
     }
   }
@@ -338,7 +341,7 @@ void main(){
   // ---- 4. banded lighting with gradient-aware ordered dithering ---------------------
   float ndl = dot(n, uSun);
   float s = shadeAt(p);
-  float contact = contactAt(p, n, d);
+  float contact = contactAt(p, face, d);
 
   // Dither only where the light really forms a smooth gradient (round shapes, bevels,
   // cloud edges). Flat surfaces and hard shadow edges stay clean, as an artist would.
@@ -349,7 +352,7 @@ void main(){
   for (int i = 0; i < 4; i++) {
     ivec2 q = p + OFF[i];
     vec4 aq = A(q);
-    plane[i] = flagOf(aq.a) == fl && dot(n, N(q).xyz) >= 0.94 && abs(N(q).w - predictDepth(n, d, vec2(OFF[i]))) <= THR;
+    plane[i] = flagOf(aq.a) == fl && dot(n, N(q).xyz) >= 0.94 && abs(N(q).w - predictDepth(face, d, vec2(OFF[i]))) <= THR;
     if (plane[i] && distance(aq.rgb, a.rgb) <= 0.01) g = max(g, abs(shadeAt(q) - s));
   }
   float dw = (uDither == 1 && fl != F_DECOR && fl != F_GROOVED && g > 0.003 && g < 0.075) ? 0.045 : 0.0;
@@ -375,7 +378,7 @@ void main(){
       // Ignore bevel facets and foliage: outlining every little normal change
       // turns roof tiles and round leaves into disconnected confetti.
       if (dot(n, nq.xyz) > 0.55 || distance(a.rgb, aq.rgb) < 0.025) continue;
-      float dp = predictDepth(n, d, vec2(OFF[i]));
+      float dp = predictDepth(face, d, vec2(OFF[i]));
       if (abs(nq.w - dp) > THR) continue;
       float dd = nq.w - dp;
       float ndlq = dot(nq.xyz, uSun);

@@ -7,6 +7,14 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Fixed
+
+- **Smooth terrain depth prediction** ([#38](https://github.com/CelestialLemon/pixel3d-renderer/issues/38)). Outlines,
+  contact darkening, creases, dither plane tests and highlight rims use the rasterized triangle's geometric plane instead
+  of its interpolated shading normal. The thin-feature resolve uses that plane too, including depth reconstruction for
+  picking. Lighting and picked normals keep the smooth shading normals. Faceted terrain keeps the same rendered appearance.
+
+
 ## 0.3.1 (2026-10-17)
 
 ### Fixed

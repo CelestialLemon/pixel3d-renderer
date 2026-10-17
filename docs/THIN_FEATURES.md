@@ -22,6 +22,10 @@ post shader reads that sample unchanged.
    plane to the pixel centre, so the post shader's `worldAt()` stays exact. Because S is odd, a surface interior keeps the same
    centre sample it had at S = 1.
 
+The plane comes from position derivatives inside the rasterized triangle, before any discard. It is independent of smooth
+shading normals and is carried with the selected sample, so silhouettes and thin surfaces never borrow a neighbouring plane.
+Lighting and picked normals still use the interpolated shading normal.
+
 The Bayer discard threshold (smoke, fireflies) uses the art-pixel coordinate, so all 9 sub-samples share one threshold.
 
 ## The thin mark

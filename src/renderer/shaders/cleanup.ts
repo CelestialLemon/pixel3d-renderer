@@ -1,3 +1,5 @@
+import { SURFACE_NORMAL } from './common';
+
 // Clean-up: removes orphan pixels (a pixel unlike 3+ identical neighbours), which is the classic
 // "pixel noise" an artist would hand-fix. Restricted to the interior of flat NORMAL/EMISSIVE surfaces not under a fluid.
 export const CLEAN_FRAG = /* glsl */ `
@@ -14,6 +16,8 @@ bool highlit(ivec2 q){
   float id = objectId(q);
   return id > 0.5 && any(lessThan(abs(uHighlight - id), vec4(0.5)));
 }
+${SURFACE_NORMAL}
+vec3 G(ivec2 q){ return surfaceNormal(texelFetch(tNormal, q, 0).xyz, texelFetch(tShadow, q, 0).gb); }
 float predictDepth(vec3 n, float d, vec2 o){   // as in post.ts
   float nf = dot(n, uFwd);
   nf = (nf < 0.0 ? -1.0 : 1.0) * max(abs(nf), 0.25);
@@ -31,7 +35,7 @@ bool rimmed(ivec2 p, vec3 n, float d){
     if (highlit(q) == lifted) continue;
     vec4 nq = texelFetch(tNormal, q, 0);
     if (lifted ? texelFetch(tAlbedo, q, 0).a > 0.5 && (nq.w < d - THR || (nq.w <= d + THR &&
-                   (objectId(q) > 0.5 || predictDepth(nq.xyz, nq.w, -vec2(offsets[k])) < d - 0.5 * uTexel)))
+                   (objectId(q) > 0.5 || predictDepth(G(q), nq.w, -vec2(offsets[k])) < d - 0.5 * uTexel)))
                : d > nq.w + THR || (d >= nq.w - THR &&
                    objectId(p) < 0.5 && predictDepth(n, d, vec2(offsets[k])) >= nq.w - 0.5 * uTexel)) return true;
   }
@@ -53,7 +57,7 @@ void main(){
       if (floor(a.a + 0.5) != floor(aq.a + 0.5) || distance(a.rgb, aq.rgb) > 0.01 || dot(nd.xyz, nq.xyz) < 0.97) interior = false;
     }
 #ifdef HIGHLIGHT
-    if (interior && rimmed(p, nd.xyz, nd.w)) interior = false;
+    if (interior && rimmed(p, G(p), nd.w)) interior = false;
 #endif
     for (int i = 0; i < 4 && interior; i++) {
       int cnt = 0;

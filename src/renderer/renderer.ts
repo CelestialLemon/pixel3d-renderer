@@ -103,7 +103,7 @@ export class PixelRenderer {
   /** Supersampled G-buffer (S x S per art pixel) and sun-shadow mask, rasterised by `renderGeometry`. */
   private gbufHi!: THREE.WebGLRenderTarget;
   private shadowHi!: THREE.WebGLRenderTarget;
-  /** Resolved to art resolution: albedo+flag, normal+depth, shadow (alpha) + object id (red). What the post shader reads. */
+  /** Resolved to art resolution: albedo+flag, normal+depth, shadow (alpha), object id (red), geometric plane (green/blue). */
   private gbuf!: THREE.WebGLRenderTarget;
   private stylised!: THREE.WebGLRenderTarget;
   /** The fluid G-buffer (normal + depth, velocity + material slot) at art resolution, and the image with the fluids drawn in. */
@@ -570,9 +570,9 @@ ${POSE_OBJECT}`;
     const mk = (opts: THREE.RenderTargetOptions, count = 1, k = 1) => new THREE.WebGLRenderTarget(w * k, h * k, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true, generateMipmaps: false, count, ...opts });
     for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage]) t?.dispose();
     // Full float depth avoids false depth discontinuities on planar roof/paving edges.
-    // Albedo + flag, normal + depth, and the object id (R32F: exact to 2^24, a quarter of an RGBA float target).
+    // Albedo + flag, shading normal + depth, and object id + encoded geometric plane.
+    // Resolve carries the plane in the shadow target's spare green/blue channels; no extra target is needed.
     this.gbufHi = mk({ type: THREE.FloatType }, 3, S);
-    this.gbufHi.textures[2].format = THREE.RedFormat;
     this.shadowHi = mk({ type: THREE.UnsignedByteType }, 1, S);
     this.gbuf = mk({ type: THREE.FloatType, depthBuffer: false }, 3);
     this.stylised = mk({ type: THREE.UnsignedByteType, depthBuffer: false });
