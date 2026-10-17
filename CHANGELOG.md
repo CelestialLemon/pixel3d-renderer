@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.3.3 (2026-10-17)
+
 ### Fixed
 
 - **Gentle terrain folds** ([#41](https://github.com/CelestialLemon/pixel3d-renderer/issues/41)). Outline ink and contact
