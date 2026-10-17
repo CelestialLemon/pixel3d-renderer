@@ -1,0 +1,1 @@
+Issue #38 render comparisons. 320×240 art pixels, a 20×20 indexed sine heightfield over 10×10 m, vertex normals averaged before conversion to triangles. Faceted controls recompute triangle normals. The depth-tests images use one lighting band to isolate depth effects.
