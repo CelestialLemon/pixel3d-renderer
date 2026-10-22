@@ -1,16 +1,19 @@
 import { SURFACE_NORMAL } from './common';
+import { PRECIPITATION } from './weather';
 
 // Clean-up: removes orphan pixels (a pixel unlike 3+ identical neighbours), which is the classic
 // "pixel noise" an artist would hand-fix. Restricted to the interior of flat NORMAL/EMISSIVE surfaces not under a fluid.
+// Then draws the falling rain or snow over the result (shaders/weather.ts).
 export const CLEAN_FRAG = /* glsl */ `
 precision highp float;
-uniform sampler2D tImage; uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform sampler2D tShadow; uniform sampler2D tFluid; uniform vec2 uRes; uniform int uOn;
+uniform sampler2D tImage; uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform sampler2D tShadow; uniform sampler2D tFluid; uniform sampler2D tFluidN; uniform vec2 uRes; uniform int uOn;
+uniform float uTexel; uniform vec3 uRight; uniform vec3 uUp; uniform vec3 uFwd;   // the camera (post.ts sets them)
 out vec4 outColor;
 vec3 F(ivec2 q){ return texelFetch(tImage, clamp(q, ivec2(0), ivec2(uRes) - 1), 0).rgb; }
 bool same(vec3 a, vec3 b){ return all(lessThan(abs(a - b), vec3(0.002))); }
 #ifdef HIGHLIGHT
 // As in post.ts: the highlight rim is never "noise".
-uniform vec4 uHighlight; uniform float uTexel; uniform vec3 uRight; uniform vec3 uUp; uniform vec3 uFwd;
+uniform vec4 uHighlight;
 float objectId(ivec2 q){ return texelFetch(tShadow, q, 0).r; }
 bool highlit(ivec2 q){
   float id = objectId(q);
@@ -42,6 +45,7 @@ bool rimmed(ivec2 p, vec3 n, float d){
   return false;
 }
 #endif
+${PRECIPITATION}
 void main(){
   ivec2 p = ivec2(gl_FragCoord.xy);
   vec3 c = F(p);
@@ -65,5 +69,12 @@ void main(){
       if (cnt >= 3 && !same(n[i], c)) { c = n[i]; break; }
     }
   }
-  outColor = vec4(c, 1.0);
+  if (uPrecip.x < 0.5) { outColor = vec4(c, 1.0); return; }   // nothing falls: no more reads
+  vec4 a = texelFetch(tAlbedo, p, 0), nd = texelFetch(tNormal, p, 0);
+  // A fluid surface nearer than what is under it is what the rain meets: the pool, not its bed.
+  if (texelFetch(tFluid, p, 0).a > 0.5) {
+    vec4 fn = texelFetch(tFluidN, p, 0);
+    if (a.a < 0.5 || fn.w < nd.w) { a.a = 1.0; nd = fn; }
+  }
+  outColor = vec4(precipitation(c, p, a, nd), 1.0);
 }`;

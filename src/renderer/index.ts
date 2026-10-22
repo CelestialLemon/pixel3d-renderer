@@ -17,5 +17,8 @@ export { FLUIDS, FluidCollector, type FluidMaterial, type FluidPreset, type Flui
 export { loadGltf, collectGltf, namedMeshRule, movingPartMotion, collectLamps, meshNodeName, type MeshRule } from './gltf';
 export { DEFAULT_PALETTE_SIZE, quantizePalette } from './palette';
 
+// Weather: rain and snow, cloud cover, wind.
+export { DEFAULT_WEATHER, type Precipitation, type Weather } from './weather';
+
 // Time of day.
 export { dayCycle, DEFAULT_DAY_CYCLE, lookAt, nearestPreset, hourLabel, PRESETS, type DayCycle, type Look, type LookKey } from './look';

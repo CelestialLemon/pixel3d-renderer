@@ -55,8 +55,8 @@ void main(){
 }`;
 
 // Ambient motion, shared by the G-buffer passes and the sun-shadow passes (renderer.ts), so they always pose a vertex
-// identically. Modes and parameter layouts match motion.ts. The including shader declares uTime, uNight and the
-// aMode / aAnchor / aAnim attributes.
+// identically. Modes and parameter layouts match motion.ts. The including shader declares uTime, uNight, uWind and the
+// aMode / aAnchor / aAnim attributes. uWind is the game's wind (weather.ts): x the steady lean, y the gusts.
 export const POSE = /* glsl */ `
 float wind(vec2 p, float t){ return sin(p.x*0.42 + p.y*0.27 + t*1.5)*0.6 + sin(p.x*0.91 - p.y*0.63 + t*2.6)*0.4; }
 // Rotate v by angle a about the unit axis k (Rodrigues).
@@ -67,8 +67,8 @@ void poseAt(inout vec3 pos, inout vec3 nrm, out float alpha, float m, vec3 aAnch
   vec3 position = pos, normal = nrm;
   alpha = 1.0;
   int mode = int(m + 0.5);
-  if (mode == 1) {                       // sway: tips lean with travelling gusts. anim = (weight, base x, base z)
-    float w = aAnim.x, g = wind(aAnim.yz, uTime);
+  if (mode == 1) {                       // sway: tips lean downwind and swing with travelling gusts. anim = (weight, base x, base z)
+    float w = aAnim.x, g = uWind.x + uWind.y * wind(aAnim.yz, uTime);
     pos.xz += vec2(1.0, 0.35) * g * 0.13 * w;
     pos.y -= abs(g) * 0.025 * w;
   } else if (mode == 2) {                // conveyor along +x: grows in, rides, shrinks away. anim = (start x, length, speed)
@@ -138,7 +138,7 @@ void poseObject(mat4 model, float id, out vec3 wpos, out vec3 wnrm, out float al
 
 // An object whose geometry carries motion attributes.
 export const GBUF_OBJECT_MOTION_VERT = /* glsl */ `
-uniform float uTime; uniform float uNight;
+uniform float uTime; uniform float uNight; uniform vec2 uWind;
 in vec3 aColor; in float aFlag; in float aMode; in vec3 aAnchor; in vec4 aAnim;
 out vec3 vP; out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
 flat out float vObjectId;
@@ -158,7 +158,7 @@ void main(){
 }`;
 
 export const GBUF_DYN_VERT = /* glsl */ `
-uniform float uTime; uniform float uNight;
+uniform float uTime; uniform float uNight; uniform vec2 uWind;
 in vec3 aColor; in float aFlag; in float aMode; in vec3 aAnchor; in vec4 aAnim;
 out vec3 vP; out vec3 vN; out vec3 vC; out float vF; out float vD; out float vA;
 flat out float vObjectId;

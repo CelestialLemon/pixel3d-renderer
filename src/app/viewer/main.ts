@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT_DAY_CYCLE, DEFAULT_PALETTE_SIZE, hourLabel, PixelRenderer, type Look, type PixelObject, type PixelRendererOptions, type PixelScene, type RenderSettings } from '../../renderer';
+import { DEFAULT_DAY_CYCLE, DEFAULT_PALETTE_SIZE, DEFAULT_WEATHER, hourLabel, PixelRenderer, type Look, type Precipitation, type Weather, type PixelObject, type PixelRendererOptions, type PixelScene, type RenderSettings } from '../../renderer';
 import { buildWorld } from '../../reference/world';
 import { SCENES, sceneById } from '../../scenes';
 import type { SceneGame } from '../../scenes/types';
@@ -22,6 +22,13 @@ let hour = num('hour', scene.hour ?? 17.5), cycle = params.get('cycle') === '1',
 type Compare = 'off' | 'pass1' | 'palette';
 let compare: Compare = params.get('compare') === 'palette' ? 'palette' : params.get('compare') === '1' && scene.hasReference ? 'pass1' : 'off';
 let split = num('split', 50);
+// The weather: `?precip=rain|snow&intensity=&cover=&cloudSpeed=&wind=&gusts=`, the defaults otherwise.
+const precip = params.get('precip');
+const weather: Weather = {
+  precipitation: precip === 'rain' || precip === 'snow' ? precip : 'none', intensity: num('intensity', DEFAULT_WEATHER.intensity),
+  cloudCover: num('cover', DEFAULT_WEATHER.cloudCover), cloudSpeed: num('cloudSpeed', DEFAULT_WEATHER.cloudSpeed),
+  wind: num('wind', DEFAULT_WEATHER.wind), gusts: num('gusts', DEFAULT_WEATHER.gusts),
+};
 // The left side defaults to 56 colours, the budget before 2026-10-02.
 const LEFT_PALETTE_SIZE = 56;
 if (params.has('clean-ui')) document.body.classList.add('clean');
@@ -38,6 +45,7 @@ async function main() {
   if (policy !== undefined) { options.resolvePolicy = policy; options.resolveThinOnly = resolve === 'thin'; }
   const create = (id: string, s: PixelScene) => new PixelRenderer($<HTMLCanvasElement>(id), s, options);
   const p3 = create('p3-view', pixelScene);
+  p3.setWeather(weather);
   // Scenes with game objects move them to the clock before each frame (see BuiltScene.populate).
   const game = pixelScene.populate?.(p3);
   let p1: PassView | null = null, pOther: PixelRenderer | null = null, otherGame: SceneGame | undefined;
@@ -66,6 +74,7 @@ async function main() {
     $('loading').classList.remove('done');
     const other = await scene.build(leftPaletteSize);
     pOther = create('pal-view', other);
+    pOther.setWeather(weather);
     otherGame = other.populate?.(pOther);
     $('loading').classList.add('done');
     pOther.setLook(look);
@@ -87,6 +96,13 @@ async function main() {
   for (const key of ['outlines', 'dither', 'cleanup', 'contacts', 'clouds', 'glow', 'vignette', 'animate'] as const) {
     const el = $<HTMLInputElement>(key); el.checked = settings[key];
     el.onchange = () => { settings[key] = el.checked; dirty = true; };
+  }
+  const precipEl = $<HTMLSelectElement>('precipitation');
+  precipEl.value = weather.precipitation;
+  precipEl.onchange = () => { weather.precipitation = precipEl.value as Precipitation; p3.setWeather(weather); pOther?.setWeather(weather); };
+  for (const key of ['intensity', 'cloudCover', 'cloudSpeed', 'wind', 'gusts'] as const) {
+    const el = $<HTMLInputElement>(key); el.value = String(weather[key]);
+    el.oninput = () => { weather[key] = +el.value; p3.setWeather(weather); pOther?.setWeather(weather); dirty = true; };
   }
   for (const [name, h] of Object.entries(day.presets)) {
     const b = document.createElement('button'); b.textContent = name;

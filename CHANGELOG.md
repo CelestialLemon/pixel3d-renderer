@@ -7,6 +7,24 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Added
+
+- **Weather** ([#44](https://github.com/CelestialLemon/pixel3d-renderer/issues/44),
+  [#45](https://github.com/CelestialLemon/pixel3d-renderer/issues/45),
+  [#46](https://github.com/CelestialLemon/pixel3d-renderer/issues/46)). `PixelRenderer.setWeather(change)` sets any of the
+  fields of a `Weather`; `PixelRenderer.weather` reads it back and `DEFAULT_WEATHER` holds the defaults, which draw exactly what
+  earlier versions drew.
+  - `precipitation` (`'none'`, `'rain'` or `'snow'`) and `intensity` (0 to 1: about 0.2 a light shower, 0.5 steady rain,
+    1 a heavy storm or blizzard). Falling rain and snow drawn per art pixel over the finished image: small streaks and flakes,
+    sparse enough to keep the farm in view (at most about 4% of the pixels), hidden behind anything nearer (water surfaces included) and ending at the
+    ground, with splashes on the ground in rain. Driven only by the `renderStyle` clock, so a frozen clock freezes it.
+  - `cloudCover` (0 clear to 1 overcast, default 0.2: the old cloud shadows) and `cloudSpeed` (0 to 10 times the old drift).
+    Changing the speed never makes the clouds jump.
+  - `wind` (0 to 3, default 0: a steady lean downwind) and `gusts` (0 to 3, default 1: the old gusts) for everything that
+    sways (`motion.sway`), in the baked scene and on objects. Wind also slants the rain and snow.
+  - A value out of range throws a `RangeError` and changes nothing.
+  - Demo: the Weather panel in `pass3.html`, and `?precip=&intensity=&cover=&cloudSpeed=&wind=&gusts=`. Three golden views.
+
 ## 0.3.3 (2026-10-17)
 
 ### Fixed

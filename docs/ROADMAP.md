@@ -205,6 +205,30 @@ against the game; its `docs/ROADMAP.md` keeps the current list):
   parallel offset surfaces and separate object ids from borrowing the fold tolerance. No surface opt-in or extra
   G-buffer data is needed. As with other screen-space effects, geometry hidden between samples cannot be reconstructed.
   `npm run fold-check` covers both shading modes and sample rates, three camera elevations, and sharp box/roof controls.
+- **Weather:** done (2026-10-21, #44, #45, #46). `r.setWeather({ ... })` sets falling rain or snow with an intensity, the
+  cloud shadows' cover and drift speed, and the wind in sway (a steady lean and gusts); see `Weather` in
+  `src/renderer/weather.ts`. With the defaults the image is exactly as before.
+  - **Rain and snow** are drawn over the finished image in the clean-up pass, after the orphan clean-up (which would remove
+    single-pixel drops), with no geometry. Each layer (two for each kind: a near one, longer, faster and stronger, and a far
+    one) is a grid of cells sliding down the screen with the clock, slanted by the wind across the screen; a cell holds at most
+    one streak or flake, and the intensity sets how many cells do, the streak length and (for snow) two-pixel flakes. The grid is
+    offset by the camera's pixel-snapped position, so the drops keep their place in the world as the camera pans and never
+    shimmer. Each drop has a depth along a vertical world line (deeper as it falls, by tan(elevation) per unit down the screen),
+    starting in a range around the camera target wide enough to land anywhere on screen; a drop is hidden where the G-buffer is
+    nearer, so drops pass behind buildings and end on the ground. Rain also leaves one- or two-pixel splashes on upward-facing
+    surfaces for a fraction of a second. Drops take the sky's colour, lightened by day and dimmed at night. Speeds are in art
+    pixels per second (rain 100 and 150, snow 13 and 22), not world units, so zooming never scrambles the pattern. On Cookie Co.
+    at 480 × 300, rain covers 0.5% of the pixels at intensity 0.2 and 4.2% at 1; snow 0.5% and 2.2%.
+  - **Cloud cover** moves the cloud field's threshold along its measured quantiles (0.2, the default, is the old 0.60 to
+    0.66); at 1 every upward-facing surface is shaded. As before, cloud shadows fall only on upward-facing surfaces, so for an
+    overcast day the game also dims the sun in its `Look`. **Cloud speed** scales the drift; the renderer integrates the drift
+    across speed changes, so the clouds never jump (at a constant speed it is still time × speed).
+  - **Wind** in `POSE`: the sway's lean is `wind + gusts × gust(x, t)` instead of `gust(x, t)`, in every pass that poses sway
+    (baked dynamic mesh, objects, their masks), from one shared uniform. Sway still casts its shadow at rest. A change applies at
+    once; the game eases it.
+  - Demo: the viewer's Weather panel and `?precip=rain|snow&intensity=&cover=&cloudSpeed=&wind=&gusts=`. `npm run weather-check`;
+    three golden views.
+  - **Not done:** fog and haze for storms, lying snow, puddles, wind direction (the wind blows along the sway's fixed direction).
 - **Machines that show they are running:** smoke and glow on objects (ambient motion on objects done, issue #23), and perhaps lamps on them.
 - **Seeing behind buildings:** fading or cutting away buildings and trees, if the 90° views are not enough.
 - **Animals:** chickens moving about, as rigid parts or skinned meshes.

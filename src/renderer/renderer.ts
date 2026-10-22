@@ -11,6 +11,7 @@ import { buildWindowLight, type WindowLight } from './windowLight';
 import { FLUID_FRAG, FLUID_VERT } from './shaders/water';
 import { linearColor } from './geometry';
 import { buildFluidMap, type FluidMap } from './fluidMap';
+import { CloudDrift, cloudEdges, DEFAULT_WEATHER, mergeWeather, precipitationUniform, type Weather } from './weather';
 import { instanceData, MAX_HIGHLIGHTS, MIRROR_X, MOTION_ATTRIBUTES, OBJECT_ATTRIBUTES, ObjectBatch, PixelObject } from './objects';
 
 /** Stylisation switches. All on is the intended look; the toggles exist for comparison and debugging. */
@@ -69,6 +70,9 @@ export interface PickResult {
    */
   object: PixelObject | null;
 }
+
+/** How far `placeCamera` puts the camera from its target, along the view direction. */
+const CAMERA_DISTANCE = 100;
 
 /** Patch a three.js shader chunk; fail loudly if a three upgrade renames it, rather than silently drawing unposed. */
 const patch = (src: string, find: string, put: string) => {
@@ -191,6 +195,11 @@ export class PixelRenderer {
   private lampShadows: LampShadows;
   /** Warm pools below the lit windows, splatted once into a top-down map (see windowLight.ts). */
   readonly windowLight: WindowLight;
+  /** The weather the game set (`setWeather`), and the cloud shadows' drift, which follows its speed without jumping. */
+  private weatherNow: Weather = { ...DEFAULT_WEATHER };
+  private cloudDrift = new CloudDrift(DEFAULT_WEATHER.cloudSpeed);
+  /** The wind in sway (lean, gusts), shared by every shader that poses ambient motion; set at each `renderGeometry`. */
+  private wind = { value: new THREE.Vector2(DEFAULT_WEATHER.wind, DEFAULT_WEATHER.gusts) };
 
   width = 1; height = 1;
   viewHeight = 13;
@@ -253,7 +262,7 @@ export class PixelRenderer {
 
     this.dynMat = new THREE.ShaderMaterial({
       vertexShader: GBUF_DYN_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.DoubleSide,
-      uniforms: { uTime: { value: 0 }, uNight: { value: 0 }, uSS: { value: 1 } },
+      uniforms: { uTime: { value: 0 }, uNight: { value: 0 }, uWind: this.wind, uSS: { value: 1 } },
     });
     this.dynMesh = new THREE.Mesh(pixelScene.dynamicGeometry, this.dynMat);
     this.dynMesh.frustumCulled = false; this.dynMesh.castShadow = false; this.dynMesh.receiveShadow = true;
@@ -287,9 +296,9 @@ export class PixelRenderer {
     this.dynShadowMat = new THREE.ShadowMaterial({ color: 0x000000, opacity: 1, side: THREE.DoubleSide });
     this.dynShadowMat.transparent = false; this.dynShadowMat.blending = THREE.NoBlending;
     this.dynShadowMat.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = this.dynMat.uniforms.uTime; shader.uniforms.uNight = this.dynMat.uniforms.uNight;
+      shader.uniforms.uTime = this.dynMat.uniforms.uTime; shader.uniforms.uNight = this.dynMat.uniforms.uNight; shader.uniforms.uWind = this.wind;
       let v = patch(shader.vertexShader, '#include <common>', `#include <common>
-uniform float uTime; uniform float uNight;
+uniform float uTime; uniform float uNight; uniform vec2 uWind;
 attribute float aMode; attribute vec3 aAnchor; attribute vec4 aAnim;
 varying float vMode;   // only so the fragment stage can drop non-rigid modes
 ${POSE}`);
@@ -299,13 +308,13 @@ ${POSE}`);
       shader.fragmentShader = patch(shader.fragmentShader, 'void main() {', 'varying float vMode;\nvoid main() {\n  if (vMode < 5.5) discard;');
     };
     // Objects with motion attributes, posed by POSE_OBJECT in every pass: the shared clock, an id-phased copy per instance.
-    const motionUniforms = { uTime: this.dynMat.uniforms.uTime, uNight: this.dynMat.uniforms.uNight };
+    const motionUniforms = { uTime: this.dynMat.uniforms.uTime, uNight: this.dynMat.uniforms.uNight, uWind: this.wind };
     this.objectMotionMat = new THREE.ShaderMaterial({
       vertexShader: GBUF_OBJECT_MOTION_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide,
       uniforms: { ...motionUniforms, uSS: { value: 1 }, uSeeThrough: this.objectMat.uniforms.uSeeThrough },
     });
     this.objectMotionMat.shadowSide = THREE.DoubleSide;
-    const poseHeader = `uniform float uTime; uniform float uNight;
+    const poseHeader = `uniform float uTime; uniform float uNight; uniform vec2 uWind;
 attribute float aMode; attribute vec3 aAnchor; attribute vec4 aAnim;
 varying float vMode;
 ${POSE_OBJECT}`;
@@ -368,7 +377,7 @@ ${POSE_OBJECT}`;
         tAlbedo: { value: null }, tNormal: { value: null }, tShadow: { value: null },
         uRes: { value: new THREE.Vector2() }, uTexel: { value: 0.05 },
         uRight: { value: new THREE.Vector3() }, uUp: { value: new THREE.Vector3() }, uFwd: { value: new THREE.Vector3() }, uCamPos: { value: new THREE.Vector3() },
-        uSun: { value: this.sun }, uTime: { value: 0 },
+        uSun: { value: this.sun }, uTime: { value: 0 }, uCloud: { value: new THREE.Vector4() },
         uOutline: { value: 1 }, uDither: { value: 1 }, uClouds: { value: 1 }, uContact: { value: 1 }, uGlow: { value: 1 }, uVignette: { value: 1 },
         uSunI: { value: 1 }, uAmbient: { value: 0.34 }, uExpo: { value: 1 }, uChroma: { value: 1 }, uNight: { value: 0 }, uLampOn: { value: 0 },
         uLitTint: { value: new THREE.Vector2() }, uShadeTint: { value: new THREE.Vector2() },
@@ -399,9 +408,11 @@ ${POSE_OBJECT}`;
     });
     this.cleanMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: CLEAN_FRAG,
-      uniforms: { tImage: { value: null }, tAlbedo: { value: null }, tNormal: { value: null }, tShadow: { value: null }, tFluid: { value: null }, uRes: { value: new THREE.Vector2() }, uOn: { value: 1 },
-        // Shared with the post material, which sets them (setHighlight, renderStyle): the highlight test needs the camera.
-        ...Object.fromEntries(['uHighlight', 'uTexel', 'uRight', 'uUp', 'uFwd'].map((k) => [k, this.postMat.uniforms[k]])) },
+      uniforms: { tImage: { value: null }, tAlbedo: { value: null }, tNormal: { value: null }, tShadow: { value: null }, tFluid: { value: null }, tFluidN: { value: null }, uRes: { value: new THREE.Vector2() }, uOn: { value: 1 },
+        uPrecip: { value: new THREE.Vector4() }, uPrecipDepth: { value: new THREE.Vector4() },
+        // Shared with the post material, which sets them (setHighlight, setLook, renderStyle): the highlight test needs the
+        // camera, and the rain and snow the camera, the clock and the sky.
+        ...Object.fromEntries(['uHighlight', 'uTexel', 'uRight', 'uUp', 'uFwd', 'uCamPos', 'uTime', 'uSkyTop', 'uSkyBot', 'uNight'].map((k) => [k, this.postMat.uniforms[k]])) },
     });
     this.resolveMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: RESOLVE_FRAG,
@@ -562,6 +573,22 @@ ${POSE_OBJECT}`;
     this.dynMat.uniforms.uNight.value = look.night;
   }
 
+  /**
+   * Set the weather: falling rain or snow, the cloud shadows' cover and speed, and the wind in sway (see `Weather` for each
+   * field and its range). Only the fields given change. A value out of range throws a `RangeError` and changes nothing.
+   * Rain, snow and clouds take effect at the next `renderStyle`, the wind at the next `renderGeometry`. Everything moves
+   * with the clock passed to those, so a frozen clock freezes the weather. Changing the cloud speed never makes the clouds
+   * jump; changing the wind moves the sway at once, so ease it over a few seconds for a smooth change.
+   */
+  setWeather(change: Partial<Weather>) {
+    const next = mergeWeather(this.weatherNow, change);
+    this.cloudDrift.setSpeed(next.cloudSpeed);
+    this.weatherNow = next;
+  }
+
+  /** The weather as last set (a copy). */
+  get weather(): Weather { return { ...this.weatherNow }; }
+
   /** Set the art resolution (G-buffer and canvas size in art pixels). */
   resize(w: number, h: number) {
     this.width = w; this.height = h; this.gbufDrawn = false;
@@ -593,7 +620,7 @@ ${POSE_OBJECT}`;
     cam.left = -halfW; cam.right = halfW; cam.top = halfH; cam.bottom = -halfH;
     cam.updateProjectionMatrix();
     const dir = new THREE.Vector3(Math.sin(azimuth) * Math.cos(elevation), Math.sin(elevation), Math.cos(azimuth) * Math.cos(elevation));
-    cam.position.copy(target).addScaledVector(dir, 100);
+    cam.position.copy(target).addScaledVector(dir, CAMERA_DISTANCE);
     cam.lookAt(target);
     cam.updateMatrixWorld();
     const texel = viewHeight / this.height;
@@ -612,6 +639,7 @@ ${POSE_OBJECT}`;
     this.retired = [];
     this.lampShadows.render(r);
     this.dynMat.uniforms.uTime.value = time;
+    this.wind.value.set(this.weatherNow.wind, this.weatherNow.gusts);
     this.poseObjects();
     // Spinning and swinging objects cast a shadow that moves with the clock.
     if (this.rigidObjectsShown && time !== this.objectShadowTime) this.objectShadowDirty = true;
@@ -702,6 +730,14 @@ ${POSE_OBJECT}`;
     u.uTime.value = time;
     u.uContact.value = s.contacts ? 1 : 0; u.uGlow.value = s.glow ? 1 : 0; u.uVignette.value = s.vignette ? 1 : 0;
     u.uOutline.value = s.outlines ? 1 : 0; u.uDither.value = s.dither ? 1 : 0; u.uClouds.value = s.clouds ? 1 : 0;
+    const w = this.weatherNow, edges = cloudEdges(w.cloudCover), drift = this.cloudDrift.at(time);
+    u.uCloud.value.set(edges[0], edges[1], drift[0], drift[1]);
+    const cu = this.cleanMat.uniforms;
+    cu.uPrecip.value.set(...precipitationUniform(w, u.uRight.value.x, u.uRight.value.z));
+    // Drops sit at depths around the camera's target, over a range that lets them land anywhere on screen (see
+    // shaders/weather.ts), and go deeper as they fall: tan(elevation) per unit down the screen.
+    const sinEl = Math.max(-u.uFwd.value.y, 0), cosEl = Math.max(u.uUp.value.y, 0.05);
+    cu.uPrecipDepth.value.set(CAMERA_DISTANCE, 0.5 * this.viewHeight / Math.max(sinEl * cosEl, 0.1), sinEl / cosEl, 0);
 
     const fluidTex = this.fluidBuf?.textures ?? [this.noFluid, this.noFluid];
     u.tFluidN.value = fluidTex[0]; u.tFluidF.value = fluidTex[1];
@@ -718,6 +754,7 @@ ${POSE_OBJECT}`;
 
     this.cleanMat.uniforms.tImage.value = image.texture;
     this.cleanMat.uniforms.tFluid.value = fluidTex[1];
+    this.cleanMat.uniforms.tFluidN.value = fluidTex[0];
     this.cleanMat.uniforms.tAlbedo.value = this.gbuf.textures[0];
     this.cleanMat.uniforms.tNormal.value = this.gbuf.textures[1];
     this.cleanMat.uniforms.tShadow.value = this.gbuf.textures[2];
