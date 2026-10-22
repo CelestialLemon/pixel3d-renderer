@@ -86,7 +86,7 @@ void water(ivec2 p){
   int code = int(ff.a + 0.5) - 1;
   bool layer = code >= ${LAYER_SLOT};   // a runtime layer (fluidLayer.ts): no baked flow map under it
   int slot = layer ? code - ${LAYER_SLOT} : code;
-  bool frozen = uFluidD[slot].w > 0.5;   // ice: motionless, no ripples, foam or glints
+  bool frozen = uFluidD[slot].w >= 0.5;   // ice: motionless, no ripples, foam or glints
   float d = fn.w, THR = max(0.10, uTexel * 3.0);
   // A solid standing in front of the surface keeps the ink the first pass drew on this pixel.
   if (uOutline == 1) {
