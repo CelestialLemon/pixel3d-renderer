@@ -69,6 +69,7 @@ void main(){
       if (cnt >= 3 && !same(n[i], c)) { c = n[i]; break; }
     }
   }
+  if (uPrecip.x < 0.5) { outColor = vec4(c, 1.0); return; }   // nothing falls: no more reads
   vec4 a = texelFetch(tAlbedo, p, 0), nd = texelFetch(tNormal, p, 0);
   // A fluid surface nearer than what is under it is what the rain meets: the pool, not its bed.
   if (texelFetch(tFluid, p, 0).a > 0.5) {
