@@ -48,6 +48,9 @@ const SHOTS = [
   ...[12, 22].map((h) => ({ name: `fluids-hour${h}`, path: `pass3.html?${VIEW}&scene=fluids&hour=${h}`, canvas: 'p3-view' })),
   // The props gallery: every batch-1 prop, so a loader change that breaks a prop shows up here.
   { name: 'props-overview', path: `pass3.html?${VIEW}&scene=props&hour=12`, canvas: 'p3-view' },
+  // Runtime fluids (addFluid): a flood over the plain held by the levee, and the quiet river frozen from its banks.
+  { name: 'floodplain-flood', path: `pass3.html?${VIEW}&scene=floodplain&hour=12&flood=0.8`, canvas: 'p3-view' },
+  { name: 'floodplain-ice', path: `pass3.html?${VIEW}&scene=floodplain&view=river&hour=12&ice=1`, canvas: 'p3-view' },
   // Rigid game objects: shared crop instances, transformed normals, moving sun shadows and runtime visibility.
   ...['yard', 'field', 'balls'].map((v) => ({ name: `objects-${v}`, path: `pass3.html?${VIEW}&scene=objects&view=${v}&hour=12`, canvas: 'p3-view' })),
   { name: 'objects-yard-time2', path: `pass3.html?auto=0&clean-ui=1&time=2&px=3&scene=objects&view=yard&hour=12`, canvas: 'p3-view' },

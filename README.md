@@ -51,6 +51,8 @@ quantizePalette([scene.staticGeometry, crateGeometry], 64);
 const r = new PixelRenderer(canvas, scene, { shadowMapSize: 2048 });
 r.resize(320, 180);                               // art pixels; scale the canvas up with CSS
 const box = r.addObject(crateGeometry);           // things the game moves
+const flood = r.addFluid(FLUIDS.flood);           // water the game changes: flood.setCells({ x, z, cell, cols, rows, heights }),
+flood.y = 0.4;                                    // flood.y (its level, every frame if you like), flood.material = FLUIDS.ice, flood.remove()
 // Per object: box.tint / box.tintStrength (mix its colours towards a colour), box.opacity (dithered see-through; pick looks
 // through it), box.castShadow = false (items that move every frame without redrawing the shadow map), box.highlight.
 // An object geometry from new GeometryCollector(true), with a motion.* (local anchors) per part, sways, spins or smokes by itself.
@@ -99,12 +101,14 @@ src/
     palette.ts         OKLab palette reduction (minimax merging)
     gltf.ts            glTF loading and per-mesh rules (flags, motion, skip)
     look.ts            time of day: sun, colour grade, sky, lamps
+    fluidLayer.ts      PixelFluid: runtime fluid layers (a flood, ice) the game adds, moves and removes (`addFluid`)
     weather.ts         weather the game sets: rain and snow (drawn by shaders/weather.ts), cloud cover and speed, wind in sway, haze (fog, dust; `haze` in shaders/post.ts)
   scenes/              scene content: one folder per scene, registered in scenes/index.ts
     cookie-co/         the factory, meadow, trees, pond and wildlife
     village/           Lantern Row, a night village street: layout, paving, walls, canal, trees, and placement of the modelled buildings
     test-chart/        calibration bays (thin features, curves, ink, AO, palette, lamps)
     props/             gallery of every modelled prop in assets/props/
+    floodplain/        a river, a floodplain and a levee, with a flood and ice layer driven from the URL (runtime fluids)
     shared/            seeded randomness and noise for building scenes
   app/                 the demo pages: compare/ (index.html), viewer/ (pass3.html), shared orbit camera, params, pass registry
   reference/           FROZEN: Pass 0 and Pass 1 pipelines and their world. Never edit (golden images prove they are unchanged).
@@ -193,6 +197,7 @@ A tool fails rather than quietly fall back to the CPU when a GPU backend is chos
 | `npm run smooth-normal-check` | Smooth versus faceted sine terrain: identical depth effects and resolve depths with smooth lighting normals preserved, at supersample 1 and 3, for static/animated geometry and mirrored, non-uniformly scaled objects; includes highlight cleanup. |
 | `npm run camera-check` | Camera snap: the image shift the renderer reports for the camera it snapped to the art-pixel grid (`snapShift`) moves projected landmarks back onto the requested camera, for both signs, with and without a capture margin, at several scales, and repeatably. |
 | `npm run settings-check` | Game-supplied settings: custom and reduced limits compile and draw, invalid scene/capacity inputs are rejected before WebGL allocation and excessive uniform budgets after querying the GPU, shadow map sizes, resolve options, custom day cycles and minimal scene inputs. |
+| `npm run fluid-layer-check` | Runtime fluid layers: an empty layer draws nothing, a flood hides below the ground and covers more as its level rises, hiding, clearing and removing restore the image exactly, ice is a material change that holds still with the clock where water ripples, a full material table throws and changes nothing, a scene with no fluids can still get a layer and give its image back. |
 | `npm run weather-check` | Weather: the default weather draws the image unchanged, rain and snow at light and heavy intensity draw something but keep most of the view, follow the clock and nothing else, cloud cover changes the shading, a new cloud speed doesn't move the clouds and speed 0 holds them, wind leans the sway, haze veils the ground by amount and height, drifts, never hides the farm and takes its colour, and out-of-range values throw without changing anything. |
 | `npm run startup-check` | Exact binary/gzip roundtrips for all six scenes, including prepared fluid/window maps and local object geometry; live and decoded first frames must match pixel for pixel. |
 | `GL_BACKEND=swiftshader npm run golden -- --ci` | Ten fixed comparison, day/night, water and object views against `golden/ci-linux-x64-swiftshader/`. CI installs the pinned browser and uses this CPU-rendered set. Its references come from known-good main; existing GPU references stay unchanged. |

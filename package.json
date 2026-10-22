@@ -50,10 +50,11 @@
     "highlight-check": "node tools/highlight-check.ts",
     "settings-check": "node tools/settings-check.ts",
     "weather-check": "node tools/weather-check.ts",
+    "fluid-layer-check": "node tools/fluid-layer-check.ts",
     "startup-check": "node tools/startup-check.ts",
     "object-bench": "node tools/object-bench.ts",
     "verify": "node tools/verify.ts && node tools/check-viewer.ts && node tools/anim-check.ts",
-    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run smooth-normal-check && npm run fold-check && npm run window-light-check && npm run water-check && npm run camera-check && npm run object-check && npm run object-motion-check && npm run object-look-check && npm run pick-check && npm run highlight-check && npm run settings-check && npm run weather-check && npm run startup-check && npm run example-check && npm run golden && npm run verify",
+    "check": "npm run typecheck && npm run lamp-shadow-check && npm run moving-shadow-check && npm run village-check && npm run resolve-check && npm run smooth-normal-check && npm run fold-check && npm run window-light-check && npm run water-check && npm run camera-check && npm run object-check && npm run object-motion-check && npm run object-look-check && npm run pick-check && npm run highlight-check && npm run settings-check && npm run weather-check && npm run fluid-layer-check && npm run startup-check && npm run example-check && npm run golden && npm run verify",
     "example-check": "npm run build:lib && node tools/example-check.ts"
   },
   "devDependencies": {

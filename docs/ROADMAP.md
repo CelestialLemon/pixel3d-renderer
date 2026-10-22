@@ -229,6 +229,22 @@ against the game; its `docs/ROADMAP.md` keeps the current list):
   - Demo: the viewer's Weather panel and `?precip=rain|snow&intensity=&cover=&cloudSpeed=&wind=&gusts=`. `npm run weather-check`;
     three golden views.
   - **Not done:** lying snow, puddles, wind direction (the wind blows along the sway's fixed direction).
+- **Runtime fluids:** done (2026-10-23, #50). `r.addFluid(material)` returns a `PixelFluid` layer (`src/renderer/fluidLayer.ts`): a
+  flood that spreads and drains, ice that forms and melts, all owned by the game; see the `PixelFluid` docs.
+  - **Design.** The baked fluids stay as they are (flow map, sources). A layer is one more mesh in the same fluid pass, so it shares
+    the fluid G-buffer, the depth test against the opaque world, the composite and the lamps. The vertex shader now uses
+    `modelViewMatrix`, so a layer's `y` is the mesh's position (no geometry rewrite per frame). Surfaces come from a grid of cells
+    (`cellsSurfaces`: rows of equal-height cells merge into rectangles), or any geometry (`geometrySurfaces`, through
+    `FluidCollector`). Rebuilding is a few array writes and one upload, cheap enough for a flood stepping a tile at a time.
+  - **Slots.** A layer's material gets a slot in the table the post shader reads (`uFluidA`..`D`), after the scene's, equal
+    materials sharing one; changing a material rewrites four small uniform arrays and the layer's slot attribute. The table is the
+    scene's `limits.fluidMaterials`. Layer surfaces carry `slot + 4096` in the fluid G-buffer's material code, which tells the
+    composite to skip the baked flow map (its heights and flow have nothing to do with a flood over a plain).
+  - **Ice** (`FluidMaterial.frozen`, `FLUIDS.ice`): the composite takes ice out of the flow and stirring, replaces the animated
+    ripple field with a fixed one of the same shape (`iceField`) plus thin cracks (a ridge of another noise), and drops the
+    glints and foam. The body, bed seen through it, reflection and lamps are the water's own, so it reads as ice over a dark bed.
+  - **Not done:** shore foam and wake where a layer meets a bank, a layer feeding the flow map, dithered fade-in of a layer
+    (grow it with `setCells` instead), snow on ice.
 - **Haze:** done (2026-10-23, #49). `r.setWeather({ haze, hazeColor, hazeTop })`: a ground-hugging fog or dust layer; see `Weather`
   and `haze()` in `shaders/post.ts`. With `haze: 0` (the default) the image is exactly as before.
   - **Why it has no seam.** The old depth haze (Pass 2) washed everything out, and any step in the *depth* of a pixel is a line
@@ -405,7 +421,7 @@ asset pipeline and packaging are in Phase 1.
 
 - Tune the foliage and lamp look further; add a night moon and stars if the camera ever sees the sky.
 - A transparency policy beyond ordered-dither discard (particles) if a scene needs it. Fluids have their own layer (section 1, item 7).
-- Fluids, later: moving obstacles in the flow map (today a moving part needs a `FluidSource`); sources tied to one body of water
+- Fluids, later: shore foam for runtime layers; moving obstacles in the flow map (today a moving part needs a `FluidSource`); sources tied to one body of water
   (a `FluidSource` stirs every pool surface at its height within its radius, so a separate basin alongside is stirred too); gently sloped rivers (a fluid surface
   steeper than ~18° counts as falling water and runs straight down its slope, ignoring any authored flow, and the flow map covers
   only flat pools); splashes as particles, wet shore darkening, underwater fog for a camera below the surface, and a fluid casting
