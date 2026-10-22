@@ -12,6 +12,7 @@ uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform sampler2D tShadow;
 uniform vec2 uRes; uniform float uTexel;
 uniform vec3 uRight; uniform vec3 uUp; uniform vec3 uFwd; uniform vec3 uCamPos;
 uniform vec3 uSun; uniform float uTime;
+uniform vec4 uCloud;   // cloud shadows (weather.ts): xy where the field starts and ends shading, zw its drift
 uniform int uOutline; uniform int uDither; uniform int uClouds; uniform int uContact; uniform int uGlow; uniform int uVignette;
 uniform int uDeferGrade;   // 1: a fluid pass follows: write unclipped linear colour, and let it grade (shaders/water.ts)
 uniform float uSunI; uniform float uAmbient; uniform float uExpo; uniform float uChroma; uniform float uNight; uniform float uLampOn;
@@ -187,7 +188,7 @@ float shadeAt(ivec2 q){
   float s = uAmbient + 0.14 * max(nn.y, 0.0) + 0.55 * uSunI * sunlight(clampP(q), nn);
   if (uClouds == 1 && nn.y > 0.95) {
     vec3 wp = worldAt(vec2(q) + 0.5, nq.w);
-    float cl = smoothstep(0.60, 0.66, cloudField(wp.xz * 0.10 + vec2(uTime * 0.028, uTime * 0.011)));
+    float cl = smoothstep(uCloud.x, uCloud.y, cloudField(wp.xz * 0.10 + uCloud.zw));
     s -= 0.34 * cl * clamp(uSunI * 1.2, 0.0, 1.0);
   }
   return s;

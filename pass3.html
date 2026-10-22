@@ -35,6 +35,14 @@
   <label><input type="checkbox" id="auto" /> Auto-orbit</label>
   <label>Pixel size <select id="pixel" aria-label="Pixel size"><option>2</option><option selected>3</option><option>4</option><option>6</option></select></label>
   <hr />
+  <div class="panel-heading">Weather</div>
+  <label>Falling <select id="precipitation" aria-label="Precipitation"><option value="none">nothing</option><option value="rain">rain</option><option value="snow">snow</option></select></label>
+  <label>Intensity <input type="range" id="intensity" min="0" max="1" step="0.05" aria-label="Intensity" /></label>
+  <label>Cloud cover <input type="range" id="cloudCover" min="0" max="1" step="0.05" aria-label="Cloud cover" /></label>
+  <label>Cloud speed <input type="range" id="cloudSpeed" min="0" max="10" step="0.25" aria-label="Cloud speed" /></label>
+  <label>Wind <input type="range" id="wind" min="0" max="3" step="0.1" aria-label="Wind" /></label>
+  <label>Gusts <input type="range" id="gusts" min="0" max="3" step="0.1" aria-label="Gusts" /></label>
+  <hr />
   <label><input type="checkbox" id="compare" /> Compare with Pass 1</label>
   <label><input type="checkbox" id="compare-palette" /> Compare palettes</label>
   <div class="row" id="palette-sizes" hidden><label>Left <select id="k-left" aria-label="Left palette size"><option>40</option><option>48</option><option>56</option><option>64</option><option>72</option><option>80</option><option>96</option></select></label><label>Right <select id="k-right" aria-label="Right palette size"><option>40</option><option>48</option><option>56</option><option>64</option><option>72</option><option>80</option><option>96</option></select></label></div>
