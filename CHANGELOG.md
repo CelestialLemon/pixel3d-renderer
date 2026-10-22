@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.4.0 (2026-10-23)
+
 ### Added
 
 - **Runtime fluids: floods and ice** ([#50](https://github.com/CelestialLemon/pixel3d-renderer/issues/50)).
