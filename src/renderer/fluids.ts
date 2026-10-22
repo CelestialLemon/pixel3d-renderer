@@ -24,6 +24,11 @@ export interface FluidMaterial {
   foam: number; foamAmount: number;
   /** 0..1: self-lit (acid, lava). The body keeps its colour in the dark and glows. */
   emission: number;
+  /**
+   * Frozen (default 0): at 0.5 or more the surface is ice: motionless whatever the flow or the stirring around it, with no
+   * ripples, no foam and no glints, only a fixed pattern of streaks and cracks on a smooth, glossy surface (see `FLUIDS.ice`).
+   */
+  frozen?: number;
 }
 
 /** Ready-made fluids. Spread one and override a field for a variant: `{ ...FLUIDS.water, deep: 0x113355 }`. */
@@ -38,6 +43,10 @@ export const FLUIDS = {
   swamp: { shallow: 0x5e6c36, deep: 0x2c3420, clarity: 0.15, reflectivity: 0.25, roughness: 0.08, waveScale: 0.7, foam: 0x9aa070, foamAmount: 0.4, emission: 0 },
   /** Toxic acid: glows a little and froths readily. */
   acid: { shallow: 0xb8f04a, deep: 0x4c9a1c, clarity: 0.35, reflectivity: 0.35, roughness: 0.1, waveScale: 0.6, foam: 0xeaffb0, foamAmount: 1, emission: 0.45 },
+  /** Floodwater: silty and brown, a little murky, stirred only by the current it is given. For `PixelRenderer.addFluid`. */
+  flood: { shallow: 0xb9a878, deep: 0x8c7a52, clarity: 0.9, reflectivity: 0.35, roughness: 0.05, waveScale: 1.2, foam: 0xe6dcc0, foamAmount: 0.5, emission: 0 },
+  /** Ice on a river or pond: pale, glossy, still, with a fixed pattern of streaks and cracks. The bed shows dimly through it. */
+  ice: { shallow: 0xe4f2f6, deep: 0xa4c6d6, clarity: 0.5, reflectivity: 0.3, roughness: 0, waveScale: 1.1, foam: 0xffffff, foamAmount: 0, emission: 0, frozen: 1 },
   /** Lava: opaque and self-lit, with a dark crust where it is disturbed, and no mirror. */
   lava: { shallow: 0xffb03a, deep: 0xc8361a, clarity: 0.05, reflectivity: 0.04, roughness: 0.3, waveScale: 1.6, foam: 0x3a2018, foamAmount: 0.9, emission: 1 },
 } satisfies Record<string, FluidMaterial>;
@@ -64,8 +73,9 @@ export interface SceneFluids {
   sources: FluidSource[];
 }
 
-const materialKey = (m: FluidMaterial) =>
-  [m.shallow, m.deep, m.clarity, m.reflectivity, m.roughness, m.waveScale, m.foam, m.foamAmount, m.emission].join(',');
+/** What makes two materials equal: they share one slot. */
+export const materialKey = (m: FluidMaterial) =>
+  [m.shallow, m.deep, m.clarity, m.reflectivity, m.roughness, m.waveScale, m.foam, m.foamAmount, m.emission, m.frozen ?? 0].join(',');
 
 /** Below this |normal.y| a fluid triangle counts as falling (a jet, a spill, a waterfall) rather than a pool. */
 export const POOL_NORMAL_Y = 0.95;

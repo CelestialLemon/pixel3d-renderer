@@ -4,6 +4,7 @@
 // Drawing, objects the game moves, picking, and construction options.
 export { PixelRenderer, DEFAULT_SETTINGS, type PixelRendererOptions, type RenderSettings, type PickResult } from './renderer';
 export { MAX_HIGHLIGHTS, PixelObject } from './objects';
+export { PixelFluid, type FluidCells } from './fluidLayer';
 export { DEFAULT_LIMITS, LIMITS, resolveLimits, type RendererLimits, type PixelScene, type ResolvedPixelScene, type Lamp, type Grooves } from './scene';
 export type { FluidMap } from './fluidMap';
 export type { WindowLight } from './windowLight';

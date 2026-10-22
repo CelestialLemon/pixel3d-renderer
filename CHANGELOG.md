@@ -9,6 +9,24 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ### Added
 
+- **Runtime fluids: floods and ice** ([#50](https://github.com/CelestialLemon/pixel3d-renderer/issues/50)).
+  `PixelRenderer.addFluid(material)` returns a `PixelFluid`: a layer of water the game adds, changes and removes while it plays,
+  drawn with the scene's own fluids (it mirrors, shows the bed, takes lamps and hides behind the opaque world like them).
+  - `setCells({ x, z, cell, cols, rows, heights }, flow?)`: a grid of square cells, each with a surface height (NaN: none), which
+    is what a tile game has; runs of neighbouring cells at one height become one rectangle. `setGeometry(geometry, flow?)` takes
+    any triangles in world space; `clear()` empties the layer. Change the surfaces when the shape changes (a few times a minute).
+  - `y` (metres, added to every surface), `visible` and `material` are cheap and read each frame: a flood's level is `y`, and
+    ground higher than it hides it by the usual depth test, so the shore follows the terrain. `remove()` takes the layer out.
+  - `FLUIDS.flood` (silty brown water) and `FLUIDS.ice`. `FluidMaterial.frozen` (default 0) marks ice: motionless, no ripples,
+    foam, glints or stirring, with a fixed pattern of streaks and cracks. Freezing the river is a second layer of ice cells a hair
+    (at least 2 cm) above the baked water, shown and hidden or grown from the banks; or a layer's `material` changed to ice.
+  - A layer takes a slot in the shader's table of fluid materials, shared with the scene's (`limits.fluidMaterials`, default 8);
+    one more than fits throws a `RangeError` and changes nothing. A layer does not use the baked flow map: its current is the
+    `flow` it is given, with no foam along banks.
+  - A scene with no fluids of its own gets the fluid targets while a layer is drawn and frees them after, so its image is exactly
+    what it was. The defaults draw exactly what earlier versions drew.
+  - Demo: `?scene=floodplain` with `?flood=0..1`, `?ice=0..1` and `?cycle=1`. Two golden views.
+
 - **Haze** ([#49](https://github.com/CelestialLemon/pixel3d-renderer/issues/49)). Three more fields of `Weather`, set with
   `setWeather` like the rest: `haze` (0 to 1, default 0: none; about 0.3 a thin mist, 0.6 a fog, 1 the thickest), `hazeColor`
   (sRGB hex, default `0xcfd6d8`: a cool grey for fog, a warm brown such as `0xc49a62` for dust) and `hazeTop` (the world height

@@ -1,3 +1,4 @@
+import { LAYER_SLOT } from '../fluidLayer';
 import { POOL_NORMAL_Y } from '../fluids';
 import type { RendererLimits } from '../scene';
 
@@ -13,7 +14,7 @@ in vec3 aFlow; in float aFluid;
 out vec3 vN; flat out vec3 vFlow; flat out float vSlot; out float vD;   // flow and slot are per triangle
 void main(){
   vN = normal; vFlow = aFlow; vSlot = aFluid;
-  vec4 vp = viewMatrix * vec4(position, 1.0);
+  vec4 vp = modelViewMatrix * vec4(position, 1.0);   // a layer (fluidLayer.ts) is moved by its mesh
   vD = -vp.z;
   gl_Position = projectionMatrix * vp;
 }`;
@@ -44,7 +45,7 @@ uniform sampler2D tImage;                       // pass 0's output: linear, uncl
 uniform sampler2D tFluidN; uniform sampler2D tFluidF;   // the fluid G-buffer (see FLUID_FRAG)
 uniform sampler2D tFluidMap; uniform sampler2D tFluidHeight; uniform vec4 uFluidBounds;   // fluidMap.ts
 // Four vec4 per material, to keep the fragment uniform count low (colours linear RGB):
-// (shallow, clarity), (deep, reflectivity), (foam, roughness), (wave scale, foam amount, emission, -).
+// (shallow, clarity), (deep, reflectivity), (foam, roughness), (wave scale, foam amount, emission, frozen).
 uniform vec4 uFluidA[MAX_FLUIDS]; uniform vec4 uFluidB[MAX_FLUIDS]; uniform vec4 uFluidC[MAX_FLUIDS]; uniform vec4 uFluidD[MAX_FLUIDS];
 uniform int uSourceCount; uniform vec4 uSources[MAX_SOURCES];   // x, z, radius (negative: no rings), strength
 uniform float uSourceY[MAX_SOURCES];                            // the surface height each stirs (-1e4: any)
@@ -77,9 +78,15 @@ float rippleField(vec2 s, vec2 f, float scale){
   return h;
 }
 
+// The fixed pattern on ice: the ripple field's shape, without its clock.
+float iceField(vec2 s, float scale){ return 0.65 * vn(s / (scale * 0.9)) + 0.35 * vn(s / (scale * 0.42) + 5.1); }
+
 void water(ivec2 p){
   vec4 fn = texelFetch(tFluidN, p, 0), ff = texelFetch(tFluidF, p, 0);
-  int slot = int(ff.a + 0.5) - 1;
+  int code = int(ff.a + 0.5) - 1;
+  bool layer = code >= ${LAYER_SLOT};   // a runtime layer (fluidLayer.ts): no baked flow map under it
+  int slot = layer ? code - ${LAYER_SLOT} : code;
+  bool frozen = uFluidD[slot].w >= 0.5;   // ice: motionless, no ripples, foam or glints
   float d = fn.w, THR = max(0.10, uTexel * 3.0);
   // A solid standing in front of the surface keeps the ink the first pass drew on this pixel.
   if (uOutline == 1) {
@@ -97,7 +104,7 @@ void water(ivec2 p){
 
   // Flow and turbulence: the top-down map knows the banks and obstacles; elsewhere the surface's own flow.
   float turb = 0.0, shore = 99.0;
-  if (pool) {
+  if (pool && !layer && !frozen) {
     vec2 uv = (wp.xz - uFluidBounds.xy) / (uFluidBounds.zw - uFluidBounds.xy);
     if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0))) && abs(textureLod(tFluidHeight, uv, 0.0).r - wp.y) < 0.05) {
       vec4 m = textureLod(tFluidMap, uv, 0.0);
@@ -107,7 +114,7 @@ void water(ivec2 p){
   float ring = 0.0;
   for (int k = 0; k < MAX_SOURCES; k++) {
     if (k >= uSourceCount) break;
-    if (!pool || (uSourceY[k] > -9e3 && abs(wp.y - uSourceY[k]) > 0.05)) continue;   // pools at its height only
+    if (!pool || frozen || (uSourceY[k] > -9e3 && abs(wp.y - uSourceY[k]) > 0.05)) continue;   // pools at its height only
     vec4 s = uSources[k];
     bool rings = s.z > 0.0;
     s.z = abs(s.z);
@@ -119,7 +126,7 @@ void water(ivec2 p){
     }
   }
   float speed = length(flow);
-  float rough = clamp(opt.z + 0.22 * speed + 0.75 * turb + 0.5 * ring, 0.0, 1.0);
+  float rough = frozen ? opt.z : clamp(opt.z + 0.22 * speed + 0.75 * turb + 0.5 * ring, 0.0, 1.0);   // ice is not stirred
 
   // Surface frame: a pool uses world xz; a falling sheet uses (across, down its slope), and its flow runs down.
   vec3 T = vec3(1.0, 0.0, 0.0), B = vec3(0.0, 0.0, 1.0);
@@ -132,11 +139,16 @@ void water(ivec2 p){
 
   // Ripple normal from the height field's slope. Calm water barely tilts; rough water tilts a lot.
   float sc = opt.w * (pool ? 1.0 : 0.5), e = 0.12 * sc;
-  float h = rippleField(s, f, sc);
-  vec2 gr = vec2(rippleField(s + vec2(e, 0.0), f, sc) - h, rippleField(s + vec2(0.0, e), f, sc) - h) / e;
+  float h; vec2 gr = vec2(0.0);
+  if (frozen) h = iceField(s, sc);   // fixed: it never moves with the clock
+  else {
+    h = rippleField(s, f, sc);
+    gr = vec2(rippleField(s + vec2(e, 0.0), f, sc) - h, rippleField(s + vec2(0.0, e), f, sc) - h) / e;
+  }
   float amp = 0.32 * rough * sc;   // zero roughness is a true mirror
   vec3 n = normalize(n0 - (T * gr.x + B * gr.y) * amp);
   int tone = h > 0.57 && h < 0.63 ? 3 : h < 0.4 ? 1 : 2;   // thin bright crest lines, darker troughs
+  if (frozen && abs(vn(s / (sc * 1.1) + 31.0) - 0.5) < 0.025) tone = 0;   // a crack
   if (ring > 0.4) tone = 3;
 
   // What lies under the surface, bent by the ripples and fading with depth.
@@ -176,7 +188,7 @@ void water(ivec2 p){
   if (up > 0.02 && opt.y > 0.0) {
     // Rough water breaks the image into rows that shiver sideways (the long broken streaks under a lamp at night).
     float row = floor(float(p.y) * 0.5);
-    float shiver = (h21(vec2(row, floor(uTime * 5.0) + float(slot))) - 0.5) * 9.0 * rough * rough;
+    float shiver = frozen ? 0.0 : (h21(vec2(row, floor(uTime * 5.0) + float(slot))) - 0.5) * 9.0 * rough * rough;
     vec2 dir = vec2(dot(r, uRight) / up, 1.0);
     float rows = 0.0;
     for (int i = 0; i < 192; i++) {
@@ -222,8 +234,8 @@ void water(ivec2 p){
       float sx = dot(dv, uRight), sy = dot(dv, uUp), rows = floor(sy / uTexel * 0.5);
       float ry = max(mix(0.07, 0.3 + 0.25 * hgt, stretch), 2.0 * uTexel), taper = 1.0 - abs(sy) / ry;
       if (taper <= 0.0) continue;
-      float shiver = (h21(vec2(rows, floor(uTime * 3.0) + float(i))) - 0.5) * 0.25 * stretch;
-      float gap = h21(vec2(rows * 1.7 + float(i), floor(uTime * 2.0)));
+      float shiver = frozen ? 0.0 : (h21(vec2(rows, floor(uTime * 3.0) + float(i))) - 0.5) * 0.25 * stretch;
+      float gap = frozen ? 1.0 : h21(vec2(rows * 1.7 + float(i), floor(uTime * 2.0)));
       bool dash = stretch < 0.2 || mod(rows, 2.0) < 0.5 || gap > 0.75 * (1.0 - taper);
       if (!dash || abs(sx + shiver) > max(mix(0.06, 0.04 + 0.12 * taper * taper, stretch), 0.5 * uTexel)) continue;
       if (lampVisible(i, wp, vec3(0.0, 1.0, 0.0)) < 0.5) continue;
@@ -235,12 +247,12 @@ void water(ivec2 p){
 
   // Sun and moon glints where a ripple faces the light just right.
   float g = dot(r, uSun);
-  if (opt.y > 0.15 && uSunI > 0.2 && g > 0.995 - 0.02 * rough && h21(floor(wp.xz * 8.0) + floor(uTime * 3.0)) > 0.4) col = ramp(mix(uSkyBot, vec3(1.0), 0.6), 4, 1);
+  if (opt.y > 0.15 && !frozen && uSunI > 0.2 && g > 0.995 - 0.02 * rough && h21(floor(wp.xz * 8.0) + floor(uTime * 3.0)) > 0.4) col = ramp(mix(uSkyBot, vec3(1.0), 0.6), 4, 1);
 
   // Foam where the fluid is stirred: at sources, obstacles and falls, along the banks only where the water moves,
   // and wherever it runs fast. A noise pattern travels with the flow and shows above a threshold.
   float bankFoam = (1.0 - smoothstep(0.03, 0.25, shore)) * clamp((speed - 0.7) * 1.2 + turb, 0.0, 1.0);
-  float stir = clamp(turb + bankFoam + max(speed - 1.2, 0.0) * 0.35 + ring * 0.3 + (pool ? 0.0 : 0.6), 0.0, 1.0) * extra.x;   // falling water froths
+  float stir = clamp(turb + bankFoam + max(speed - 1.2, 0.0) * 0.35 + ring * 0.3 + (pool ? 0.0 : 0.6), 0.0, 1.0) * (frozen ? 0.0 : extra.x);   // falling water froths
   if (stir > 0.08) {   // faint turbulence only roughens the surface
     float fz = rippleField(s * 2.7 + 11.0, f * 2.7, sc);   // a finer copy of the ripples
     float cut = 0.76 - 0.46 * stir;
