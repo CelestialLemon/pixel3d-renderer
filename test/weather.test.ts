@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DEFAULT_WEATHER, type Weather } from 'pixel3d-renderer';
-import { CloudDrift, cloudEdges, mergeWeather, precipitationUniform } from '../src/renderer/weather.ts';
+import { CloudDrift, cloudEdges, hazeUniform, mergeWeather, precipitationUniform } from '../src/renderer/weather.ts';
 
-test('the default weather is no rain, the old clouds and the old gusts, and is frozen', () => {
-  assert.deepEqual({ ...DEFAULT_WEATHER }, { precipitation: 'none', intensity: 0.5, cloudCover: 0.2, cloudSpeed: 1, wind: 0, gusts: 1 });
+test('the default weather is no rain, the old clouds, the old gusts and no haze, and is frozen', () => {
+  assert.deepEqual({ ...DEFAULT_WEATHER }, { precipitation: 'none', intensity: 0.5, cloudCover: 0.2, cloudSpeed: 1, wind: 0, gusts: 1, haze: 0, hazeColor: 0xcfd6d8, hazeTop: 4 });
   assert.ok(Object.isFrozen(DEFAULT_WEATHER));
 });
 
@@ -17,6 +17,10 @@ test('mergeWeather applies the given fields and rejects anything out of range wi
     assert.throws(() => mergeWeather(w, bad as Partial<Weather>), RangeError, JSON.stringify(bad));
   }
   assert.throws(() => mergeWeather(w, { intensity: 0.5, wind: 9 }), RangeError);
+  for (const bad of [{ haze: -0.1 }, { haze: 1.1 }, { haze: Number.NaN }, { hazeTop: 1001 }, { hazeTop: Number.NaN }, { hazeColor: -1 },
+    { hazeColor: 0x1000000 }, { hazeColor: 0.5 }, { hazeColor: '#ffffff' }, { hazeColor: Number.NaN }]) {
+    assert.throws(() => mergeWeather(w, bad as Partial<Weather>), RangeError, JSON.stringify(bad));
+  }
   assert.equal(w.intensity, 1);   // the input is never changed
 });
 
@@ -57,4 +61,12 @@ test('the precipitation uniform: kind, intensity and a wind slant that follows t
   assert.ok(right > 0 && Math.abs(left + right) < 1e-12, 'the slant flips with the camera');
   assert.ok(precipitationUniform({ ...rain, wind: 3 }, 1, 0)[2] > right, 'more wind, more slant');
   assert.ok(Math.abs(precipitationUniform({ ...rain, precipitation: 'snow', wind: 3, gusts: 3 }, 1, 0)[2]) <= 1.5);
+});
+
+test('the haze is set with its colour and height, and packs for the shaders', () => {
+  const w = mergeWeather(DEFAULT_WEATHER, { haze: 0.6, hazeColor: 0xc49a62, hazeTop: 2.5 });
+  assert.deepEqual([w.haze, w.hazeColor, w.hazeTop], [0.6, 0xc49a62, 2.5]);
+  assert.deepEqual(hazeUniform(w), [0.6, 2.5]);
+  assert.equal(mergeWeather(w, { hazeColor: 0 }).hazeColor, 0, 'black is a colour');
+  assert.equal(hazeUniform(DEFAULT_WEATHER)[0], 0, 'no haze by default');
 });

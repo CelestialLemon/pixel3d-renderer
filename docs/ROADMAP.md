@@ -228,7 +228,21 @@ against the game; its `docs/ROADMAP.md` keeps the current list):
     once; the game eases it.
   - Demo: the viewer's Weather panel and `?precip=rain|snow&intensity=&cover=&cloudSpeed=&wind=&gusts=`. `npm run weather-check`;
     three golden views.
-  - **Not done:** fog and haze for storms, lying snow, puddles, wind direction (the wind blows along the sway's fixed direction).
+  - **Not done:** lying snow, puddles, wind direction (the wind blows along the sway's fixed direction).
+- **Haze:** done (2026-10-23, #49). `r.setWeather({ haze, hazeColor, hazeTop })`: a ground-hugging fog or dust layer; see `Weather`
+  and `haze()` in `shaders/post.ts`. With `haze: 0` (the default) the image is exactly as before.
+  - **Why it has no seam.** The old depth haze (Pass 2) washed everything out, and any step in the *depth* of a pixel is a line
+    across flat ground, because depth grows steadily up the screen. This haze is a function of the *height* of the surface, not
+    its depth: in an orthographic view every ray runs the same way, so the length of ray inside a layer that ends at `hazeTop` is
+    `(hazeTop - y) / sin(elevation)`, the same for all flat ground. A fog bank over a hill follows the terrain's own levels; a wall
+    clears from foot to top. Nothing is drawn above `hazeTop`, and not over the sky.
+  - **Look.** Transmittance `exp(-0.3 * haze * rho * path)` with `rho` a drifting two-octave noise (0.55 to 1.45, a scale of about
+    16 m and 7 m, patches that crawl at about 0.2 m/s) so it reads as fog banks and not as a colour grade; the veil is `1 - T` cut
+    into five steps of 0.16 (at most 0.8: a surface keeps a fifth of its colour) with the sky bands' ordered dither (amplitude
+    0.55). The colour is the game's, times `1 - 0.85 * night`. It is mixed in linear light just before the vignette, in pass 0, or in
+    pass 1 after the fluid composite, so a fluid's bed is not hazed twice; water is hazed at its own surface. Rain and snow draw over it.
+  - **Not done:** haze over the sky and distant sky horizons (the camera sees almost none), the fog's own lighting (a lamp's glow
+    in fog), a per-pixel depth term for tall fog seen at a low camera (the 1 / sin(elevation) path already lengthens it).
 - **Machines that show they are running:** smoke and glow on objects (ambient motion on objects done, issue #23), and perhaps lamps on them.
 - **Seeing behind buildings:** fading or cutting away buildings and trees, if the 90° views are not enough.
 - **Animals:** chickens moving about, as rigid parts or skinned meshes.

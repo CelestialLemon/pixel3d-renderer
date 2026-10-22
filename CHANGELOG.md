@@ -7,6 +7,23 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Added
+
+- **Haze** ([#49](https://github.com/CelestialLemon/pixel3d-renderer/issues/49)). Three more fields of `Weather`, set with
+  `setWeather` like the rest: `haze` (0 to 1, default 0: none; about 0.3 a thin mist, 0.6 a fog, 1 the thickest), `hazeColor`
+  (sRGB hex, default `0xcfd6d8`: a cool grey for fog, a warm brown such as `0xc49a62` for dust) and `hazeTop` (the world height
+  in metres where the layer ends, default 4). The defaults draw exactly what earlier versions drew.
+  - It is a layer of fog lying on the ground. Under the orthographic camera the length of a view ray inside such a layer depends
+    only on the height of the surface it ends on, so flat ground is veiled evenly with no depth step across it (the seam the
+    renderer's old comment warned about) while roofs, tree tops and silos rise out of it, a wall clearing from its foot to its
+    top. Drifting world-space patches give it structure.
+  - Drawn in up to five clean steps, ragged where one meets the next (the sky's ordered dither), so it stays pixel art. A surface
+    keeps at least a fifth of its own colour under the thickest haze, so it never hides the farm. The colour darkens at night.
+    Water gets the same veil at its own surface; the sky and self-lit sparks (fireflies) are not hazed. Ease `haze` down over a morning to make a fog lift, and
+    lower `hazeTop` to lift it off the ground.
+  - Out-of-range values throw a `RangeError` and change nothing.
+  - Demo: the Weather panel in `pass3.html` and `?haze=&hazeColor=&hazeTop=` (colour as hex, e.g. `c49a62`). Two golden views.
+
 ## 0.3.4 (2026-10-22)
 
 ### Added

@@ -22,12 +22,14 @@ let hour = num('hour', scene.hour ?? 17.5), cycle = params.get('cycle') === '1',
 type Compare = 'off' | 'pass1' | 'palette';
 let compare: Compare = params.get('compare') === 'palette' ? 'palette' : params.get('compare') === '1' && scene.hasReference ? 'pass1' : 'off';
 let split = num('split', 50);
-// The weather: `?precip=rain|snow&intensity=&cover=&cloudSpeed=&wind=&gusts=`, the defaults otherwise.
+// The weather: `?precip=rain|snow&intensity=&cover=&cloudSpeed=&wind=&gusts=&haze=&hazeColor=&hazeTop=` (hazeColor as hex, e.g. c8a070), the defaults otherwise.
 const precip = params.get('precip');
 const weather: Weather = {
   precipitation: precip === 'rain' || precip === 'snow' ? precip : 'none', intensity: num('intensity', DEFAULT_WEATHER.intensity),
   cloudCover: num('cover', DEFAULT_WEATHER.cloudCover), cloudSpeed: num('cloudSpeed', DEFAULT_WEATHER.cloudSpeed),
   wind: num('wind', DEFAULT_WEATHER.wind), gusts: num('gusts', DEFAULT_WEATHER.gusts),
+  haze: num('haze', DEFAULT_WEATHER.haze), hazeTop: num('hazeTop', DEFAULT_WEATHER.hazeTop),
+  hazeColor: params.has('hazeColor') ? parseInt(params.get('hazeColor')!, 16) : DEFAULT_WEATHER.hazeColor,
 };
 // The left side defaults to 56 colours, the budget before 2026-10-02.
 const LEFT_PALETTE_SIZE = 56;
@@ -100,7 +102,10 @@ async function main() {
   const precipEl = $<HTMLSelectElement>('precipitation');
   precipEl.value = weather.precipitation;
   precipEl.onchange = () => { weather.precipitation = precipEl.value as Precipitation; p3.setWeather(weather); pOther?.setWeather(weather); };
-  for (const key of ['intensity', 'cloudCover', 'cloudSpeed', 'wind', 'gusts'] as const) {
+  const hazeColorEl = $<HTMLInputElement>('hazeColor');
+  hazeColorEl.value = `#${weather.hazeColor.toString(16).padStart(6, '0')}`;
+  hazeColorEl.oninput = () => { weather.hazeColor = parseInt(hazeColorEl.value.slice(1), 16); p3.setWeather(weather); pOther?.setWeather(weather); dirty = true; };
+  for (const key of ['intensity', 'cloudCover', 'cloudSpeed', 'wind', 'gusts', 'haze', 'hazeTop'] as const) {
     const el = $<HTMLInputElement>(key); el.value = String(weather[key]);
     el.oninput = () => { weather[key] = +el.value; p3.setWeather(weather); pOther?.setWeather(weather); dirty = true; };
   }

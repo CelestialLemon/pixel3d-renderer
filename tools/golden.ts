@@ -29,6 +29,9 @@ const SHOTS = [
   { name: 'pass3-weather-rain', path: `pass3.html?${VIEW}&hour=12&precip=rain&intensity=0.7&wind=1&cover=0.7`, canvas: 'p3-view' },
   { name: 'pass3-weather-snow', path: `pass3.html?${VIEW}&hour=17.5&precip=snow&intensity=0.8&wind=0.5`, canvas: 'p3-view' },
   { name: 'pass3-weather-overcast', path: `pass3.html?${VIEW}&hour=12&cover=1&gusts=0.3`, canvas: 'p3-view' },
+  // Haze: a morning fog lying on the lawn, a warm dust haze at noon.
+  { name: 'pass3-weather-fog', path: `pass3.html?${VIEW}&hour=8&haze=0.6&hazeTop=3.5&cover=0.5`, canvas: 'p3-view' },
+  { name: 'pass3-weather-dust', path: `pass3.html?${VIEW}&hour=12&haze=0.5&hazeColor=c49a62&hazeTop=3.5&wind=1`, canvas: 'p3-view' },
   // Test chart (src/scenes/test-chart): the overview at three times of day, then each bay's camera preset.
   ...[12, 17.5, 22].map((h) => ({ name: `chart-overview-hour${h}`, path: `pass3.html?${VIEW}&scene=test-chart&hour=${h}`, canvas: 'p3-view' })),
   ...['thin', 'curves', 'ink', 'ao', 'palette', 'lamps'].map((v) => ({ name: `chart-${v}`, path: `pass3.html?${VIEW}&scene=test-chart&view=${v}&hour=12`, canvas: 'p3-view' })),

@@ -40,7 +40,7 @@ export const waterGLSL = (limits: Readonly<RendererLimits>) => /* glsl */ `
 #define MAX_SOURCES ${limits.fluidSources}
 #define POOL_NORMAL_Y ${POOL_NORMAL_Y.toFixed(4)}
 uniform int uPass;
-uniform sampler2D tImage;                       // pass 0's output: linear, unclipped, alpha 1 where it takes the grade
+uniform sampler2D tImage;                       // pass 0's output: linear, unclipped, alpha 1 (or 0.84 to 0.96, see emitInk) where it takes the grade
 uniform sampler2D tFluidN; uniform sampler2D tFluidF;   // the fluid G-buffer (see FLUID_FRAG)
 uniform sampler2D tFluidMap; uniform sampler2D tFluidHeight; uniform vec4 uFluidBounds;   // fluidMap.ts
 // Four vec4 per material, to keep the fragment uniform count low (colours linear RGB):
@@ -54,7 +54,8 @@ bool fluidAt(ivec2 q){ return texelFetch(tFluidF, clampP(q), 0).a > 0.5; }
 // A pass-0 pixel, finished as pass 0 would have done without a fluid pass (see emitColor): exactly the same output.
 vec4 passThrough(ivec2 p){
   vec4 c = texelFetch(tImage, p, 0);
-  return vec4(toSRGB(c.a > 0.75 ? finish(c.rgb, p) : c.rgb), 1.0);
+  ivec2 src = c.a < 0.99 ? hazeSource(p, int(floor((c.a - 0.8) / 0.04 + 0.5)) - 1) : p;   // ink: from its neighbour (emitInk)
+  return vec4(toSRGB(c.a > 0.75 ? finishSolid(c.rgb, p, src) : c.rgb), 1.0);
 }
 float opaqueDepth(ivec2 q){ return A(q).a < 0.5 ? 1e4 : N(q).w; }
 
@@ -254,5 +255,5 @@ void water(ivec2 p){
       col = fc;
     }
   }
-  outColor = vec4(toSRGB(finish(col, p)), 1.0);
+  outColor = vec4(toSRGB(finish(haze(col, p, wp), p)), 1.0);
 }`;
