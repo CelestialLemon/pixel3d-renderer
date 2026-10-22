@@ -69,6 +69,8 @@ try {
     flood.setCells(plain, [3, 0]);   // a strong current does not stir ice
     check(differing(frame(8), iced) === 0 && differing(frame(9), iced9) === 0, 'Ice ignores the flow it is given');
     flood.setCells(plain);
+    flood.material = { ...FLUIDS.ice, roughness: 0.6 };   // a rough frozen material still holds still
+    check(differing(frame(8), frame(9)) - differing(base8, base9) < 0.15 * out.waterMoves, 'Rough ice holds still with the clock');
     flood.material = FLUIDS.flood;
     check(differing(frame(8), waterFlood) === 0, 'Back to water restores the image');
 

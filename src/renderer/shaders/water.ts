@@ -188,7 +188,7 @@ void water(ivec2 p){
   if (up > 0.02 && opt.y > 0.0) {
     // Rough water breaks the image into rows that shiver sideways (the long broken streaks under a lamp at night).
     float row = floor(float(p.y) * 0.5);
-    float shiver = (h21(vec2(row, floor(uTime * 5.0) + float(slot))) - 0.5) * 9.0 * rough * rough;
+    float shiver = frozen ? 0.0 : (h21(vec2(row, floor(uTime * 5.0) + float(slot))) - 0.5) * 9.0 * rough * rough;
     vec2 dir = vec2(dot(r, uRight) / up, 1.0);
     float rows = 0.0;
     for (int i = 0; i < 192; i++) {
@@ -234,8 +234,8 @@ void water(ivec2 p){
       float sx = dot(dv, uRight), sy = dot(dv, uUp), rows = floor(sy / uTexel * 0.5);
       float ry = max(mix(0.07, 0.3 + 0.25 * hgt, stretch), 2.0 * uTexel), taper = 1.0 - abs(sy) / ry;
       if (taper <= 0.0) continue;
-      float shiver = (h21(vec2(rows, floor(uTime * 3.0) + float(i))) - 0.5) * 0.25 * stretch;
-      float gap = h21(vec2(rows * 1.7 + float(i), floor(uTime * 2.0)));
+      float shiver = frozen ? 0.0 : (h21(vec2(rows, floor(uTime * 3.0) + float(i))) - 0.5) * 0.25 * stretch;
+      float gap = frozen ? 1.0 : h21(vec2(rows * 1.7 + float(i), floor(uTime * 2.0)));
       bool dash = stretch < 0.2 || mod(rows, 2.0) < 0.5 || gap > 0.75 * (1.0 - taper);
       if (!dash || abs(sx + shiver) > max(mix(0.06, 0.04 + 0.12 * taper * taper, stretch), 0.5 * uTexel)) continue;
       if (lampVisible(i, wp, vec3(0.0, 1.0, 0.0)) < 0.5) continue;

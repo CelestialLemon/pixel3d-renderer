@@ -39,7 +39,7 @@ a local checkout instead (`npm install ../pixel3d-renderer`, then `npm run build
 
 ```ts
 import * as THREE from 'three';
-import { GeometryCollector, PixelRenderer, quantizePalette, lookAt } from 'pixel3d-renderer';
+import { FLUIDS, GeometryCollector, PixelRenderer, quantizePalette, lookAt } from 'pixel3d-renderer';
 
 // Build the world once: collect geometry, reduce the colours (objects too), then hand it to a renderer.
 const world = new GeometryCollector(), crate = new GeometryCollector();
