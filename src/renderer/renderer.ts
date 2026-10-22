@@ -11,7 +11,7 @@ import { buildWindowLight, type WindowLight } from './windowLight';
 import { FLUID_FRAG, FLUID_VERT } from './shaders/water';
 import { linearColor } from './geometry';
 import { buildFluidMap, type FluidMap } from './fluidMap';
-import { CloudDrift, cloudEdges, DEFAULT_WEATHER, mergeWeather, precipitationUniform, type Weather } from './weather';
+import { CloudDrift, cloudEdges, DEFAULT_WEATHER, hazeUniform, mergeWeather, precipitationUniform, type Weather } from './weather';
 import { instanceData, MAX_HIGHLIGHTS, MIRROR_X, MOTION_ATTRIBUTES, OBJECT_ATTRIBUTES, ObjectBatch, PixelObject } from './objects';
 
 /** Stylisation switches. All on is the intended look; the toggles exist for comparison and debugging. */
@@ -378,6 +378,7 @@ ${POSE_OBJECT}`;
         uRes: { value: new THREE.Vector2() }, uTexel: { value: 0.05 },
         uRight: { value: new THREE.Vector3() }, uUp: { value: new THREE.Vector3() }, uFwd: { value: new THREE.Vector3() }, uCamPos: { value: new THREE.Vector3() },
         uSun: { value: this.sun }, uTime: { value: 0 }, uCloud: { value: new THREE.Vector4() },
+        uHaze: { value: new THREE.Vector2() }, uHazeColor: { value: new THREE.Color() },
         uOutline: { value: 1 }, uDither: { value: 1 }, uClouds: { value: 1 }, uContact: { value: 1 }, uGlow: { value: 1 }, uVignette: { value: 1 },
         uSunI: { value: 1 }, uAmbient: { value: 0.34 }, uExpo: { value: 1 }, uChroma: { value: 1 }, uNight: { value: 0 }, uLampOn: { value: 0 },
         uLitTint: { value: new THREE.Vector2() }, uShadeTint: { value: new THREE.Vector2() },
@@ -732,6 +733,7 @@ ${POSE_OBJECT}`;
     u.uOutline.value = s.outlines ? 1 : 0; u.uDither.value = s.dither ? 1 : 0; u.uClouds.value = s.clouds ? 1 : 0;
     const w = this.weatherNow, edges = cloudEdges(w.cloudCover), drift = this.cloudDrift.at(time);
     u.uCloud.value.set(edges[0], edges[1], drift[0], drift[1]);
+    u.uHaze.value.set(...hazeUniform(w)); u.uHazeColor.value.set(w.hazeColor);
     const cu = this.cleanMat.uniforms;
     cu.uPrecip.value.set(...precipitationUniform(w, u.uRight.value.x, u.uRight.value.z));
     // Drops sit at depths around the camera's target, over a range that lets them land anywhere on screen (see

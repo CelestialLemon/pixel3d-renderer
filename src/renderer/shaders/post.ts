@@ -13,6 +13,7 @@ uniform vec2 uRes; uniform float uTexel;
 uniform vec3 uRight; uniform vec3 uUp; uniform vec3 uFwd; uniform vec3 uCamPos;
 uniform vec3 uSun; uniform float uTime;
 uniform vec4 uCloud;   // cloud shadows (weather.ts): xy where the field starts and ends shading, zw its drift
+uniform vec2 uHaze; uniform vec3 uHazeColor;   // haze (weather.ts): its amount and the world height where it ends; its colour (linear)
 uniform int uOutline; uniform int uDither; uniform int uClouds; uniform int uContact; uniform int uGlow; uniform int uVignette;
 uniform int uDeferGrade;   // 1: a fluid pass follows: write unclipped linear colour, and let it grade (shaders/water.ts)
 uniform float uSunI; uniform float uAmbient; uniform float uExpo; uniform float uChroma; uniform float uNight; uniform float uLampOn;
@@ -297,9 +298,31 @@ float contactAt(ivec2 p, vec3 face, float d){
   return occ / 12.0;
 }
 
+// Haze (Weather.haze): a layer of fog lying on the ground, drawn over the finished colour. The renderer has no depth haze, on
+// purpose: Pass 2's screen-wide haze washed everything out, and a constant-depth step shows as a seam across flat ground.
+// This one has no depth in it at all. In an orthographic view every ray runs the same way, so the length of ray inside a
+// layer of fog that ends at a fixed height depends only on the height of the surface the ray ends on: flat ground gets one
+// even veil with no step anywhere across it, and what stands up (roofs, tree tops, silos) rises out of it, a wall clearing
+// from its foot to its top. Drifting world-space patches give it a look (nothing flat is veiled the same everywhere), and
+// the veil is cut into a few steps, ragged where one meets the next like the sky's bands, so it stays pixel art. The
+// strongest veil is 0.8, so a surface always keeps a fifth of its own colour. Not drawn over the sky, nor over sparks (fireflies,
+// glows): they are lights, and shine through.
+vec3 haze(vec3 lin, ivec2 p, vec3 wp){
+  float above = uHaze.y - wp.y;
+  if (uHaze.x <= 0.0 || above <= 0.0) return lin;
+  float path = above / max(-uFwd.y, 0.35);   // metres of fog the view ray crosses above the surface
+  vec2 drift = uTime * vec2(0.010, 0.004);
+  float field = 0.6 * vn(wp.xz * 0.06 + drift) + 0.4 * vn(wp.xz * 0.15 - 1.7 * drift + 9.0);
+  float rho = mix(0.55, 1.45, smoothstep(0.3, 0.7, field));
+  float f = 1.0 - exp(-0.3 * uHaze.x * rho * path);   // how much of the light the fog takes: 1 - transmittance
+  float v = f * 5.0 + (uDither == 1 ? (bayer4(p) - 0.5) * 0.55 : 0.0);
+  float veil = clamp(floor(v + 0.5), 0.0, 5.0) * 0.16;
+  return mix(lin, uHazeColor * (1.0 - 0.85 * uNight), veil);
+}
+
 // Final per-pixel grade: only the very corners of the frame step down in brightness (two
 // hard rings, with a one-pixel dither on their edges). There is deliberately no depth
-// haze: a constant-depth step shows up as a seam across flat ground. Applied once, to the final image: when a fluid pass
+// haze: see haze above. Applied once, to the final image: when a fluid pass
 // follows, pass 0 leaves it out and pass 1 applies it after compositing.
 float vignetteRing(ivec2 p){
   vec2 q = (gl_FragCoord.xy / uRes - 0.5) * vec2(1.15, 1.0);
@@ -312,11 +335,28 @@ vec3 finish(vec3 lin, ivec2 p){
   lab.x *= 1.0 - 0.055 * vignetteRing(p);
   return fromLab(lab);
 }
+// A solid pixel's final grade: the haze at the height of the surface it shows, then the vignette. src is the pixel the colour
+// comes from: p itself, or for a silhouette's ink the nearer pixel it is inked from, so the ink is hazed like its object.
+vec3 finishSolid(vec3 lin, ivec2 p, ivec2 src){
+  if (uHaze.x > 0.0 && A(src).a > 0.5) lin = haze(lin, p, worldAt(vec2(src) + 0.5, N(src).w));
+  return finish(lin, p);
+}
+// The pixel next to p that an ink pixel's colour comes from, as the neighbour index 0..3 of OFF in main.
+ivec2 hazeSource(ivec2 p, int i){
+  const ivec2 OFF[4] = ivec2[4](ivec2(1,0), ivec2(-1,0), ivec2(0,1), ivec2(0,-1));
+  return p + OFF[i];
+}
 // A finished pixel, graded unless it is sky or a spark. With a fluid pass to follow, it stays linear and unclipped, and
-// alpha says whether pass 1 grades it (see passThrough), so the grade still sees the true colour.
+// alpha says whether pass 1 grades it (see passThrough), so the grade still sees the true colour: 1 for a pixel that shows
+// its own surface, 0.84 to 0.96 (0.8 + 0.04 x (1 + i)) for ink from neighbour i, 0.5 for sky and sparks, which are not graded.
 vec4 emitColor(vec3 lin, ivec2 p, bool graded){
   if (uDeferGrade == 1) return vec4(lin, graded ? 1.0 : 0.5);
-  return vec4(toSRGB(graded ? finish(lin, p) : lin), 1.0);
+  return vec4(toSRGB(graded ? finishSolid(lin, p, p) : lin), 1.0);
+}
+// A silhouette's ink, from neighbour i.
+vec4 emitInk(vec3 lin, ivec2 p, int i){
+  if (uDeferGrade == 1) return vec4(lin, 0.8 + 0.04 * float(1 + i));
+  return vec4(toSRGB(finishSolid(lin, p, hazeSource(p, i))), 1.0);
 }
 
 ${waterGLSL(limits)}
@@ -354,12 +394,12 @@ void main(){
                           (objectId(q) > 0.5 || predictDepth(G(q), nq.w, -vec2(OFF[i])) < d - 0.5 * uTexel)))
                       : sky || d > nq.w + THR || (d >= nq.w - THR &&                                          // outer
                           objectId(p) < 0.5 && predictDepth(face, d, vec2(OFF[i])) >= nq.w - 0.5 * uTexel);
-    if (rim) { outColor = emitColor(highlightInk(lifted ? a.rgb : aq.rgb), p, true); return; }
+    if (rim) { outColor = lifted ? emitColor(highlightInk(a.rgb), p, true) : emitInk(highlightInk(aq.rgb), p, i); return; }   // an outer rim is inked from the object, so hazed at its height
   }
 #endif
 
   // ---- 1. silhouette outline: drawn on the FAR pixel, inked from the near object ----
-  float bestD = 1e9; ivec2 bestQ = p; bool sil = false;
+  float bestD = 1e9; ivec2 bestQ = p; int bestI = 0; bool sil = false;
   if (uOutline == 1) {
     for (int i = 0; i < 4; i++) {
       ivec2 q = p + OFF[i];
@@ -368,7 +408,7 @@ void main(){
       float dn = N(q).w;
       float dp = sky ? 1e4 : predictDepth(face, d, vec2(OFF[i]));
       if (dn < dp - THR && dn < bestD &&
-          (sky || !shallowFold(p, q, face))) { bestD = dn; bestQ = q; sil = true; }
+          (sky || !shallowFold(p, q, face))) { bestD = dn; bestQ = q; bestI = i; sil = true; }
     }
   }
   if (sil) {
@@ -378,7 +418,7 @@ void main(){
     // Softer botanical silhouettes; solid architecture keeps its crisp ink.
     bool foliage = nearColor.g > nearColor.r * 1.25 && nearColor.g > nearColor.b * 1.2;
     vec3 ink = ramp(nearColor, nf == F_STEAM ? 1 : foliage ? 0 : -1, nf == F_STEAM ? 3 : 0);
-    outColor = emitColor(ink, p, true);
+    outColor = emitInk(ink, p, bestI);
     return;
   }
 

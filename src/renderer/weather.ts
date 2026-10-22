@@ -1,6 +1,6 @@
-// Weather the game sets (`PixelRenderer.setWeather`): falling rain or snow, the cloud shadows' cover and speed, and the wind
-// in sway. The renderer draws it; the game decides what the weather is and when it changes. The defaults draw exactly what
-// the renderer drew before it had weather: no rain, the same passing clouds, the same gusts.
+// Weather the game sets (`PixelRenderer.setWeather`): falling rain or snow, the cloud shadows' cover and speed, the wind
+// in sway, and a haze (fog, dust). The renderer draws it; the game decides what the weather is and when it changes. The
+// defaults draw exactly what the renderer drew before it had weather: no rain, the same passing clouds, the same gusts, no haze.
 
 /** What falls from the sky. */
 export type Precipitation = 'none' | 'rain' | 'snow';
@@ -31,13 +31,30 @@ export interface Weather {
    * default) is the sway the renderer has always drawn; 0 holds every plant still at its lean.
    */
   gusts: number;
+  /**
+   * Haze, 0 to 1: 0 (the default) none, about 0.3 a thin morning mist, 0.6 a fog, 1 the thickest. A layer of fog lying on
+   * the ground: ground, fields and roads are veiled in `hazeColor`, in drifting patches, and the things that stand up
+   * (roofs, tree tops, silos, poles) rise out of it, thinner with height until `hazeTop`. It never hides the world: at 1
+   * every surface still shows through (it keeps at least a fifth of its own colour). Ease it down to make a fog lift.
+   * Drawn in a few dithered steps, so it keeps the pixel look, and moves with the clock.
+   */
+  haze: number;
+  /** The haze's colour by day (sRGB hex): a cool grey for fog, a warm brown for dust. It darkens at night. Default 0xcfd6d8. */
+  hazeColor: number;
+  /**
+   * The world height (y, in metres) where the haze ends: surfaces below it are veiled, more the lower they are, and
+   * anything above it is clear. Set it a few metres above the ground the player looks at (a low fog 2 or 3 m above it, a
+   * thick one 6 or more, which fogs the roofs too). Lowering it lifts the fog off the ground. Default 4.
+   */
+  hazeTop: number;
 }
 
 export const DEFAULT_WEATHER: Readonly<Weather> = Object.freeze({
   precipitation: 'none', intensity: 0.5, cloudCover: 0.2, cloudSpeed: 1, wind: 0, gusts: 1,
+  haze: 0, hazeColor: 0xcfd6d8, hazeTop: 4,
 });
 
-const RANGES = { intensity: [0, 1], cloudCover: [0, 1], cloudSpeed: [0, 10], wind: [0, 3], gusts: [0, 3] } as const;
+const RANGES = { intensity: [0, 1], cloudCover: [0, 1], cloudSpeed: [0, 10], wind: [0, 3], gusts: [0, 3], haze: [0, 1], hazeTop: [-1000, 1000] } as const;
 const PRECIPITATION: readonly Precipitation[] = ['none', 'rain', 'snow'];
 
 /**
@@ -58,6 +75,12 @@ export function mergeWeather(current: Readonly<Weather>, change: Partial<Weather
     const [lo, hi] = RANGES[key];
     if (typeof value !== 'number' || !(value >= lo && value <= hi)) throw new RangeError(`setWeather: ${key} must be from ${lo} to ${hi}, got ${String(value)}`);
     next[key] = value;
+  }
+  if (change.hazeColor !== undefined) {
+    if (!Number.isInteger(change.hazeColor) || change.hazeColor < 0 || change.hazeColor > 0xffffff) {
+      throw new RangeError(`setWeather: hazeColor must be an sRGB hex colour from 0 to 0xffffff, got ${String(change.hazeColor)}`);
+    }
+    next.hazeColor = change.hazeColor;
   }
   return next;
 }
@@ -130,3 +153,6 @@ export function precipitationUniform(w: Readonly<Weather>, rightX: number, right
 
 /** The direction the wind blows along the ground (world x, z), normalised: the sway's lean direction. */
 export const WIND_DIR: readonly [number, number] = [1 / Math.hypot(1, 0.35), 0.35 / Math.hypot(1, 0.35)];
+
+/** Packs the haze for the post shaders: its amount and the world height where it ends (the colour has a uniform of its own). */
+export function hazeUniform(w: Readonly<Weather>): [number, number] { return [w.haze, w.hazeTop]; }

@@ -99,7 +99,7 @@ src/
     palette.ts         OKLab palette reduction (minimax merging)
     gltf.ts            glTF loading and per-mesh rules (flags, motion, skip)
     look.ts            time of day: sun, colour grade, sky, lamps
-    weather.ts         weather the game sets: rain and snow (drawn by shaders/weather.ts), cloud cover and speed, wind in sway
+    weather.ts         weather the game sets: rain and snow (drawn by shaders/weather.ts), cloud cover and speed, wind in sway, haze (fog, dust; `haze` in shaders/post.ts)
   scenes/              scene content: one folder per scene, registered in scenes/index.ts
     cookie-co/         the factory, meadow, trees, pond and wildlife
     village/           Lantern Row, a night village street: layout, paving, walls, canal, trees, and placement of the modelled buildings
@@ -193,7 +193,7 @@ A tool fails rather than quietly fall back to the CPU when a GPU backend is chos
 | `npm run smooth-normal-check` | Smooth versus faceted sine terrain: identical depth effects and resolve depths with smooth lighting normals preserved, at supersample 1 and 3, for static/animated geometry and mirrored, non-uniformly scaled objects; includes highlight cleanup. |
 | `npm run camera-check` | Camera snap: the image shift the renderer reports for the camera it snapped to the art-pixel grid (`snapShift`) moves projected landmarks back onto the requested camera, for both signs, with and without a capture margin, at several scales, and repeatably. |
 | `npm run settings-check` | Game-supplied settings: custom and reduced limits compile and draw, invalid scene/capacity inputs are rejected before WebGL allocation and excessive uniform budgets after querying the GPU, shadow map sizes, resolve options, custom day cycles and minimal scene inputs. |
-| `npm run weather-check` | Weather: the default weather draws the image unchanged, rain and snow at light and heavy intensity draw something but keep most of the view, follow the clock and nothing else, cloud cover changes the shading, a new cloud speed doesn't move the clouds and speed 0 holds them, wind leans the sway, and out-of-range values throw without changing anything. |
+| `npm run weather-check` | Weather: the default weather draws the image unchanged, rain and snow at light and heavy intensity draw something but keep most of the view, follow the clock and nothing else, cloud cover changes the shading, a new cloud speed doesn't move the clouds and speed 0 holds them, wind leans the sway, haze veils the ground by amount and height, drifts, never hides the farm and takes its colour, and out-of-range values throw without changing anything. |
 | `npm run startup-check` | Exact binary/gzip roundtrips for all six scenes, including prepared fluid/window maps and local object geometry; live and decoded first frames must match pixel for pixel. |
 | `GL_BACKEND=swiftshader npm run golden -- --ci` | Ten fixed comparison, day/night, water and object views against `golden/ci-linux-x64-swiftshader/`. CI installs the pinned browser and uses this CPU-rendered set. Its references come from known-good main; existing GPU references stay unchanged. |
 | `npm run bake` / `npm run build:baked` | Generate compressed default scenes in `public/baked/`, then build the optimized production app. The baker starts and closes its own server. Dev always builds live; a regular build without a bake does too. A present but stale bake fails with a regeneration message. |

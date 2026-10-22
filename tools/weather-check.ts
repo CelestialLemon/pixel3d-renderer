@@ -48,7 +48,7 @@ try {
 
     // Rejected values change nothing.
     const before = JSON.stringify(p3.weather);
-    for (const bad of [{ intensity: 2 }, { cloudCover: -0.1 }, { cloudSpeed: Number.NaN }, { wind: 4 }, { gusts: -1 }, { precipitation: 'hail' }, { wind: 1, gusts: 9 }]) {
+    for (const bad of [{ intensity: 2 }, { cloudCover: -0.1 }, { cloudSpeed: Number.NaN }, { wind: 4 }, { gusts: -1 }, { precipitation: 'hail' }, { wind: 1, gusts: 9 }, { haze: 1.5 }, { haze: -1 }, { hazeTop: Number.NaN }, { hazeColor: 0x1000000 }, { hazeColor: 1.5 }]) {
       let threw = false;
       try { p3.setWeather(bad as never); } catch (e) { threw = e instanceof RangeError; }
       check(threw, `setWeather(${JSON.stringify(bad)}) throws a RangeError`);
@@ -86,8 +86,51 @@ try {
     p3.setWeather({ wind: 2 });
     out.wind = differing(frame(8), still) / pixels;
     check(out.wind > 0.002, `A steady wind leans the sway (${out.wind})`);
+
+    // Haze: none by default, a veil over the ground that follows the clock and thins with height and with the amount, and
+    // never hides the farm. The ground is the cookie shop's lawn at y = 0, the roof peaks near 4.5 m.
+    // (The clouds' drift remembers the speeds above, so the baseline is taken again.)
+    p3.setWeather({ ...DEFAULT_WEATHER });
+    const clear = frame(8);
+    p3.setWeather({ haze: 0 });
+    check(differing(frame(8), clear) === 0, 'No haze draws nothing');
+    p3.setWeather({ haze: 0.5, hazeTop: 0 });
+    check(differing(frame(8), clear) === 0, 'Haze that ends at the ground draws nothing');
+    let last = 0;
+    for (const haze of [0.2, 0.5, 1]) {
+      p3.setWeather({ haze, hazeTop: 3.5 });
+      const f = frame(8), n = differing(f, clear) / pixels;
+      check(n > last, `More haze veils more of the picture (${haze}: ${n})`);
+      check(differing(frame(8), f) === 0, 'Haze is a function of the clock');
+      last = out[`haze${haze}`] = n;
+    }
+    check(out.haze1 > 0.5, `Thick haze veils most of the picture (${out.haze1})`);
+    p3.setWeather({ haze: 1, hazeTop: 3.5 });
+    const thick = frame(8), thick40 = frame(40);
+    p3.setWeather({ haze: 0 }); const bare40 = frame(40);
+    p3.setWeather({ haze: 1, hazeTop: 3.5 });
+    check(differing(thick, thick40) > differing(clear, bare40), 'The haze drifts with the clock');
+    // It never hides the farm: even a black haze at its thickest, over everything, leaves a fifth of each surface's own colour
+    // (in linear light, so at least a third of its sRGB value), and the picture still has its detail.
+    p3.setWeather({ haze: 1, hazeTop: 100, hazeColor: 0x000000 });
+    const black = frame(8);
+    let hidden = 0, dark = 0;
+    for (let i = 0; i < pixels; i++) for (let c = 0; c < 3; c++) {
+      if (clear[4 * i + c] < 60) continue;
+      dark++;
+      if (black[4 * i + c] < 0.3 * clear[4 * i + c]) hidden++;
+    }
+    check(dark > 0 && hidden < 0.01 * dark, `Even the thickest haze keeps the farm in view (${hidden} of ${dark} channels darker than a fifth)`);
+    // The haze colour is the colour: a dust haze pulls the picture towards brown.
+    p3.setWeather({ haze: 0.8, hazeTop: 3.5, hazeColor: 0xc49a62 });
+    const dust = frame(8);
+    let r = 0, b = 0;
+    for (let i = 0; i < pixels; i++) { r += dust[4 * i] - clear[4 * i]; b += dust[4 * i + 2] - clear[4 * i + 2]; }
+    check(r > b, `A warm haze warms the picture (red ${r}, blue ${b})`);
+    p3.setWeather({ ...DEFAULT_WEATHER });
+    check(differing(frame(8), clear) === 0, 'Turning the haze off restores the image');
     return out;
   });
   assert.deepEqual(errors, [], 'No browser or shader errors');
-  console.log('PASS: default weather unchanged, rain and snow by the clock, cloud cover and speed, wind, validation.', result);
+  console.log('PASS: default weather unchanged, rain and snow by the clock, cloud cover and speed, wind, haze, validation.', result);
 } finally { await browser.close(); }
