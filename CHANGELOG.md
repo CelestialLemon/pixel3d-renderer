@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.3.4 (2026-10-22)
+
 ### Added
 
 - **Weather** ([#44](https://github.com/CelestialLemon/pixel3d-renderer/issues/44),
