@@ -24,8 +24,8 @@ export function splitGlass(geometry: THREE.BufferGeometry): { solid: THREE.Buffe
   if (geometry.index) src.drawRange = { ...geometry.drawRange };   // toNonIndexed resets it; an index entry becomes a vertex
   const f = src.getAttribute('aFlag') as THREE.BufferAttribute;
   // Only the draw range is drawn, so only it is split (both halves are drawn whole).
-  const first = Math.min(src.drawRange.start, f.count);   // triangles start at the draw call's own offset
-  const end = Math.min(f.count, src.drawRange.start + src.drawRange.count);
+  const first = Math.min(Math.max(0, src.drawRange.start), f.count);   // triangles start at the draw call's own offset
+  const end = Math.min(f.count, Math.max(0, src.drawRange.start) + src.drawRange.count);
   const vertices = Math.max(0, Math.floor((end - first) / 3) * 3);
   const glassTriangle: boolean[] = [];
   let glassVertices = 0;
@@ -37,11 +37,17 @@ export function splitGlass(geometry: THREE.BufferGeometry): { solid: THREE.Buffe
   if (!glassVertices) return { solid: geometry, glass: null };
   const take = (want: boolean, count: number) => {
     const g = new THREE.BufferGeometry();
-    for (const [name, a] of Object.entries(src.attributes) as [string, THREE.BufferAttribute][]) {
+    for (const [name, a] of Object.entries(src.attributes) as [string, THREE.BufferAttribute | THREE.InterleavedBufferAttribute][]) {
+      // Read through the accessors, so an interleaved attribute's stride and offset are honoured.
       const size = a.itemSize, out = new (a.array.constructor as new (n: number) => THREE.TypedArray)(count * size);
       let o = 0;
       for (let t = 0; t < glassTriangle.length; t++) if (glassTriangle[t] === want) {
-        out.set(a.array.subarray((first + t * 3) * size, (first + t * 3 + 3) * size), o); o += 3 * size;
+        for (let v = first + t * 3, e = v + 3; v < e; v++) {
+          out[o++] = a.getX(v);
+          if (size > 1) out[o++] = a.getY(v);
+          if (size > 2) out[o++] = a.getZ(v);
+          if (size > 3) out[o++] = a.getW(v);
+        }
       }
       g.setAttribute(name, new THREE.BufferAttribute(out, size, a.normalized));
     }
@@ -98,7 +104,7 @@ vec3 glassOver(vec3 c, ivec2 p){
   const ivec2 offsets[4] = ivec2[4](ivec2(1,0), ivec2(-1,0), ivec2(0,1), ivec2(0,-1));
   bool rim = false;
   for (int k = 0; k < 4; k++) {
-    ivec2 q = p + offsets[k];
+    ivec2 q = clamp(p + offsets[k], ivec2(0), ivec2(uRes) - 1);
     if (!glassAt(q)) { rim = true; break; }
     vec4 nq = texelFetch(tGlassN, q, 0);
     if (dot(nq.xyz, gn.xyz) < 0.9 || abs(nq.w - gn.w) > 0.25) { rim = true; break; }

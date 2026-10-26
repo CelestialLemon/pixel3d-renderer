@@ -86,3 +86,28 @@ test('splitGlass starts triangles at the draw range\'s own offset', () => {
   g.setDrawRange(1, 3);
   assert.equal(splitGlass(g).glass?.getAttribute('position').count, 3);
 });
+
+test('splitGlass clamps a negative draw range start like three.js', () => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(18), 3));
+  g.setAttribute('aFlag', new THREE.BufferAttribute(new Float32Array([0, 0, 0, 7, 7, 7]), 1));
+  g.setDrawRange(-1, 7);
+  const { solid, glass } = splitGlass(g);
+  assert.equal(glass?.getAttribute('position').count, 3);
+  assert.equal(solid.getAttribute('position').count, 3);
+});
+
+test('splitGlass reads interleaved attributes through their stride and offset', () => {
+  const g = new THREE.BufferGeometry();
+  // per vertex: x y z, flag
+  const buf = new THREE.InterleavedBuffer(new Float32Array([
+    1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0,
+    4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7,
+  ]), 4);
+  g.setAttribute('position', new THREE.InterleavedBufferAttribute(buf, 3, 0));
+  g.setAttribute('aFlag', new THREE.InterleavedBufferAttribute(buf, 1, 3));
+  const { glass } = splitGlass(g);
+  const p = glass!.getAttribute('position');
+  assert.deepEqual([p.getX(0), p.getY(0), p.getZ(0)], [4, 5, 6]);
+  assert.equal(glass!.getAttribute('aFlag').getX(2), 7);
+});
