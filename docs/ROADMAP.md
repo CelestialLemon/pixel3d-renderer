@@ -184,6 +184,13 @@ against the game; its `docs/ROADMAP.md` keeps the current list):
     under it. A pick that lands elsewhere costs what it did.
   - Demo: `?scene=object-looks`. `tools/object-look-check.ts` checks the colours, the coverage, the mask, the shadow-map
     redraws and the pick.
+- **Glass:** done (2026-10-26, #54). A `FLAG.GLASS` surface (`glassMeshRule` for `glass_` meshes) is split out of the opaque
+  geometry (`splitGlass`: a scene's static geometry and every object geometry), drawn in its own pass into an art-resolution
+  G-buffer (colour; normal and depth; real depth test among panes, the resolved opaque depth tested by hand as for fluids), and
+  laid over the finished image in the clean-up pass: a flat tint of the pane colour, a rim where it ends or bends, diagonal glints.
+  A design with no extra pass over the opaque scene: nine greenhouses are one more instanced draw per geometry. Not done: glass
+  in the dynamic collector (ambient motion), glass over water, reflections of the sky or lamps in a pane, and the rain meeting
+  the glass instead of what is under it.
 - **Many small moving objects:** done (2026-10-09, #31). `PixelObject.castShadow = false` leaves an object out of the object
   shadow map (it still receives shadows), so moving it never redraws the map; each batch keeps its non-casting copies in
   instanced meshes of their own that three's shadow pass skips. Measured on the RX 570 with the second part of

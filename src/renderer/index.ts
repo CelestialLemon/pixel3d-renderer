@@ -8,6 +8,7 @@ export { PixelFluid, type FluidCells } from './fluidLayer';
 export { DEFAULT_LIMITS, LIMITS, resolveLimits, type RendererLimits, type PixelScene, type ResolvedPixelScene, type Lamp, type Grooves } from './scene';
 export type { FluidMap } from './fluidMap';
 export type { WindowLight } from './windowLight';
+export { splitGlass } from './glass';
 export { encodeScene, decodeScene, type BakedScene } from './baked';
 
 // Building a scene: geometry, surface flags, ambient motion, fluids, glTF models and the palette.
@@ -15,7 +16,7 @@ export { GeometryCollector, linearColor, place, flip, type RGB } from './geometr
 export { FLAG, THIN_MARK, thin, type Flag } from './flags';
 export { MODE, motion, type Motion, type Vec3, type Vec4 } from './motion';
 export { FLUIDS, FluidCollector, type FluidMaterial, type FluidPreset, type FluidSource, type SceneFluids } from './fluids';
-export { loadGltf, collectGltf, namedMeshRule, movingPartMotion, collectLamps, meshNodeName, type MeshRule } from './gltf';
+export { loadGltf, collectGltf, namedMeshRule, glassMeshRule, movingPartMotion, collectLamps, meshNodeName, type MeshRule } from './gltf';
 export { DEFAULT_PALETTE_SIZE, quantizePalette } from './palette';
 
 // Weather: rain and snow, cloud cover, wind.

@@ -7,6 +7,30 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Added
+
+- **Glass** ([#54](https://github.com/CelestialLemon/pixel3d-renderer/issues/54)). Panes you see through that are still
+  visibly there. `FLAG.GLASS` marks a surface as glass, and `glassMeshRule` (a `collectGltf` rule, like `namedMeshRule`) turns
+  `glass_` meshes into it instead of skipping them. `namedMeshRule` itself is unchanged and still skips `glass_`, so scenes
+  that model windows that way draw exactly what they did.
+  - Glass works in a scene's static geometry and in an object's geometry (`addObject`): the renderer splits the glass triangles
+    out (`splitGlass`, also exported), so a game builds one geometry for the whole building, glass included. Glass casts no sun or
+    lamp shadow, is left out of the lamp, window and fluid maps, and is never picked: a click goes to what is behind it.
+  - Drawn in its own pass at art resolution (the nearest pane at each pixel, hidden by hand behind anything nearer, as for
+    fluids), and laid over the finished image in the clean-up pass, so what is behind it (the frame's shadows, the crop inside,
+    a lit interior) shows through unchanged. A pane gets a flat tint of its colour, a lighter rim where it ends at a bar or the
+    edge of the roof or turns a corner, and thin diagonal glints on faces that look up. By night the tint and light follow the
+    scene's `night`.
+  - It takes the object's `tint`/`tintStrength` like any surface, so a roof whitened for snow whitens its glass too (a pane
+    tinted towards white turns nearly opaque), and `opacity` thins it out by the same dither. It follows `visible`, snapping,
+    mirroring and an object's motion attributes.
+  - Costs: one more draw per batch with glass (sharing the batch's instance data) and an art-resolution target, allocated only
+    while glass is drawn. A scene or frame without glass draws exactly what it did.
+  - Model it with the panes between bars standing slightly proud of them (the frame in front hides the glass behind it, and so
+    do bars flush with it, within 2 mm) and `glass_` meshes of one colour per material. Glass can't have ambient motion (`collectGltf`
+    throws). Glass behind water is not hidden by it; glass in the dynamic collector is not supported.
+  - Demo: `?scene=glass` (greenhouses, one under snow, one mirrored, one with a lit lantern). `npm run glass-check`. Three golden views.
+
 ## 0.4.0 (2026-10-23)
 
 ### Added

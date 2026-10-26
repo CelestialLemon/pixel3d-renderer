@@ -129,6 +129,8 @@ export const MOTION_ATTRIBUTES = ['aMode', 'aAnchor', 'aAnim'] as const;
 export interface BatchMaterials {
   gbuffer: THREE.Material;
   depth?: THREE.Material;
+  /** The glass triangles (glass.ts) are their own geometry, drawn with this material in the glass pass. */
+  glass?: THREE.Material;
 }
 
 /** Mirror across x: turns a mirrored instance matrix into an unmirrored one (and back). */
@@ -147,13 +149,23 @@ export class ObjectBatch {
   readonly objects: PixelObject[] = [];
   /** Casting, casting mirrored, not casting, not casting mirrored (see `slot`). */
   meshes: THREE.InstancedMesh[];
+  /**
+   * The same four, drawing the geometry's glass triangles (glass.ts) in the glass pass: they share each opaque mesh's instance
+   * matrices, ids and tints, so the two always agree. Empty when the geometry has no glass.
+   */
+  glassMeshes: THREE.InstancedMesh[] = [];
 
   /** The geometry has motion attributes (MOTION_ATTRIBUTES). */
   readonly motion: boolean;
   /** Some of its parts spin or swing, so its sun shadow moves with the clock. */
   readonly rigid: boolean;
 
-  constructor(readonly geometry: THREE.BufferGeometry, private readonly materials: BatchMaterials, capacity = 16) {
+  /**
+   * `geometry` is the game's (the batch's key); `solid` is what is drawn opaque and `glass` the glass triangles split out of it
+   * (`splitGlass`; `solid` is `geometry` itself when there are none).
+   */
+  constructor(readonly geometry: THREE.BufferGeometry, private readonly materials: BatchMaterials, capacity = 16,
+    private readonly solid = geometry, private readonly glass: THREE.BufferGeometry | null = null) {
     const modes = geometry.getAttribute('aMode');
     this.motion = !!modes;
     this.rigid = !!modes && Array.from(modes.array).some((m) => m > 5.5);
@@ -168,8 +180,20 @@ export class ObjectBatch {
   get casters() { return this.meshes.slice(0, 2); }
 
   private makeMeshes(capacity: number) {
+    const meshes = this.makeSolidMeshes(capacity);
+    this.glassMeshes = !this.glass ? [] : meshes.map((o, slot) => {
+      const m = new THREE.InstancedMesh(this.glass!, this.materials.glass!, capacity);
+      m.instanceMatrix = o.instanceMatrix; m.instanceColor = o.instanceColor;
+      m.frustumCulled = false; m.count = 0;
+      if (slot % 2) m.scale.x = -1;
+      return m;
+    });
+    return meshes;
+  }
+
+  private makeSolidMeshes(capacity: number) {
     return [0, 1, 2, 3].map((slot) => {
-      const m = new THREE.InstancedMesh(this.geometry, this.materials.gbuffer, capacity);
+      const m = new THREE.InstancedMesh(this.solid, this.materials.gbuffer, capacity);
       if (this.materials.depth) m.customDepthMaterial = this.materials.depth;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3).setUsage(THREE.DynamicDrawUsage);
@@ -181,10 +205,13 @@ export class ObjectBatch {
     });
   }
 
+  /** The geometries `splitGlass` made for this batch (the game's own `geometry` is never ours to dispose). */
+  ownedGeometries() { return this.solid === this.geometry ? [] : [this.solid, ...(this.glass ? [this.glass] : [])]; }
+
   /** Make room for every object in the batch. Returns the meshes it replaced, if it had to (the caller swaps them in the scene). */
   grow(): THREE.InstancedMesh[] {
     if (this.objects.length <= this.mesh.instanceMatrix.count) return [];
-    const old = this.meshes;
+    const old = [...this.meshes, ...this.glassMeshes];
     let capacity = this.mesh.instanceMatrix.count;
     while (capacity < this.objects.length) capacity *= 2;
     this.meshes = this.makeMeshes(capacity);

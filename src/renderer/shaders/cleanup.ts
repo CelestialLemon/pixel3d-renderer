@@ -1,9 +1,10 @@
 import { SURFACE_NORMAL } from './common';
+import { GLASS_COMPOSITE } from '../glass';
 import { PRECIPITATION } from './weather';
 
 // Clean-up: removes orphan pixels (a pixel unlike 3+ identical neighbours), which is the classic
 // "pixel noise" an artist would hand-fix. Restricted to the interior of flat NORMAL/EMISSIVE surfaces not under a fluid.
-// Then draws the falling rain or snow over the result (shaders/weather.ts).
+// Then lays the glass over it (glass.ts) and draws the falling rain or snow over the result (shaders/weather.ts).
 export const CLEAN_FRAG = /* glsl */ `
 precision highp float;
 uniform sampler2D tImage; uniform sampler2D tAlbedo; uniform sampler2D tNormal; uniform sampler2D tShadow; uniform sampler2D tFluid; uniform sampler2D tFluidN; uniform vec2 uRes; uniform int uOn;
@@ -11,6 +12,7 @@ uniform float uTexel; uniform vec3 uRight; uniform vec3 uUp; uniform vec3 uFwd; 
 out vec4 outColor;
 vec3 F(ivec2 q){ return texelFetch(tImage, clamp(q, ivec2(0), ivec2(uRes) - 1), 0).rgb; }
 bool same(vec3 a, vec3 b){ return all(lessThan(abs(a - b), vec3(0.002))); }
+${GLASS_COMPOSITE}
 #ifdef HIGHLIGHT
 // As in post.ts: the highlight rim is never "noise".
 uniform vec4 uHighlight;
@@ -69,6 +71,7 @@ void main(){
       if (cnt >= 3 && !same(n[i], c)) { c = n[i]; break; }
     }
   }
+  if (uGlass.x > 0.5) c = glassOver(c, p);   // the panes (glass.ts), over the cleaned image, under the rain
   if (uPrecip.x < 0.5) { outColor = vec4(c, 1.0); return; }   // nothing falls: no more reads
   vec4 a = texelFetch(tAlbedo, p, 0), nd = texelFetch(tNormal, p, 0);
   // A fluid surface nearer than what is under it is what the rain meets: the pool, not its bed.
