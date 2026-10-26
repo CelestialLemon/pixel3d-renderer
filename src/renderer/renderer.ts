@@ -5,6 +5,7 @@ import { BAYER4, POST_VERT } from './shaders/common';
 import { GBUF_DYN_VERT, GBUF_FRAG, GBUF_OBJECT_MOTION_VERT, GBUF_OBJECT_VERT, GBUF_STATIC_VERT, POSE, POSE_OBJECT } from './shaders/gbuffer';
 import { postFragment } from './shaders/post';
 import { CLEAN_FRAG } from './shaders/cleanup';
+import { GLASS_FRAG, splitGlass } from './glass';
 import { RESOLVE_FRAG } from './shaders/resolve';
 import { LampShadows } from './lampShadows';
 import { buildWindowLight, type WindowLight } from './windowLight';
@@ -122,6 +123,19 @@ export class PixelRenderer {
   private fluidMesh: THREE.Mesh;
   private fluidMat: THREE.ShaderMaterial;
   private fluidScene = new THREE.Scene();
+  /**
+   * The glass (glass.ts): panes split out of the scene's static geometry and of the objects' geometries, drawn in their own
+   * scene into their own G-buffer (colour, then normal and depth) at art resolution, which the clean-up pass lays over the
+   * image. The target exists only while some glass is drawn, so a scene without glass draws exactly as before.
+   */
+  private glassScene = new THREE.Scene();
+  private glassBuf?: THREE.WebGLRenderTarget;
+  private glassMat: THREE.ShaderMaterial;
+  private glassMotionMat: THREE.ShaderMaterial;
+  private glassStaticMesh?: THREE.Mesh;
+  private glassStaticMat?: THREE.ShaderMaterial;
+  /** Stands in for the glass G-buffer while there is none. */
+  private noGlass = Object.assign(new THREE.DataTexture(new Float32Array(4), 1, 1, THREE.RGBAFormat, THREE.FloatType), { needsUpdate: true });
   private hasFluids: boolean;
   /** The fluid layers the game added (`addFluid`), and what each draws with. */
   private fluidLayers: PixelFluid[] = [];
@@ -179,6 +193,8 @@ export class PixelRenderer {
    * see-through object; `renderGeometry` then drops them.
    */
   private retired: THREE.InstancedMesh[] = [];
+  /** The split geometries (glass.ts) of removed batches, freed with `retired`. */
+  private retiredGeometries: THREE.BufferGeometry[] = [];
   /** False until `renderGeometry` has filled the G-buffer at the current size: `pick` finds nothing before that. */
   private gbufDrawn = false;
   private objectMat: THREE.ShaderMaterial;
@@ -259,7 +275,8 @@ export class PixelRenderer {
     const smat = new THREE.ShaderMaterial({ vertexShader: GBUF_STATIC_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide, uniforms: { uSS: { value: 1 } } });
     smat.shadowSide = THREE.DoubleSide;
     this.staticMat = smat;
-    this.staticMesh = new THREE.Mesh(pixelScene.staticGeometry, smat);
+    const { solid: staticSolid, glass: staticGlass } = splitGlass(pixelScene.staticGeometry);
+    this.staticMesh = new THREE.Mesh(staticSolid, smat);
     this.staticMesh.castShadow = true; this.staticMesh.receiveShadow = true; this.staticMesh.frustumCulled = false;
 
     this.objectMat = new THREE.ShaderMaterial({ vertexShader: GBUF_OBJECT_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.FrontSide, uniforms: { uSS: { value: 1 }, uSeeThrough: { value: 0 } } });
@@ -269,6 +286,18 @@ export class PixelRenderer {
       vertexShader: GBUF_DYN_VERT, fragmentShader: GBUF_FRAG, glslVersion: THREE.GLSL3, side: THREE.DoubleSide,
       uniforms: { uTime: { value: 0 }, uNight: { value: 0 }, uWind: this.wind, uSS: { value: 1 } },
     });
+    // The glass pass's materials: the opaque vertex shaders (so a pane is placed, tinted and dithered exactly like the surfaces
+    // beside it) with the glass fragment shader. A pane is seen from either side.
+    const glassUniforms = { tAlbedo: { value: null }, tNormal: { value: null }, uFwd: { value: new THREE.Vector3() }, uSeeThrough: { value: 0 } };
+    const glassMaterial = (vertexShader: string, uniforms: Record<string, THREE.IUniform>) =>
+      new THREE.ShaderMaterial({ vertexShader, fragmentShader: GLASS_FRAG, glslVersion: THREE.GLSL3, side: THREE.DoubleSide, uniforms: { ...glassUniforms, ...uniforms } });
+    this.glassMat = glassMaterial(GBUF_OBJECT_VERT, {});
+    this.glassMotionMat = glassMaterial(GBUF_OBJECT_MOTION_VERT, { uTime: this.dynMat.uniforms.uTime, uNight: this.dynMat.uniforms.uNight, uWind: this.wind });
+    if (staticGlass) {
+      this.glassStaticMesh = new THREE.Mesh(staticGlass, this.glassStaticMat = glassMaterial(GBUF_STATIC_VERT, {}));
+      this.glassStaticMesh.frustumCulled = false;
+      this.glassScene.add(this.glassStaticMesh);
+    }
     this.dynMesh = new THREE.Mesh(pixelScene.dynamicGeometry, this.dynMat);
     this.dynMesh.frustumCulled = false; this.dynMesh.castShadow = false; this.dynMesh.receiveShadow = true;
     this.scene.add(this.staticMesh, this.dynMesh);
@@ -366,15 +395,15 @@ ${POSE_OBJECT}`;
     this.hasFluids = fluids.geometry.attributes.position.count > 0;
     const maps = pixelScene.maps;
     this.fluidMap = maps ? { texture: maps.fluids.texture.clone(), height: maps.fluids.height.clone(), bounds: [...maps.fluids.bounds] }
-      : buildFluidMap(fluids, pixelScene.staticGeometry);
+      : buildFluidMap(fluids, staticSolid);
     const mats = fluids.materials, src = fluids.sources;
     const fluidVec = (pick: (m: typeof mats[number]) => [number, number, number, number]) =>
       padded(mats.map((m) => new THREE.Vector4(...pick(m))), this.limits.fluidMaterials, () => new THREE.Vector4());
     const gl = this.renderer.getContext();
-    this.lampShadows = new LampShadows(lamps, pixelScene.staticGeometry,
+    this.lampShadows = new LampShadows(lamps, staticSolid,
       Math.min(this.renderer.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number));
     this.windowLight = maps ? { texture: maps.windows.texture.clone(), source: maps.windows.source.clone(),
-      bounds: [...maps.windows.bounds], panes: maps.windows.panes } : buildWindowLight(pixelScene.staticGeometry, lamps);
+      bounds: [...maps.windows.bounds], panes: maps.windows.panes } : buildWindowLight(staticSolid, lamps);
     const common = { glslVersion: THREE.GLSL3, depthTest: false, depthWrite: false } as const;
     this.postMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: postFragment(this.limits),
@@ -415,6 +444,7 @@ ${POSE_OBJECT}`;
     this.cleanMat = new THREE.ShaderMaterial({
       ...common, vertexShader: POST_VERT, fragmentShader: CLEAN_FRAG,
       uniforms: { tImage: { value: null }, tAlbedo: { value: null }, tNormal: { value: null }, tShadow: { value: null }, tFluid: { value: null }, tFluidN: { value: null }, uRes: { value: new THREE.Vector2() }, uOn: { value: 1 },
+        tGlass: { value: this.noGlass }, tGlassN: { value: this.noGlass }, uGlass: { value: new THREE.Vector2() },
         uPrecip: { value: new THREE.Vector4() }, uPrecipDepth: { value: new THREE.Vector4() },
         // Shared with the post material, which sets them (setHighlight, setLook, renderStyle): the highlight test needs the
         // camera, and the rain and snow the camera, the clock and the sky.
@@ -476,15 +506,16 @@ ${POSE_OBJECT}`;
     }
     let batch = this.batches.get(geometry);
     if (!batch) {
-      batch = new ObjectBatch(geometry, motion.length ? { gbuffer: this.objectMotionMat, depth: this.objectDepthMat } : { gbuffer: this.objectMat });
+      const { solid, glass } = splitGlass(geometry);
+      batch = new ObjectBatch(geometry, motion.length ? { gbuffer: this.objectMotionMat, depth: this.objectDepthMat, glass: this.glassMotionMat } : { gbuffer: this.objectMat, glass: this.glassMat }, 16, solid, glass);
       this.batches.set(geometry, batch);
-      this.scene.add(...batch.meshes);
+      this.scene.add(...batch.meshes); if (batch.glassMeshes.length) this.glassScene.add(...batch.glassMeshes);
     }
     const o = new PixelObject(batch, this.nextObjectId++, (o) => this.removeObject(o), (o, on) => this.setHighlight(o, on));
     batch.objects.push(o);
     this.objectsById.set(o.id, o);
     const old = batch.grow();
-    if (old.length) { this.retired.push(...old); this.scene.add(...batch.meshes); }
+    if (old.length) { this.retired.push(...old); this.scene.add(...batch.meshes); if (batch.glassMeshes.length) this.glassScene.add(...batch.glassMeshes); }
     this.objectShadowDirty = true;
     return o;
   }
@@ -507,7 +538,10 @@ ${POSE_OBJECT}`;
     batch.objects.splice(i, 1);
     this.objectsById.delete(o.id);
     if (o.drawnCasts) this.objectShadowDirty = true;
-    if (!batch.objects.length) { this.retired.push(...batch.meshes); this.batches.delete(batch.geometry); }
+    if (!batch.objects.length) {
+      this.retired.push(...batch.meshes, ...batch.glassMeshes); this.batches.delete(batch.geometry);
+      this.retiredGeometries.push(...batch.ownedGeometries());
+    }
   }
 
   /**
@@ -548,6 +582,7 @@ ${POSE_OBJECT}`;
       }
       batch.meshes.forEach((mesh, k) => {
         mesh.count = counts[k];
+        if (batch.glassMeshes.length) batch.glassMeshes[k].count = counts[k];   // the same instances, whose arrays are shared
         if (!counts[k]) return;   // nothing of it is drawn, so its stale instances don't matter
         for (const a of [mesh.instanceMatrix, mesh.instanceColor!]) {
           a.clearUpdateRanges(); a.addUpdateRange(0, counts[k] * a.itemSize); a.needsUpdate = true;
@@ -696,8 +731,8 @@ ${POSE_OBJECT}`;
     this.renderer.setSize(w, h, false);
     const S = this.supersample === 3 ? 3 : 1;
     const mk = (opts: THREE.RenderTargetOptions, count = 1, k = 1) => this.target(opts, count, k);
-    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage]) t?.dispose();
-    this.fluidBuf = this.withFluids = this.linearImage = undefined;
+    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage, this.glassBuf]) t?.dispose();
+    this.fluidBuf = this.withFluids = this.linearImage = this.glassBuf = undefined;
     // Full float depth avoids false depth discontinuities on planar roof/paving edges.
     // Albedo + flag, shading normal + depth, and object id + encoded geometric plane.
     // Resolve carries the plane in the shadow target's spare green/blue channels; no extra target is needed.
@@ -733,8 +768,10 @@ ${POSE_OBJECT}`;
   /** Rasterise into the G-buffer (+ shadow mask) with the dynamic mesh posed at `time` seconds and the objects where the game put them. */
   renderGeometry(time: number) {
     const r = this.renderer;
-    for (const m of this.retired) { this.scene.remove(m); m.dispose(); }
+    for (const m of this.retired) { this.scene.remove(m); this.glassScene.remove(m); m.dispose(); }
     this.retired = [];
+    for (const g of this.retiredGeometries) g.dispose();
+    this.retiredGeometries = [];
     this.lampShadows.render(r);
     this.dynMat.uniforms.uTime.value = time;
     this.wind.value.set(this.weatherNow.wind, this.weatherNow.gusts);
@@ -815,6 +852,25 @@ ${POSE_OBJECT}`;
       fu.uFwd.value.copy(ru.uFwd.value);
       r.render(this.fluidScene, this.camera);
     }
+
+    // The glass: the nearest pane at each pixel, hidden behind the resolved opaque world. Only while some is drawn.
+    if (this.glassShown()) {
+      this.glassBuf ??= this.target({ type: THREE.FloatType }, 2);
+      for (const m of [this.glassMat, this.glassMotionMat, this.glassStaticMat]) {
+        if (!m) continue;
+        m.uniforms.tAlbedo.value = this.gbuf.textures[0]; m.uniforms.tNormal.value = this.gbuf.textures[1]; m.uniforms.uFwd.value.copy(ru.uFwd.value);
+      }
+      r.setClearColor(0x000000, 0);
+      r.setRenderTarget(this.glassBuf); r.clear();
+      r.render(this.glassScene, this.camera);
+    } else if (this.glassBuf) { this.glassBuf.dispose(); this.glassBuf = undefined; }
+  }
+
+  /** Whether any glass is drawn this frame: the scene's own panes, or an object's, posed by `poseObjects`. */
+  private glassShown() {
+    if (this.glassStaticMesh) return true;
+    for (const b of this.batches.values()) for (const m of b.glassMeshes) if (m.count > 0) return true;
+    return false;
   }
 
   /** Stylise the G-buffer. `renderStyle(time)` uses DEFAULT_SETTINGS; time drives clouds and fluids. */
@@ -839,6 +895,8 @@ ${POSE_OBJECT}`;
     u.uCloud.value.set(edges[0], edges[1], drift[0], drift[1]);
     u.uHaze.value.set(...hazeUniform(w)); u.uHazeColor.value.set(w.hazeColor);
     const cu = this.cleanMat.uniforms;
+    cu.uGlass.value.set(this.glassBuf ? 1 : 0, 1 - 0.65 * u.uNight.value);
+    cu.tGlass.value = this.glassBuf?.textures[0] ?? this.noGlass; cu.tGlassN.value = this.glassBuf?.textures[1] ?? this.noGlass;
     cu.uPrecip.value.set(...precipitationUniform(w, u.uRight.value.x, u.uRight.value.z));
     // Drops sit at depths around the camera's target, over a range that lets them land anywhere on screen (see
     // shaders/weather.ts), and go deeper as they fall: tan(elevation) per unit down the screen.
@@ -975,13 +1033,15 @@ ${POSE_OBJECT}`;
     if (this.disposed) return;   // once: a second call would queue a second deferred release
     this.disposed = true;
     this.gbufDrawn = false; this.objectsById.clear(); this.highlightWarmPending = false;
-    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage, this.pickTargets?.hi, this.pickTargets?.resolved]) t?.dispose();
+    for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage, this.glassBuf, this.pickTargets?.hi, this.pickTargets?.resolved]) t?.dispose();
     this.light.shadow.map?.dispose(); this.objectLight?.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();
     this.fluidMap.texture.dispose(); this.fluidMap.height.dispose(); this.noFluid.dispose();
     for (const m of [this.staticMesh, this.dynMesh, this.fluidMesh, this.quad, ...this.layerMeshes.values()]) m.geometry.dispose();
-    for (const b of this.batches.values()) for (const m of b.meshes) m.dispose();
+    this.glassStaticMesh?.geometry.dispose(); this.noGlass.dispose();
+    for (const b of this.batches.values()) for (const m of [...b.meshes, ...b.glassMeshes]) m.dispose();
     for (const m of this.retired) m.dispose();
-    for (const m of [this.staticMat, this.objectMat, this.objectMotionMat, this.objectDepthMat, this.objectMaskMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.objectShadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat]) (m as THREE.Material).dispose();
+    for (const g of [...this.retiredGeometries, ...[...this.batches.values()].flatMap((b) => b.ownedGeometries())]) g.dispose();
+    for (const m of [this.staticMat, this.objectMat, this.objectMotionMat, this.objectDepthMat, this.objectMaskMat, this.dynMat, this.dynShadowMat, this.shadowMat, this.objectShadowMat, this.postMat, this.cleanMat, this.resolveMat, this.fluidMat, this.glassMat, this.glassMotionMat, this.glassStaticMat]) m?.dispose();
     // three polls a background compile's materials on a timer, so they and the renderer go only once it has finished.
     const last = () => { this.postHiMat.dispose(); this.cleanHiMat.dispose(); this.renderer.dispose(); };
     if (this.warming) this.warming.then(last); else last();

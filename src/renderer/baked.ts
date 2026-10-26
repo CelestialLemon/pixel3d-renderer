@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { resolveScene, type PixelScene, type ResolvedPixelScene } from './scene';
 import { buildFluidMap } from './fluidMap';
 import { buildWindowLight } from './windowLight';
+import { splitGlass } from './glass';
 
 /** A scene and optional local-space object geometry, baked together into one exact binary asset. */
 export interface BakedScene extends ResolvedPixelScene {
@@ -39,7 +40,9 @@ export function encodeScene(input: PixelScene & Pick<BakedScene, 'objectGeometri
     array: attribute(new THREE.BufferAttribute(t.image.data as THREE.TypedArray, 1)), width: t.image.width, height: t.image.height,
     format: t.format as THREE.PixelFormat, type: t.type, minFilter: t.minFilter, magFilter: t.magFilter,
   });
-  const maps = scene.maps ?? { fluids: buildFluidMap(scene.fluids, scene.staticGeometry), windows: buildWindowLight(scene.staticGeometry, scene.lamps) };
+  // Glass (glass.ts) is left out of the maps, as the renderer leaves it out when it builds them.
+  const solid = scene.maps ? scene.staticGeometry : splitGlass(scene.staticGeometry).solid;
+  const maps = scene.maps ?? { fluids: buildFluidMap(scene.fluids, solid), windows: buildWindowLight(solid, scene.lamps) };
   const metadata = {
     staticGeometry: geometry(scene.staticGeometry), dynamicGeometry: geometry(scene.dynamicGeometry),
     fluidGeometry: geometry(scene.fluids.geometry),

@@ -57,6 +57,10 @@ const SHOTS = [
   { name: 'objects-yard-night', path: `pass3.html?${VIEW}&scene=objects&view=yard&hour=22`, canvas: 'p3-view' },
   // Per-object tint, see-through build previews and belt items that cast no shadow (src/scenes/object-looks).
   ...['yard', 'workshops'].map((v) => ({ name: `object-looks-${v}`, path: `pass3.html?${VIEW}&scene=object-looks&view=${v}&hour=12`, canvas: 'p3-view' })),
+  // Glass (src/scenes/glass): greenhouses by day from above, at dusk from low, and at night; one under snow (object tint).
+  { name: 'glass-yard', path: `pass3.html?${VIEW}&scene=glass&view=yard&hour=12`, canvas: 'p3-view' },
+  { name: 'glass-low-hour17.5', path: `pass3.html?${VIEW}&scene=glass&view=low&hour=17.5`, canvas: 'p3-view' },
+  { name: 'glass-close-hour22', path: `pass3.html?${VIEW}&scene=glass&view=close&hour=22`, canvas: 'p3-view' },
 ];
 
 process.chdir(fileURLToPath(new URL('..', import.meta.url)));   // golden/ paths are relative to the repo root
@@ -64,7 +68,7 @@ const args = process.argv.slice(2), update = args.includes('--update'), filter =
 // Small, fixed software-rendered set for CI. Generated from known-good main, never from the change under test.
 const ci = args.includes('--ci');
 const CI_SHOTS = new Set(['pass0-standalone', 'compare-pass0', 'compare-pass1', 'compare-pass3',
-  'pass3-hour12', 'pass3-hour22', 'village-canal', 'village-fountain', 'fluids-hour12', 'objects-yard-night']);
+  'pass3-hour12', 'pass3-hour22', 'village-canal', 'village-fountain', 'fluids-hour12', 'objects-yard-night', 'glass-yard', 'glass-close-hour22']);
 const shots = SHOTS.filter((s) => (!filter || s.name.includes(filter)) && (!ci || CI_SHOTS.has(s.name)));
 const browser = await launch();
 let failed = 0;

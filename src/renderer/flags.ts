@@ -14,6 +14,11 @@ export const FLAG = {
   GLOW: 5,
   /** Flat panel with shader-drawn groove lines (see PixelScene.grooves); no dither or contact speckle. */
   GROOVED: 6,
+  /**
+   * Glass (the `glass_` asset prefix, see glass.ts). Never reaches the opaque G-buffer: the renderer splits glass triangles out
+   * of a scene's static geometry and of an object's geometry, and draws them in their own pass over the finished image.
+   */
+  GLASS: 7,
 } as const;
 
 export type Flag = typeof FLAG[keyof typeof FLAG];

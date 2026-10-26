@@ -45,6 +45,17 @@ export function namedMeshRule(mesh: THREE.Mesh): MeshRule | void {
 }
 
 /**
+ * `namedMeshRule`, but a `glass_` mesh is drawn as glass (`FLAG.GLASS`, see glass.ts) instead of skipped: see-through panes
+ * that are still visibly there, which take an object's `tint`, cast no shadow and are not picked. `namedMeshRule` stays as it
+ * was, so scenes that model their windows as `glass_` keep them clear. Glass can't have ambient motion (a `motion` rule on it
+ * throws in `collectGltf`).
+ */
+export function glassMeshRule(mesh: THREE.Mesh): MeshRule | void {
+  if (nodeName(mesh).toLowerCase().startsWith('glass_')) return { flag: FLAG.GLASS };
+  return namedMeshRule(mesh);
+}
+
+/**
  * Motion for a mesh under a `move_spin_*` or `move_sway_*` node (itself or its nearest such ancestor): the part turns about
  * that node's own local X axis through its origin, a steady spin or a gentle swing. The node's custom properties `speed`
  * (radians per second, default 0.6) and `amplitude` (radians, default 0.1) tune it. World matrices must be current.
@@ -100,6 +111,7 @@ export function collectGltf(root: THREE.Object3D, staticOut: GeometryCollector, 
     const e = mat.emissive;
     const base = r.flag ?? (e && e.r + e.g + e.b > 0.05 ? FLAG.EMISSIVE : FLAG.NORMAL);
     const flag = r.thin ? thin(base) : base;
+    if (base === FLAG.GLASS && r.motion) throw new Error(`collectGltf: '${nodeName(mesh)}' is glass, which can't have ambient motion`);
     const color = r.color ?? [mat.color.r, mat.color.g, mat.color.b];
     if (r.motion) dynamicOut.add(mesh.geometry, mesh.matrixWorld, color, flag, false, r.motion);
     else staticOut.add(mesh.geometry, mesh.matrixWorld, color, flag);

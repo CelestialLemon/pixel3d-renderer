@@ -1,6 +1,7 @@
 import { cookieCo } from './cookie-co';
 import { floodplainScene } from './floodplain';
 import { fluidsScene } from './fluids';
+import { glassScene } from './glass';
 import { objectLooksScene } from './object-looks';
 import { objectsScene } from './objects';
 import { objectsMotionScene } from './objects-motion';
@@ -12,6 +13,6 @@ import type { SceneDefinition } from './types';
 export type { BuiltScene, SceneDefinition, SceneView } from './types';
 
 /** Every scene the demo pages can show (`?scene=<id>`). The first one is the default. */
-export const SCENES: SceneDefinition[] = [cookieCo, village, testChart, propsGallery, fluidsScene, floodplainScene, objectsScene, objectsMotionScene, objectLooksScene];
+export const SCENES: SceneDefinition[] = [cookieCo, village, testChart, propsGallery, fluidsScene, floodplainScene, objectsScene, objectsMotionScene, objectLooksScene, glassScene];
 
 export const sceneById = (id: string | null) => SCENES.find((s) => s.id === id) ?? SCENES[0];
