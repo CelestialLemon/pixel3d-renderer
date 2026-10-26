@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.5.0 (2026-10-26)
+
 ### Added
 
 - **Glass** ([#54](https://github.com/CelestialLemon/pixel3d-renderer/issues/54)). Panes you see through that are still
