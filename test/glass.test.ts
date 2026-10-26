@@ -78,3 +78,11 @@ test('splitGlass keeps the draw range of an indexed geometry', () => {
   assert.equal(glass?.getAttribute('position').count, 3);
   assert.equal(solid.getAttribute('position').count, 0);
 });
+
+test('splitGlass starts triangles at the draw range\'s own offset', () => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(18), 3));
+  g.setAttribute('aFlag', new THREE.BufferAttribute(new Float32Array(6).fill(7), 1));
+  g.setDrawRange(1, 3);
+  assert.equal(splitGlass(g).glass?.getAttribute('position').count, 3);
+});
