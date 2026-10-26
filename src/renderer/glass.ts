@@ -25,7 +25,7 @@ export function splitGlass(geometry: THREE.BufferGeometry): { solid: THREE.Buffe
   const f = src.getAttribute('aFlag') as THREE.BufferAttribute;
   // Only the draw range is drawn, so only it is split (both halves are drawn whole).
   const first = Math.min(Math.max(0, src.drawRange.start), f.count);   // triangles start at the draw call's own offset
-  const end = Math.min(f.count, Math.max(0, src.drawRange.start) + src.drawRange.count);
+  const end = Math.min(f.count, src.drawRange.start + src.drawRange.count);
   const vertices = Math.max(0, Math.floor((end - first) / 3) * 3);
   const glassTriangle: boolean[] = [];
   let glassVertices = 0;
@@ -38,18 +38,18 @@ export function splitGlass(geometry: THREE.BufferGeometry): { solid: THREE.Buffe
   const take = (want: boolean, count: number) => {
     const g = new THREE.BufferGeometry();
     for (const [name, a] of Object.entries(src.attributes) as [string, THREE.BufferAttribute | THREE.InterleavedBufferAttribute][]) {
-      // Read through the accessors, so an interleaved attribute's stride and offset are honoured.
-      const size = a.itemSize, out = new (a.array.constructor as new (n: number) => THREE.TypedArray)(count * size);
+      // Read and write through the accessors, so an interleaved attribute's stride and a normalized integer one survive.
+      const size = a.itemSize, out = new THREE.BufferAttribute(new (a.array.constructor as new (n: number) => THREE.TypedArray)(count * size), size, a.normalized);
       let o = 0;
       for (let t = 0; t < glassTriangle.length; t++) if (glassTriangle[t] === want) {
-        for (let v = first + t * 3, e = v + 3; v < e; v++) {
-          out[o++] = a.getX(v);
-          if (size > 1) out[o++] = a.getY(v);
-          if (size > 2) out[o++] = a.getZ(v);
-          if (size > 3) out[o++] = a.getW(v);
+        for (let v = first + t * 3, e = v + 3; v < e; v++, o++) {
+          out.setX(o, a.getX(v));
+          if (size > 1) out.setY(o, a.getY(v));
+          if (size > 2) out.setZ(o, a.getZ(v));
+          if (size > 3) out.setW(o, a.getW(v));
         }
       }
-      g.setAttribute(name, new THREE.BufferAttribute(out, size, a.normalized));
+      g.setAttribute(name, out);
     }
     return g;
   };

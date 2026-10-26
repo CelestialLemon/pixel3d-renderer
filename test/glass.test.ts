@@ -111,3 +111,18 @@ test('splitGlass reads interleaved attributes through their stride and offset', 
   assert.deepEqual([p.getX(0), p.getY(0), p.getZ(0)], [4, 5, 6]);
   assert.equal(glass!.getAttribute('aFlag').getX(2), 7);
 });
+
+test('splitGlass ends the range at start + count before clamping, and keeps normalized integers', () => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(18), 3));
+  g.setAttribute('aFlag', new THREE.BufferAttribute(new Float32Array([0, 0, 0, 7, 7, 7]), 1));
+  g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(18).fill(128), 3, true));
+  g.setDrawRange(-3, 6);
+  const { solid, glass } = splitGlass(g);
+  assert.equal(glass, null);
+  assert.equal(solid, g);
+  g.setDrawRange(0, 6);
+  const r = splitGlass(g);
+  assert.equal(r.glass!.getAttribute('color').getX(0), 128 / 255);
+  assert.equal(r.solid.getAttribute('color').getX(0), 128 / 255);
+});
