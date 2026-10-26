@@ -111,7 +111,7 @@ export function collectGltf(root: THREE.Object3D, staticOut: GeometryCollector, 
     const e = mat.emissive;
     const base = r.flag ?? (e && e.r + e.g + e.b > 0.05 ? FLAG.EMISSIVE : FLAG.NORMAL);
     const flag = r.thin ? thin(base) : base;
-    if (base === FLAG.GLASS && r.motion) throw new Error(`collectGltf: '${nodeName(mesh)}' is glass, which can't have ambient motion`);
+    if (Math.round(base) === FLAG.GLASS && r.motion) throw new Error(`collectGltf: '${nodeName(mesh)}' is glass, which can't have ambient motion`);
     const color = r.color ?? [mat.color.r, mat.color.g, mat.color.b];
     if (r.motion) dynamicOut.add(mesh.geometry, mesh.matrixWorld, color, flag, false, r.motion);
     else staticOut.add(mesh.geometry, mesh.matrixWorld, color, flag);

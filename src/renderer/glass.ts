@@ -24,8 +24,9 @@ export function splitGlass(geometry: THREE.BufferGeometry): { solid: THREE.Buffe
   if (geometry.index) src.drawRange = { ...geometry.drawRange };   // toNonIndexed resets it; an index entry becomes a vertex
   const f = src.getAttribute('aFlag') as THREE.BufferAttribute;
   // Only the draw range is drawn, so only it is split (both halves are drawn whole).
-  const first = Math.min(Math.max(0, src.drawRange.start), f.count);   // triangles start at the draw call's own offset
-  const end = Math.min(f.count, src.drawRange.start + src.drawRange.count);
+  const limit = Math.min(f.count, src.getAttribute('position')?.count ?? f.count);   // three.js draws no more than the positions
+  const first = Math.min(Math.max(0, src.drawRange.start), limit);   // triangles start at the draw call's own offset
+  const end = Math.min(limit, src.drawRange.start + src.drawRange.count);
   const vertices = Math.max(0, Math.floor((end - first) / 3) * 3);
   const glassTriangle: boolean[] = [];
   let glassVertices = 0;

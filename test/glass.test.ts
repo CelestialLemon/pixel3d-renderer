@@ -126,3 +126,12 @@ test('splitGlass ends the range at start + count before clamping, and keeps norm
   assert.equal(r.glass!.getAttribute('color').getX(0), 128 / 255);
   assert.equal(r.solid.getAttribute('color').getX(0), 128 / 255);
 });
+
+test('splitGlass draws no more than the positions', () => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
+  g.setAttribute('aFlag', new THREE.BufferAttribute(new Float32Array(6).fill(7), 1));
+  const { glass } = splitGlass(g);
+  assert.equal(glass?.getAttribute('position').count, 3);
+  assert.equal(glass?.getAttribute('aFlag').count, 3);
+});
