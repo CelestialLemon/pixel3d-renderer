@@ -581,8 +581,8 @@ ${POSE_OBJECT}`;
         o.drawnVisible = shown; o.drawnCasts = casts;
       }
       batch.meshes.forEach((mesh, k) => {
-        mesh.count = counts[k];
-        if (batch.glassMeshes.length) batch.glassMeshes[k].count = counts[k];   // the same instances, whose arrays are shared
+        mesh.count = counts[k]; mesh.visible = counts[k] > 0;   // an empty one would still cost three a program lookup and VAO setup
+        if (batch.glassMeshes.length) { batch.glassMeshes[k].count = counts[k]; batch.glassMeshes[k].visible = counts[k] > 0; }   // the same instances, whose arrays are shared
         if (!counts[k]) return;   // nothing of it is drawn, so its stale instances don't matter
         for (const a of [mesh.instanceMatrix, mesh.instanceColor!]) {
           a.clearUpdateRanges(); a.addUpdateRange(0, counts[k] * a.itemSize); a.needsUpdate = true;
@@ -819,7 +819,7 @@ ${POSE_OBJECT}`;
       r.shadowMap.needsUpdate = false; if (this.objectLight) this.objectLight.shadow.needsUpdate = false;
       setCasters(true, true);
       this.staticMesh.visible = true; this.dynMesh.visible = true;
-      for (const m of objects) m.visible = true;
+      for (const m of objects) m.visible = m.count > 0;
     }
 
     const ru = this.resolveMat.uniforms;

@@ -7,6 +7,14 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Fixed
+
+- **Empty batch meshes are no longer submitted to three.js** ([#57](https://github.com/CelestialLemon/pixel3d-renderer/issues/57)).
+  Each batch has four sibling meshes (casting × mirrored), most with no instances, and three still set up their program and
+  vertex array before skipping the draw. `poseObjects` now hides a mesh (and its glass twin) while its count is 0, and the
+  shadow-mask pass restores only the populated ones. Output is bit-identical; the CPU cost of `renderGeometry` drops by about
+  half in a scene with hundreds of batches.
+
 ## 0.5.0 (2026-10-26)
 
 ### Added
