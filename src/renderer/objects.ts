@@ -184,7 +184,7 @@ export class ObjectBatch {
     this.glassMeshes = !this.glass ? [] : meshes.map((o, slot) => {
       const m = new THREE.InstancedMesh(this.glass!, this.materials.glass!, capacity);
       m.instanceMatrix = o.instanceMatrix; m.instanceColor = o.instanceColor;
-      m.frustumCulled = false; m.count = 0;
+      m.frustumCulled = false; m.count = 0; m.visible = false;
       if (slot % 2) m.scale.x = -1;
       return m;
     });
@@ -199,7 +199,7 @@ export class ObjectBatch {
       m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3).setUsage(THREE.DynamicDrawUsage);
       m.castShadow = slot < 2; m.receiveShadow = true;
       m.frustumCulled = false;   // the instances move every frame; a stale bounding sphere would cull them
-      m.count = 0;
+      m.count = 0; m.visible = false;   // poseObjects shows it while it holds instances
       if (slot % 2) m.scale.x = -1;
       return m;
     });
