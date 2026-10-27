@@ -7,6 +7,15 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Changed
+
+- **The resolve pass is about twice as fast** ([#58](https://github.com/CelestialLemon/pixel3d-renderer/issues/58)). The
+  resolve shader is now generated with a literal index for every sample instead of dynamically indexed arrays, computes the 36
+  symmetric colour tests and each sample's plane terms once, and skips the grouping when the centre sample is the same
+  surface as all the others. The maths is unchanged, in the same form and order: output is bit-identical (zero differing
+  texels in all three resolved targets, and the golden images are identical). On an RX 570 (ANGLE/Vulkan) a whole frame at
+  960×540 art drops from 9.4 ms to 4.8 ms. The source is larger, so the program takes a little longer to compile.
+
 ### Fixed
 
 - **Empty batch meshes are no longer submitted to three.js** ([#57](https://github.com/CelestialLemon/pixel3d-renderer/issues/57)).
