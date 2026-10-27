@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.5.1 (2026-10-28)
+
 ### Changed
 
 - **The resolve pass is about twice as fast** ([#58](https://github.com/CelestialLemon/pixel3d-renderer/issues/58)). The
