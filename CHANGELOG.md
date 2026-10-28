@@ -7,6 +7,21 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Added
+
+- **Non-blocking pick: `requestPick(clientX, clientY)` and `requestPickPixel(x, y)`**
+  ([#59](https://github.com/CelestialLemon/pixel3d-renderer/issues/59)). They return a promise of exactly what `pick` /
+  `pickPixel` would return at the time of the call (as of the last `renderGeometry`, with that frame's camera), without
+  waiting for the GPU. The three texels are copied into a pixel-pack buffer of the renderer's own (unbound straight away, so
+  three's synchronous reads never write into it) behind one fence, which the next `renderGeometry` or `renderStyle` checks
+  without blocking (no timer). The promise settles a frame or two later; its `object` is null if the object was removed
+  meanwhile, and it settles with null if the renderer is disposed or the WebGL context is lost first. While any object is drawn see-through, each request
+  also renders the scene behind the pixel (as `pick` does over a see-through object) and copies those texels too. `pick` is
+  unchanged for callers that need the answer at once. The viewer's hover highlight now uses `requestPick`. On an RX 570
+  (ANGLE/Vulkan, village at 960×540 art, one pick per frame), the sync `pick` waits about 16 ms per call for the GPU; the
+  request takes about 0.2 ms and its delivery about 0.8 ms (the browser's `getBufferSubData` round trip), and nothing stalls
+  the GPU.
+
 ## 0.5.1 (2026-10-28)
 
 ### Changed

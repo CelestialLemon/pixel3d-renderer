@@ -35,6 +35,29 @@ try {
   await open(page, 'pass3.html?auto=0&scene=test-chart&view=ink');
   ok('?view= starts on a bay preset', (await st()).tx === 8);
   await page.click('#view-presets button:nth-child(2)'); ok('bay preset moves the orbit target', (await st()).tx === -8);
+  // Hover highlights the object under a still pointer while the scene animates (requestPick answers arrive frames later).
+  await open(page, 'pass3.html?auto=0&scene=objects');
+  const target = await page.evaluate(async () => {
+    const r = app3.p3, rect = r.canvas.getBoundingClientRect(), frames = () => new Promise((res) => setTimeout(res, 200));
+    for (let y = 2; y < r.height; y += 4) for (let x = 2; x < r.width; x += 4) {
+      const o = r.pickPixel(x, y)?.object;
+      if (!o) continue;
+      await frames();   // a still object: the same one under the pixel a few frames later
+      if (r.pickPixel(x, y)?.object !== o) continue;
+      (window as any).hoverTarget = o;
+      return { x: rect.left + (x + 0.5) * rect.width / r.width, y: rect.top + (y + 0.5) * rect.height / r.height, animate: app3.settings.animate };
+    }
+    return null;
+  });
+  ok('objects scene has a still object to hover, animating', !!target && target.animate);
+  if (target) {
+    await page.mouse.move(target.x, target.y);
+    ok('hover highlights the object under a still pointer while animating',
+      await page.waitForFunction('window.hoverTarget.highlight === true', { timeout: 5000 }).then(() => true, () => false));
+    await page.mouse.move(1, 1);
+    ok('leaving it clears the highlight',
+      await page.waitForFunction('window.hoverTarget.highlight === false', { timeout: 5000 }).then(() => true, () => false));
+  }
   ok(`no console/page errors (${errors.length})`, errors.length === 0); if (errors.length) console.log(errors);
 } finally { await browser.close(); }
 process.exitCode = failed ? 1 : 0;

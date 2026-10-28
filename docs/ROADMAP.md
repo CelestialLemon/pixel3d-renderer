@@ -92,6 +92,12 @@ time. A game can't move, add or remove anything. This phase fixes that and turns
      that wants to click parts of it (tiles, doors) maps the world position to them itself.
    - Demo: in `?scene=objects`, clicking a crop harvests it early, and the panel shows the pixel, world position and object id.
      `BuiltScene.populate` now returns `{ update, click }`. `npm run pick-check` (`tools/pick-check.ts`) checks the API and the resolve.
+   - **Done (2026-10-28): non-blocking pick for hover** ([#59](https://github.com/CelestialLemon/pixel3d-renderer/issues/59)).
+     `pick` waits for the GPU to finish everything queued (about a frame each on the RX 570), which a game hovering every frame
+     can't afford. `r.requestPick(clientX, clientY)` / `r.requestPickPixel(x, y)` return a promise of the same answer: the texels
+     are copied into a pixel-pack buffer behind one fence, and the next `renderGeometry` or `renderStyle` checks the fence
+     without waiting. With objects drawn see-through, the scene behind the pixel is rendered at request time, since which texel
+     matters is known only once the id is read. `pick-check` and `object-look-check` compare it with `pick` texel for texel.
 3. **Done (2026-10-06): game-supplied settings.** With none of them given, the renderer draws exactly as before (the one
    visible change is a fix: `nearestPreset` now measures around the clock, so 01:00 is "Night", not "Morning").
    - **Look.** `dayCycle(keys, presets)` (`src/renderer/look.ts`) turns a game's keyframes (`LookKey`: a `Look` at an hour, with

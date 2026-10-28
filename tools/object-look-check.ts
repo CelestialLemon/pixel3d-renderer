@@ -204,6 +204,18 @@ try {
             throughSky++;
           }
           check(throughObject > 20 && throughSky > 5, `S=${S}: the ghosts were under the picks (${throughObject}, ${throughSky})`);
+          // requestPick sees through them too, with exactly pick's answer.
+          const points: [number, number][] = [];
+          for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) points.push([centre.x + dx, centre.y + dy]);
+          for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) points.push([lp.x + dx, lp.y + dy]);
+          const sync = points.map(([x, y]) => r.pickPixel(x, y)!);
+          let settled: (Awaited<ReturnType<R['requestPickPixel']>>)[] | undefined;
+          Promise.all(points.map(([x, y]) => r.requestPickPixel(x, y))).then((v) => { settled = v; });
+          for (let k = 0; k < 60 && !settled; k++) { await new Promise((res) => setTimeout(res, 16)); r.renderStyle(0); await Promise.resolve(); }
+          check(!!settled, `S=${S}: requestPick through a ghost never settled`);
+          const sameVector = (a: Three.Vector3 | null, b: Three.Vector3 | null) => a === null ? b === null : b !== null && a.equals(b);
+          settled!.forEach((h, k) => check(!!h && h.object === sync[k].object && sameVector(h.world, sync[k].world) && sameVector(h.normal, sync[k].normal),
+            `S=${S}: requestPick through a ghost at ${points[k]} differs from pick`));
           r.renderGeometry(0);
           check(differences(read(r).albedo, before) === 0, `S=${S}: picking through leaves the next frame unchanged`);
           // Through the ghost, pick finds exactly what a frame without it resolves to, also at edges and on a thin bar.
