@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.5.2 (2026-10-28)
+
 ### Added
 
 - **Non-blocking pick: `requestPick(clientX, clientY)` and `requestPickPixel(x, y)`**
