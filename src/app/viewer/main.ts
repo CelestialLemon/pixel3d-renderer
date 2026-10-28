@@ -192,10 +192,14 @@ async function main() {
 
   // Hovering a game object highlights it (PixelObject.highlight), as a point-and-click game would. Not while a button
   // is down (orbiting or panning) or while comparing. The pointer is picked again after every redraw too, since objects
-  // and the camera move under a pointer that keeps still.
-  let hovered: PixelObject | null = null, pointer: { x: number; y: number } | null = null;
-  const hover = () => {
-    const o = pointer && compare === 'off' ? p3.pick(pointer.x, pointer.y)?.object ?? null : null;
+  // and the camera move under a pointer that keeps still. The pick doesn't wait for the GPU (requestPick): it arrives a frame
+  // or two later, and one that arrives after a newer one's answer is dropped.
+  let hovered: PixelObject | null = null, pointer: { x: number; y: number } | null = null, hoverRequests = 0, hoverShown = 0;
+  const hover = async () => {
+    const request = ++hoverRequests;
+    const o = pointer && compare === 'off' ? (await p3.requestPick(pointer.x, pointer.y))?.object ?? null : null;
+    if (request < hoverShown) return;
+    hoverShown = request;
     if (o === hovered) return;
     if (hovered) hovered.highlight = false;
     hovered = o; if (o) o.highlight = true;   // style only: the next renderStyle shows it, no redraw needed

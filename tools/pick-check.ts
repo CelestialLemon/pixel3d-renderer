@@ -15,6 +15,18 @@ try {
     const { POST_VERT } = await import('/src/renderer/shaders/common.ts');
     const check = (ok: boolean, message: string) => { if (!ok) throw new Error(message); };
     const close = (a: number, b: number) => Math.abs(a - b) < 2e-4;
+    type Pick = ReturnType<InstanceType<typeof PixelRenderer>['pickPixel']>;
+    const sameVector = (a: { equals(v: unknown): boolean } | null, b: unknown) => a === null ? b === null : b !== null && a.equals(b);
+    const samePick = (a: Pick, b: Pick) => a === null ? b === null
+      : b !== null && a.x === b.x && a.y === b.y && a.object === b.object && sameVector(a.world, b.world) && sameVector(a.normal, b.normal);
+    // Frames go by (renderStyle polls the pending picks) until `promise` settles.
+    const settle = async <T,>(r: InstanceType<typeof PixelRenderer>, promise: Promise<T>, name: string) => {
+      let done = false, value: T | undefined;
+      promise.then((v) => { done = true; value = v; });
+      for (let k = 0; k < 60 && !done; k++) { await new Promise((res) => setTimeout(res, 16)); r.renderStyle(0); await Promise.resolve(); }
+      check(done, `${name}: requestPick never settled`);
+      return value as T;
+    };
     const W = 80, H = 60, HEIGHT = 6;
     const box = new THREE.BoxGeometry(1, 1, 1), local = new GeometryCollector();
     local.add(box, null, [0.8, 0.12, 0.07]);
@@ -60,14 +72,45 @@ try {
         check(css.x === 40 && css.y === 19 && css.object === a, `S=${S}: CSS scale and canvas offset`);
         check(r.pick(rect.left - 0.1, rect.top) === null && r.pick(rect.right, rect.top) === null && r.pick(rect.left, rect.bottom) === null,
           `S=${S}: outside canvas`);
+        // requestPick: exactly pick's answer for the same frame, with no blocking readback and no pack buffer left bound.
+        const gl = r.renderer.getContext() as WebGL2RenderingContext, three = r.renderer;
+        const points = [[40, 19], [40.75, 19.25], [50, 19], [20, 19], [60, 19], [40, 0], [-1, 19], [W, 19], [NaN, 19]];
+        const expected = points.map(([x, y]) => r.pickPixel(x, y));
+        const syncRead = three.readRenderTargetPixels, readPixels = gl.readPixels;
+        let blocking = 0;
+        three.readRenderTargetPixels = (...args) => { blocking++; return syncRead.apply(three, args); };
+        gl.readPixels = ((...args: unknown[]) => {
+          if (typeof args[6] !== 'number') blocking++;   // into an array, not a pack buffer
+          return (readPixels as (...a: unknown[]) => void).apply(gl, args);
+        }) as typeof gl.readPixels;
+        let requests: Promise<Pick>[];
+        try { requests = points.map(([x, y]) => r.requestPickPixel(x, y)); } finally { three.readRenderTargetPixels = syncRead; gl.readPixels = readPixels; }
+        check(blocking === 0, `S=${S}: requestPick read back synchronously (${blocking})`);
+        check(gl.getParameter(gl.PIXEL_PACK_BUFFER_BINDING) === null, `S=${S}: requestPick left a pack buffer bound`);
+        const answers = await settle(r, Promise.all(requests), `S=${S}`);
+        answers.forEach((a, k) => check(samePick(a, expected[k]), `S=${S}: requestPick at ${points[k]} differs from pick`));
+        const viaCss = await settle(r, r.requestPick(rect.left + 40.75 * rect.width / W, rect.top + 19.25 * rect.height / H), `S=${S} CSS`);
+        check(samePick(viaCss, css), `S=${S}: requestPick CSS mapping`);
+        check(gl.getParameter(gl.PIXEL_PACK_BUFFER_BINDING) === null, `S=${S}: delivering a pick left a pack buffer bound`);
         // A new camera request must not reinterpret the old G-buffer.
         r.placeCamera(new THREE.Vector3(3, 2, 1), 0.6, 0.5, 9);
         check(r.pickPixel(40, 19)!.world!.distanceTo(hit.world!) < 1e-5, `S=${S}: camera snapshot`);
+        // Nor a later frame a pending requestPick, delivered by renderGeometry.
+        const pending = r.requestPickPixel(40, 19);
+        let delivered: Pick | undefined;
+        pending.then((v) => { delivered = v; });
+        for (let k = 0; k < 60 && delivered === undefined; k++) {
+          await new Promise((res) => setTimeout(res, 16)); r.renderGeometry(k); await Promise.resolve();
+        }
+        check(delivered !== undefined && samePick(delivered, hit), `S=${S}: requestPick camera snapshot across renderGeometry`);
         r.placeCamera(new THREE.Vector3(), 0, 0, HEIGHT);
         a.visible = false; b.scale.x = 1; b.position.set(0, 1, 0);
         r.renderGeometry(0);
         check(r.pickPixel(40, 19)!.object === b, `S=${S}: hidden slot compaction and mirror-to-normal`);
+        const beforeRemoval = r.requestPickPixel(40, 19);
         b.remove();
+        const removed = await settle(r, beforeRemoval, `S=${S} removal`);
+        check(removed !== null && removed.object === null && removed.world !== null, `S=${S}: requestPick of an object removed before delivery`);
         check(r.pickPixel(40, 19)!.object === null && r.pickPixel(40, 19)!.world !== null, `S=${S}: removed handle before rerender`);
         const replacement = r.addObject(geometry); replacement.snap = false; replacement.position.set(0, 1, 0);
         check(replacement.id > b.id, `S=${S}: ids reused`);
@@ -95,8 +138,37 @@ try {
         check(r.pickPixel(40, 30)!.object === null, `S=${S}: zero-scale object still pickable`);
         r.resize(W, H);
         check(r.pickPixel(40, 19) === null, `S=${S}: pick after resize before rendering`);
-        out.push(`S=${S}: position, transformed normal, sky, baked/animated world, CSS mapping, growth, mirroring, compaction, removal, camera snapshot, guards`);
+        check(await r.requestPickPixel(40, 19) === null, `S=${S}: requestPick after resize before rendering`);
+        r.renderGeometry(0);
+        const orphan = r.requestPickPixel(40, 19);
+        r.dispose();
+        check(await orphan === null, `S=${S}: requestPick pending at dispose`);
+        out.push(`S=${S}: position, transformed normal, sky, baked/animated world, CSS mapping, growth, mirroring, compaction, removal, camera snapshot, guards, requestPick`);
       } finally { r.dispose(); canvas.remove(); }
+    }
+    // A lost context settles pending requestPicks with null and drops the pack buffers, which the restored context can't use.
+    {
+      const canvas = document.createElement('canvas');
+      const r = new PixelRenderer(canvas, scene());
+      r.resize(W, H); r.setLook(lookAt(12)); r.placeCamera(new THREE.Vector3(), 0, 0, HEIGHT);
+      try {
+        const a = r.addObject(geometry); a.snap = false; a.position.set(0, 1, 0);
+        r.renderGeometry(0);
+        const first = await settle(r, r.requestPickPixel(40, 19), 'before loss');   // its pack buffer is now pooled
+        check(first?.object === a, `requestPick before context loss (${first?.object?.id})`);
+        const lose = r.renderer.getContext().getExtension('WEBGL_lose_context')!;
+        const pending = r.requestPickPixel(40, 19);
+        const restored = new Promise((res) => canvas.addEventListener('webglcontextrestored', res, { once: true }));
+        lose.loseContext();
+        await new Promise((res) => setTimeout(res, 50));
+        check(await Promise.race([pending, new Promise((res) => setTimeout(() => res('pending'), 1000))]) === null, 'requestPick pending at context loss');
+        check(r.pickPixel(40, 19) === null && await r.requestPickPixel(40, 19) === null, 'pick after context loss');
+        lose.restoreContext(); await restored;
+        r.renderGeometry(0);
+        const sync = r.pickPixel(40, 19), after = await settle(r, r.requestPickPixel(40, 19), 'after restore');
+        check(sync?.object === a && samePick(after, sync), `requestPick after context restore (${after?.object?.id}, ${sync?.object?.id})`);
+        out.push('context loss: pending requests settle with null, picks work again after restore');
+      } finally { r.dispose(); }
     }
     geometry.dispose(); box.dispose();
 
