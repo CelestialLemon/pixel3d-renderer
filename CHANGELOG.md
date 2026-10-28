@@ -7,6 +7,16 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Added
+
+- **`requestPick(clientX, clientY)` and `requestPickPixel(x, y)`: picking without a stall** ([#59](https://github.com/CelestialLemon/pixel3d-renderer/issues/59)).
+  They return a `Promise<PickResult | null>` with the same answer `pick` / `pickPixel` give at the time of the call, but read
+  the three G-buffer attachments into a pixel-pack buffer of the renderer's own and set one fence instead of waiting for the
+  GPU. The promise resolves when `renderGeometry` or `renderStyle` next sees the fence passed (they never wait), normally the
+  frame after, and never while neither is called. While any object is see-through, a request also draws the block behind it,
+  so the answer stays as of the request. A `resize` or `dispose` before it arrives resolves it with null. The pack buffer is
+  unbound before the call returns, so synchronous reads are unaffected. `pick` and `pickPixel` are unchanged.
+
 ## 0.5.1 (2026-10-28)
 
 ### Changed

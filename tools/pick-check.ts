@@ -91,9 +91,48 @@ try {
             check(actual.normal !== null && actual.normal.distanceTo(normal) < 2e-4, `S=${S}, scale=${sx}: transformed normal`);
           }
         } finally { material.dispose(); }
+        // requestPick: the same answer as pickPixel at the time of the request, without a blocking readback.
+        const gl = canvas.getContext('webgl2')!;
+        const frame = () => new Promise((done) => requestAnimationFrame(done));
+        const same = (a: any, b: any) => (a === null || b === null) ? a === b
+          : a.x === b.x && a.y === b.y && a.object === b.object && (a.world === null ? b.world === null : a.world.equals(b.world))
+            && (a.normal === null ? b.normal === null : a.normal.equals(b.normal));
+        const compare = async (points: number[][], what: string) => {
+          const asks = points.map(([x, y]) => ({ x, y, sync: r.pickPixel(x, y), later: r.requestPickPixel(x, y) }));
+          check(gl.getParameter(gl.PIXEL_PACK_BUFFER_BINDING) === null, `S=${S}: ${what}: pack buffer left bound`);
+          r.placeCamera(new THREE.Vector3(5, 3, 2), 0.3, 0.2, 7); r.renderGeometry(0);   // the answer must not follow the new frame
+          let done = 0; asks.forEach((a) => a.later.then(() => done++));
+          for (let i = 0; i < 120 && done < asks.length; i++) { r.renderStyle(0); await frame(); }
+          check(done === asks.length, `S=${S}: ${what}: requests never resolved`);
+          for (const a of asks) check(same(a.sync, await a.later), `S=${S}: ${what}: request at ${a.x},${a.y} differs from pickPixel`);
+          check(gl.getParameter(gl.PIXEL_PACK_BUFFER_BINDING) === null, `S=${S}: ${what}: pack buffer left bound after resolving`);
+          r.placeCamera(new THREE.Vector3(0, 1, 0), 0.45, 0.35, HEIGHT); r.renderGeometry(0);
+          return asks.map((a) => a.sync);
+        };
+        replacement.snap = false; replacement.position.set(0, 1, 0); replacement.quaternion.identity(); replacement.scale.set(1, 1, 1);
+        r.placeCamera(new THREE.Vector3(0, 1, 0), 0.45, 0.35, HEIGHT); r.renderGeometry(0);
+        const grid: number[][] = [[20, 19], [60, 19], [40, 0], [-1, 3], [NaN, 3], [W, 3]];
+        for (let y = 12; y < 28; y += 3) for (let x = 36; x < 48; x += 3) grid.push([x, y]);
+        const plain = await compare(grid, 'opaque');
+        check(plain.some((h) => h?.object === replacement) && plain.some((h) => h?.world === null) && plain.some((h) => h === null), `S=${S}: requestPick covers object, sky and outside`);
+        const cx = rect.left + 40.75 * rect.width / W, cy = rect.top + 19.25 * rect.height / H, before = r.pick(cx, cy);
+        let arrived: Awaited<ReturnType<typeof r.requestPick>> | undefined;
+        r.requestPick(cx, cy).then((v) => { arrived = v; });
+        for (let i = 0; i < 120 && arrived === undefined; i++) { r.renderStyle(0); await frame(); }
+        check(arrived !== undefined && same(before, arrived), `S=${S}: requestPick in CSS pixels`);
+        const back = r.addObject(geometry); back.snap = false; back.position.set(0, 1, -2); back.scale.set(4, 4, 1);
+        replacement.opacity = 0.5; r.renderGeometry(0);
+        const dense: number[][] = [];
+        for (let y = 14; y < 26; y++) for (let x = 34; x < 46; x++) dense.push([x, y]);
+        const seen = await compare(dense, 'see-through');
+        check(seen.every((h) => h?.object !== replacement) && seen.some((h) => h?.object === back),
+          `S=${S}: see-through picks see the object behind, never the see-through one`);
+        replacement.opacity = 1; back.remove();
         replacement.scale.x = 0; r.renderGeometry(0);
         check(r.pickPixel(40, 30)!.object === null, `S=${S}: zero-scale object still pickable`);
+        const stale = r.requestPickPixel(40, 19);
         r.resize(W, H);
+        check(await stale === null && await r.requestPickPixel(40, 19) === null, `S=${S}: requests cancelled by resize`);
         check(r.pickPixel(40, 19) === null, `S=${S}: pick after resize before rendering`);
         out.push(`S=${S}: position, transformed normal, sky, baked/animated world, CSS mapping, growth, mirroring, compaction, removal, camera snapshot, guards`);
       } finally { r.dispose(); canvas.remove(); }

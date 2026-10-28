@@ -7,6 +7,7 @@ import { postFragment } from './shaders/post';
 import { CLEAN_FRAG } from './shaders/cleanup';
 import { GLASS_FRAG, splitGlass } from './glass';
 import { RESOLVE_FRAG } from './shaders/resolve';
+import { PixelReadback } from './readback';
 import { LampShadows } from './lampShadows';
 import { buildWindowLight, type WindowLight } from './windowLight';
 import { FLUID_FRAG, FLUID_VERT } from './shaders/water';
@@ -180,6 +181,8 @@ export class PixelRenderer {
   /** The camera the G-buffer was last rendered with (`placeCamera` may have moved it since): what `pick` reads against. */
   private drawnCamera = { position: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(), fwd: new THREE.Vector3(), texel: 1 };
   private pickBuf = new Float32Array(4);
+  /** Reads of `requestPick` in flight, polled on entry to `renderGeometry` and `renderStyle`. */
+  private readback: PixelReadback;
   /** The ids of the objects drawn see-through (opacity below 1) by the last `renderGeometry`: `pick` looks behind them. */
   private seeThroughIds = new Set<number>();
   /** A copy of the camera the G-buffer was last rendered with, and the small G-buffer `pick` renders behind see-through objects. */
@@ -256,6 +259,7 @@ export class PixelRenderer {
       if (count > this.limits[key]) throw new RangeError(`Scene ${key}: at most ${this.limits[key]} entries are supported, got ${count}`);
     }
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
+    this.readback = new PixelReadback(this.renderer);
     // Count one vector per scalar/vec uniform or array entry, a conservative budget without relying on GPU packing.
     const uniformVectors = 64 + 2 * this.limits.lamps + this.limits.grooves
       + 4 * this.limits.fluidMaterials + 2 * this.limits.fluidSources;
@@ -728,6 +732,7 @@ ${POSE_OBJECT}`;
   /** Set the art resolution (G-buffer and canvas size in art pixels). */
   resize(w: number, h: number) {
     this.width = w; this.height = h; this.gbufDrawn = false;
+    this.readback.cancel();
     this.renderer.setSize(w, h, false);
     const S = this.supersample === 3 ? 3 : 1;
     const mk = (opts: THREE.RenderTargetOptions, count = 1, k = 1) => this.target(opts, count, k);
@@ -768,6 +773,7 @@ ${POSE_OBJECT}`;
   /** Rasterise into the G-buffer (+ shadow mask) with the dynamic mesh posed at `time` seconds and the objects where the game put them. */
   renderGeometry(time: number) {
     const r = this.renderer;
+    this.readback.poll();   // before anything changes: what `requestPick` asked about is still on screen
     for (const m of this.retired) { this.scene.remove(m); this.glassScene.remove(m); m.dispose(); }
     this.retired = [];
     for (const g of this.retiredGeometries) g.dispose();
@@ -877,6 +883,7 @@ ${POSE_OBJECT}`;
   renderStyle(time?: number): void;
   renderStyle(settings: RenderSettings | undefined, time?: number): void;
   renderStyle(settings: RenderSettings | number = DEFAULT_SETTINGS, time = 0) {
+    this.readback.poll();
     const s = typeof settings === 'number' ? DEFAULT_SETTINGS : settings;
     const lit = this.highlighted.size > 0, postMat = lit ? this.postHiMat : this.postMat, cleanMat = lit ? this.cleanHiMat : this.cleanMat;
     if (typeof settings === 'number') time = settings;
@@ -962,23 +969,63 @@ ${POSE_OBJECT}`;
       this.renderer.readRenderTargetPixels(this.gbuf, x, gy, 1, 1, this.pickBuf, undefined, i);
       return this.pickBuf;
     };
+    const albedo = read(0).slice();
+    if (albedo[3] < 0.5) return this.pickResult(x, y);   // albedo alpha 0: sky (flags.ts)
+    const normalDepth = read(1).slice(), idv = read(2).slice();
+    if (!this.seeThroughIds.has(Math.round(idv[0]))) return this.pickResult(x, y, normalDepth, idv, this.drawnCamera);
+    const behind = this.pickBehind(x, gy);   // a see-through object: what is behind it
+    return behind[0][3] < 0.5 ? this.pickResult(x, y) : this.pickResult(x, y, behind[1], behind[2], this.drawnCamera);
+  }
+
+  /**
+   * `pick` without the stall: the same answer as `pick` called now, delivered later. The three attachments are read into a
+   * pixel-pack buffer at once and a fence is set; the promise resolves once the GPU has passed it, which `renderGeometry` and
+   * `renderStyle` check on entry (they never wait). So it resolves in the frame after the request, or a later one if the GPU is
+   * further behind, and not at all while neither is called. The result is as of the last `renderGeometry` at the time of the
+   * request (the camera, the G-buffer and what is behind see-through objects), except that the object is looked up when it
+   * arrives, so one removed since is null. While any object is see-through, each request also draws the block behind it (as
+   * `pick` does for a pick that lands on one), on the GPU and without a stall.
+   * Resolves null outside the canvas and before the first `renderGeometry` since the last `resize`, or if a `resize` or
+   * `dispose` comes first. Requests resolve in order.
+   */
+  requestPick(clientX: number, clientY: number): Promise<PickResult | null> {
+    const rect = this.canvas.getBoundingClientRect();
+    return this.requestPickPixel((clientX - rect.left) / rect.width * this.width, (clientY - rect.top) / rect.height * this.height);
+  }
+
+  /** `requestPick` for an art pixel (from the top left of the canvas; fractions are dropped). */
+  requestPickPixel(px: number, py: number): Promise<PickResult | null> {
+    const x = Math.floor(px), y = Math.floor(py);
+    if (this.disposed || !this.gbufDrawn || !(x >= 0 && y >= 0 && x < this.width && y < this.height)) return Promise.resolve(null);
+    const gy = this.height - 1 - y, dc = this.drawnCamera, camera = { position: dc.position.clone(), right: dc.right.clone(), up: dc.up.clone(), fwd: dc.fwd.clone(), texel: dc.texel };
+    // With see-through objects the block behind them is drawn now too, so that the answer stays as of this frame.
+    const seeThrough = new Set(this.seeThroughIds), behind = seeThrough.size ? this.drawBehind(x, gy) : null;
+    return new Promise((resolve) => {
+      let front: Float32Array | null = null, back: Float32Array | null = null, got = 0;
+      const arrived = () => {
+        if (++got < (behind ? 2 : 1)) return;
+        if (!front || (behind && !back)) return resolve(null);
+        if (front[3] < 0.5) return resolve(this.pickResult(x, y));   // sky
+        if (!seeThrough.has(Math.round(front[8]))) return resolve(this.pickResult(x, y, front.subarray(4, 8), front.subarray(8, 12), camera));
+        resolve(back![3] < 0.5 ? this.pickResult(x, y) : this.pickResult(x, y, back!.subarray(4, 8), back!.subarray(8, 12), camera));
+      };
+      this.readback.read(this.gbuf, x, gy, 3, (d) => { front = d; arrived(); });
+      if (behind) this.readback.read(behind.resolved, behind.x, behind.y, 3, (d) => { back = d; arrived(); });
+    });
+  }
+
+  /** The `PickResult` for the resolved normal + depth and object id at art pixel (x, y) as seen from `c`; the sky without them. */
+  private pickResult(x: number, y: number, normalDepth?: Float32Array, idv?: Float32Array, c?: PixelRenderer['drawnCamera']): PickResult {
     const res: PickResult = { x, y, world: null, normal: null, object: null };
-    if (read(0)[3] < 0.5) return res;   // albedo alpha 0: sky (flags.ts)
-    let [nx, ny, nz, depth] = read(1);
-    let id = Math.round(read(2)[0]);
-    if (this.seeThroughIds.has(id)) {   // a see-through object: what is behind it
-      const behind = this.pickBehind(x, gy);
-      if (behind[0][3] < 0.5) return res;   // sky behind it
-      [nx, ny, nz, depth] = behind[1]; id = Math.round(behind[2][0]);
-    }
+    if (!normalDepth || !idv || !c) return res;
+    const [nx, ny, nz, depth] = normalDepth, gy = this.height - 1 - y;
     // The resolved depth is the surface's depth at the pixel centre, as in post.ts's worldAt().
-    const c = this.drawnCamera;
     res.normal = new THREE.Vector3(nx, ny, nz);
     res.world = c.position.clone()
       .addScaledVector(c.right, (x + 0.5 - 0.5 * this.width) * c.texel)
       .addScaledVector(c.up, (gy + 0.5 - 0.5 * this.height) * c.texel)
       .addScaledVector(c.fwd, depth);
-    res.object = this.objectsById.get(id) ?? null;
+    res.object = this.objectsById.get(Math.round(idv[0])) ?? null;
     return res;
   }
 
@@ -989,6 +1036,16 @@ ${POSE_OBJECT}`;
    * `renderGeometry` does.
    */
   private pickBehind(x: number, gy: number): [Float32Array, Float32Array, Float32Array] {
+    const { resolved, x: bx, y: by } = this.drawBehind(x, gy), r = this.renderer;
+    return [0, 1, 2].map((i) => {
+      const out = new Float32Array(4);
+      r.readRenderTargetPixels(resolved, bx, by, 1, 1, out, undefined, i);
+      return out;
+    }) as [Float32Array, Float32Array, Float32Array];
+  }
+
+  /** Draws and resolves the block of `pickBehind` (see there); returns the target and the pixel of (x, gy) in it. */
+  private drawBehind(x: number, gy: number) {
     const r = this.renderer, x0 = x - (x & 3), y0 = gy - (gy & 3), cam = this.pickCamera;
     const S = this.staticMat.uniforms.uSS.value as number;
     const make = (size: number) => new THREE.WebGLRenderTarget(size, size, { count: 3, type: THREE.FloatType, minFilter: THREE.NearestFilter,
@@ -1014,11 +1071,7 @@ ${POSE_OBJECT}`;
       [ru.tAlbedo.value, ru.tNormal.value, ru.tShadow.value, ru.tObjectId.value] = inputs;
       r.setRenderTarget(target); r.setClearColor(clear, alpha);
     }
-    return [0, 1, 2].map((i) => {
-      const out = new Float32Array(4);
-      r.readRenderTargetPixels(resolved, x - x0, gy - y0, 1, 1, out, undefined, i);
-      return out;
-    }) as [Float32Array, Float32Array, Float32Array];
+    return { resolved, x: x - x0, y: gy - y0 };
   }
 
   /** Debug and tools: the albedo + flag G-buffer the post shader reads (RGBA float, bottom row first). */
@@ -1032,6 +1085,7 @@ ${POSE_OBJECT}`;
   dispose() {
     if (this.disposed) return;   // once: a second call would queue a second deferred release
     this.disposed = true;
+    this.readback.cancel();
     this.gbufDrawn = false; this.objectsById.clear(); this.highlightWarmPending = false;
     for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage, this.glassBuf, this.pickTargets?.hi, this.pickTargets?.resolved]) t?.dispose();
     this.light.shadow.map?.dispose(); this.objectLight?.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();

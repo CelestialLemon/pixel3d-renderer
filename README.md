@@ -66,6 +66,7 @@ function frame(t: number) {
   r.renderStyle(t);                               // or renderStyle(settings, t) to turn effects off
 }
 canvas.onpointerdown = (e) => console.log(r.pick(e.clientX, e.clientY));   // what is under the pointer
+// Every frame (hover): r.requestPick(e.clientX, e.clientY).then(...) gives the same answer a frame later without stalling the GPU
 ```
 
 The public API is everything [`src/renderer/index.ts`](src/renderer/index.ts) exports. A game can bring its own day cycle
