@@ -8,6 +8,7 @@ import { CLEAN_FRAG } from './shaders/cleanup';
 import { GLASS_FRAG, splitGlass } from './glass';
 import { RESOLVE_FRAG } from './shaders/resolve';
 import { LampShadows } from './lampShadows';
+import { Profiler, type FrameStats, type GpuTiming, type ProfilingOptions } from './profiler';
 import { buildWindowLight, type WindowLight } from './windowLight';
 import { FLUID_FRAG, FLUID_VERT } from './shaders/water';
 import { linearColor } from './geometry';
@@ -207,7 +208,12 @@ export class PixelRenderer {
   private freePackBuffers: WebGLBuffer[] = [];
   private pickData = new Float32Array(PICK_FLOATS);
   /** A lost context takes the G-buffer and the pack buffers with it; three restores its own resources, not these handles. */
-  private onContextLost = () => { this.gbufDrawn = false; this.dropPicks(); };
+  private onContextLost = () => { this.gbufDrawn = false; this.dropPicks(); this.profiler?.dispose(true); this.profiler = null; };
+  /** Three has restored the context, with a new shadow map and info: profile them. */
+  private onContextRestored = () => { if (this.profiling && !this.disposed) this.profiler = new Profiler(this.renderer, this.profiling); };
+  /** Diagnostics (`setProfiling`): null while off, so the frame pays only for these checks. */
+  private profiler: Profiler | null = null;
+  private profiling: ProfilingOptions | null = null;
   /** The ids of the objects drawn see-through (opacity below 1) by the last `renderGeometry`: `pick` looks behind them. */
   private seeThroughIds = new Set<number>();
   /** A copy of the camera the G-buffer was last rendered with, and the small G-buffer `pick` renders behind see-through objects. */
@@ -285,6 +291,7 @@ export class PixelRenderer {
     }
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, preserveDrawingBuffer: true });
     canvas.addEventListener('webglcontextlost', this.onContextLost);
+    canvas.addEventListener('webglcontextrestored', this.onContextRestored);   // after three's own listener
     // Count one vector per scalar/vec uniform or array entry, a conservative budget without relying on GPU packing.
     const uniformVectors = 64 + 2 * this.limits.lamps + this.limits.grooves
       + 4 * this.limits.fluidMaterials + 2 * this.limits.fluidSources;
@@ -802,7 +809,12 @@ ${POSE_OBJECT}`;
     this.retired = [];
     for (const g of this.retiredGeometries) g.dispose();
     this.retiredGeometries = [];
-    this.lampShadows.render(r);
+    const prof = this.profiler;
+    prof?.poll();
+    if (prof && !this.lampShadows.rendered) {
+      prof.countShadowMap(); prof.begin('shadowMaps');
+      try { this.lampShadows.render(r); } finally { prof.end(); }
+    } else this.lampShadows.render(r);
     this.dynMat.uniforms.uTime.value = time;
     this.wind.value.set(this.weatherNow.wind, this.weatherNow.gusts);
     this.poseObjects();
@@ -820,8 +832,9 @@ ${POSE_OBJECT}`;
     r.setClearColor(0x000000, 0);
     try {
       setCasters(true, false);
+      prof?.begin('gbuffer');
       r.setRenderTarget(this.gbufHi); r.clear(); r.render(this.scene, this.camera);
-    } finally { r.shadowMap.needsUpdate = false; this.light.shadow.needsUpdate = false; }
+    } finally { prof?.end(); r.shadowMap.needsUpdate = false; this.light.shadow.needsUpdate = false; }
     if (this.objectLight && this.objectShadowDirty) { this.objectLight.shadow.needsUpdate = true; r.shadowMap.needsUpdate = true; this.objectShadowDirty = false; }
 
     // The shadow mask comes from the static world and the objects: small moving bits (tufts, puffs) borrow the shadow
@@ -835,6 +848,7 @@ ${POSE_OBJECT}`;
       this.dynMesh.visible = false;
       this.staticMesh.material = this.shadowMat;
       for (const b of batches) for (const m of b.meshes) m.material = b.motion ? this.objectMaskMat : this.objectShadowMat;
+      prof?.begin('shadowMask');
       r.setRenderTarget(this.shadowHi); r.clear(); r.render(this.scene, this.camera);
       if (this.hasRigidParts) {
         // Then the rigid moving parts over it, depth-tested against the static world and the objects (no clear in between).
@@ -843,6 +857,7 @@ ${POSE_OBJECT}`;
         r.autoClear = false; r.render(this.scene, this.camera);
       }
     } finally {
+      prof?.end();
       r.autoClear = autoClear; this.scene.overrideMaterial = null;
       this.staticMesh.material = this.staticMat;
       for (const b of batches) for (const m of b.meshes) m.material = b.motion ? this.objectMotionMat : this.objectMat;
@@ -860,7 +875,8 @@ ${POSE_OBJECT}`;
     ru.uUp.value.setFromMatrixColumn(this.camera.matrixWorld, 1);
     ru.uFwd.value.setFromMatrixColumn(this.camera.matrixWorld, 2).negate();
     this.quad.material = this.resolveMat;
-    r.setRenderTarget(this.gbuf); r.render(this.quadScene, this.quadCam);
+    prof?.begin('resolve');
+    try { r.setRenderTarget(this.gbuf); r.render(this.quadScene, this.quadCam); } finally { prof?.end(); }
     this.gbufDrawn = true;
     this.drawn = { position: this.camera.position.clone(), right: ru.uRight.value.clone(), up: ru.uUp.value.clone(), fwd: ru.uFwd.value.clone(),
       texel: ru.uTexel.value, width: this.width, height: this.height, seeThrough: this.seeThroughIds };
@@ -880,7 +896,8 @@ ${POSE_OBJECT}`;
       const fu = this.fluidMat.uniforms;
       fu.tAlbedo.value = this.gbuf.textures[0]; fu.tNormal.value = this.gbuf.textures[1];
       fu.uFwd.value.copy(ru.uFwd.value);
-      r.render(this.fluidScene, this.camera);
+      prof?.begin('fluid');
+      try { r.render(this.fluidScene, this.camera); } finally { prof?.end(); }
     }
 
     // The glass: the nearest pane at each pixel, hidden behind the resolved opaque world. Only while some is drawn.
@@ -891,8 +908,8 @@ ${POSE_OBJECT}`;
         m.uniforms.tAlbedo.value = this.gbuf.textures[0]; m.uniforms.tNormal.value = this.gbuf.textures[1]; m.uniforms.uFwd.value.copy(ru.uFwd.value);
       }
       r.setClearColor(0x000000, 0);
-      r.setRenderTarget(this.glassBuf); r.clear();
-      r.render(this.glassScene, this.camera);
+      prof?.begin('glass');
+      try { r.setRenderTarget(this.glassBuf); r.clear(); r.render(this.glassScene, this.camera); } finally { prof?.end(); }
     } else if (this.glassBuf) { this.glassBuf.dispose(); this.glassBuf = undefined; }
   }
 
@@ -908,6 +925,8 @@ ${POSE_OBJECT}`;
   renderStyle(settings: RenderSettings | undefined, time?: number): void;
   renderStyle(settings: RenderSettings | number = DEFAULT_SETTINGS, time = 0) {
     this.pollPicks();
+    const prof = this.profiler;
+    prof?.poll();
     const s = typeof settings === 'number' ? DEFAULT_SETTINGS : settings;
     const lit = this.highlighted.size > 0, postMat = lit ? this.postHiMat : this.postMat, cleanMat = lit ? this.cleanHiMat : this.cleanMat;
     if (typeof settings === 'number') time = settings;
@@ -939,11 +958,13 @@ ${POSE_OBJECT}`;
     this.quad.material = postMat;
     u.uPass.value = 0; u.tImage.value = null;   // never sample the target being drawn
     u.uDeferGrade.value = this.linearImage ? 1 : 0;   // with fluids, pass 1 grades the composited image once
-    r.setRenderTarget(this.linearImage ?? this.stylised); r.render(this.quadScene, this.quadCam);
+    prof?.begin('post0');
+    try { r.setRenderTarget(this.linearImage ?? this.stylised); r.render(this.quadScene, this.quadCam); } finally { prof?.end(); }
     let image = this.stylised;
     if (this.linearImage && this.withFluids) {   // pass 1: the fluids over pass 0's image
       u.uPass.value = 1; u.uDeferGrade.value = 0; u.tImage.value = this.linearImage.texture;
-      r.setRenderTarget(this.withFluids); r.render(this.quadScene, this.quadCam);
+      prof?.begin('post1');
+      try { r.setRenderTarget(this.withFluids); r.render(this.quadScene, this.quadCam); } finally { prof?.end(); }
       image = this.withFluids;
     }
 
@@ -955,7 +976,9 @@ ${POSE_OBJECT}`;
     this.cleanMat.uniforms.tShadow.value = this.gbuf.textures[2];
     this.cleanMat.uniforms.uOn.value = s.cleanup ? 1 : 0;
     this.quad.material = cleanMat;
-    r.setRenderTarget(null); r.render(this.quadScene, this.quadCam);
+    prof?.begin('cleanup');
+    try { r.setRenderTarget(null); r.render(this.quadScene, this.quadCam); } finally { prof?.end(); }
+    prof?.endFrame();
     if (this.highlightWarmPending && this.batches.size) this.warmHighlight();
   }
 
@@ -987,6 +1010,7 @@ ${POSE_OBJECT}`;
 
   /** `pick` for an art pixel (from the top left of the canvas; fractions are dropped). */
   pickPixel(px: number, py: number): PickResult | null {
+    this.profiler?.countPick();
     const x = Math.floor(px), y = Math.floor(py);
     if (!this.pickable(x, y)) return null;
     const gy = this.height - 1 - y;   // the G-buffer's rows go bottom up
@@ -1017,6 +1041,7 @@ ${POSE_OBJECT}`;
 
   /** `requestPick` for an art pixel (from the top left of the canvas; fractions are dropped). */
   requestPickPixel(px: number, py: number): Promise<PickResult | null> {
+    this.profiler?.countPick();
     const x = Math.floor(px), y = Math.floor(py);
     if (!this.pickable(x, y)) return Promise.resolve(null);
     const gl = this.renderer.getContext() as WebGL2RenderingContext, gy = this.height - 1 - y, frame = this.drawn;
@@ -1136,18 +1161,53 @@ ${POSE_OBJECT}`;
     const night = this.dynMat.uniforms.uNight, nightNow = night.value;
     try {
       this.objectMat.uniforms.uSeeThrough.value = 1; night.value = this.drawnNight;
+      this.profiler?.begin('pick');
       r.setClearColor(0x000000, 0); r.setRenderTarget(hi); r.clear(); r.render(this.scene, cam);
       // The shadow input is unused here (only the albedo, normal and id are read back).
       ru.tAlbedo.value = hi.textures[0]; ru.tNormal.value = hi.textures[1]; ru.tShadow.value = hi.textures[0]; ru.tObjectId.value = hi.textures[2];
       this.quad.material = this.resolveMat;
       r.setRenderTarget(resolved); r.render(this.quadScene, this.quadCam);
     } finally {
+      this.profiler?.end();
       this.objectMat.uniforms.uSeeThrough.value = 0; night.value = nightNow;
       [ru.tAlbedo.value, ru.tNormal.value, ru.tShadow.value, ru.tObjectId.value] = inputs;
       r.setRenderTarget(target); r.setClearColor(clear, alpha);
     }
     return [resolved, x - x0, gy - y0];
   }
+
+  /**
+   * Switch the diagnostics on or off (`null`, or both options false); off by default, and then free. `counters` counts what
+   * each frame submits (`frameStats`); `gpu` times each pass on the GPU (`takeGpuTimings`) where the context has
+   * `EXT_disjoint_timer_query_webgl2`, and quietly does nothing where it hasn't (`gpuTiming` tells). A frame runs from one
+   * `renderStyle` to the end of the next. Changing the options, or a lost and restored WebGL context, starts the count again
+   * from frame 1 (frames in flight at the loss are dropped).
+   *
+   * While counters are on, three's `renderer.info` counts the whole frame instead of resetting at each render.
+   *
+   * GPU timings are diagnostic, for comparing passes and machines rather than adding up to a frame time: the queries are
+   * never waited for, and a timer around a draw-heavy pass (`gbuffer`, `shadowMask`) also counts the time the GPU waits for
+   * the browser to submit its draws, so it can read several times the pass's own cost unless the work is flushed first.
+   * Frames the GPU reports disjoint are dropped, and at most 8 frames wait for results at once (later ones go untimed).
+   */
+  setProfiling(options: ProfilingOptions | null) {
+    this.profiler?.dispose(); this.profiler = null; this.profiling = null;
+    if (this.disposed || !options || (!options.counters && !options.gpu)) return;
+    this.profiling = { ...options };
+    if (!this.renderer.getContext().isContextLost()) this.profiler = new Profiler(this.renderer, options);
+  }
+
+  /** Whether GPU pass timing is on: asked for with `setProfiling`, and supported by the WebGL context. */
+  get gpuTiming(): boolean { return this.profiler?.gpu ?? false; }
+
+  /** The last finished frame's counters, or null while counters are off or before the first `renderStyle`. */
+  get frameStats(): FrameStats | null { return this.profiler?.counters ? this.profiler.stats : null; }
+
+  /**
+   * The GPU timings of the frames whose results have come back since the last call, oldest first (each frame's arrive a
+   * few frames after it was drawn; at most the last 120 are kept). Empty while GPU timing is off or unsupported.
+   */
+  takeGpuTimings(): GpuTiming[] { return this.profiler?.takeTimings() ?? []; }
 
   /** Debug and tools: the albedo + flag G-buffer the post shader reads (RGBA float, bottom row first). */
   readAlbedo(): Float32Array {
@@ -1161,7 +1221,8 @@ ${POSE_OBJECT}`;
     if (this.disposed) return;   // once: a second call would queue a second deferred release
     this.disposed = true;
     this.gbufDrawn = false; this.objectsById.clear(); this.highlightWarmPending = false;
-    this.dropPicks(); this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
+    this.dropPicks(); this.profiler?.dispose(); this.profiler = null; this.profiling = null;
+    this.canvas.removeEventListener('webglcontextlost', this.onContextLost); this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     for (const t of [this.gbufHi, this.shadowHi, this.gbuf, this.stylised, this.fluidBuf, this.withFluids, this.linearImage, this.glassBuf, this.pickTargets?.hi, this.pickTargets?.resolved]) t?.dispose();
     this.light.shadow.map?.dispose(); this.objectLight?.shadow.map?.dispose(); this.lampShadows.dispose(); this.windowLight.texture.dispose(); this.windowLight.source.dispose();
     this.fluidMap.texture.dispose(); this.fluidMap.height.dispose(); this.noFluid.dispose();

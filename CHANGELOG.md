@@ -7,6 +7,22 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+### Added
+
+- **Per-pass GPU timing and frame counters: `setProfiling`, `frameStats`, `takeGpuTimings`, `gpuTiming`**
+  ([#62](https://github.com/CelestialLemon/pixel3d-renderer/issues/62)). These are opt-in diagnostics for a game's perf overlay
+  or benchmark. `setProfiling({ counters: true })` makes `frameStats` report each frame's draws, triangles,
+  `renderBufferDirect` visits, shadow-map redraws (sun, moving objects, lamp atlas) and picks. A frame runs from one
+  `renderStyle` to the end of the next. `setProfiling({ gpu: true })` times each logical pass (`shadowMaps`, `gbuffer`,
+  `shadowMask`, `resolve`, `fluid`, `glass`, `post0`, `post1`, `cleanup`, `pick`) with `EXT_disjoint_timer_query_webgl2` queries.
+  The queries are polled at the next `renderGeometry` or `renderStyle` and never waited for. `takeGpuTimings()` returns the
+  frames whose results are back. Disjoint frames are dropped, and at most 8 frames wait at once (later ones go untimed).
+  Without the extension, `gpuTiming` is false and nothing is timed. The timings are diagnostic: a timer around a draw-heavy
+  pass includes time the GPU waits for submission. Off is the default and holds nothing. On an RX 570 (300 object batches,
+  160×120 art), `renderGeometry` + `renderStyle` take the same 3.0–3.3 ms of JS with profiling off as on 0.5.2. With counters
+  on, three's `renderer.info` counts the whole frame instead of resetting at each render. Output is unchanged: the golden
+  images are identical, and the check compares the image with profiling on and off.
+
 ## 0.5.2 (2026-10-28)
 
 ### Added

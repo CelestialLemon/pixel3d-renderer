@@ -83,7 +83,7 @@ export class LampShadows {
   /** Face size and faces per row actually used (see `atlasLayout`); the post shader reads the face size from a uniform. */
   readonly tile: number;
   private readonly cols: number;
-  private rendered = false;
+  private drawn = false;
 
   /** `maxSize`: the device's texture and renderbuffer size limit (the smaller of the two). */
   constructor(private lamps: Lamp[], geometry: THREE.BufferGeometry, maxSize: number) {
@@ -99,9 +99,12 @@ export class LampShadows {
     });
   }
 
+  /** Whether the atlas has been drawn (it is drawn once, at the first `render`). */
+  get rendered() { return this.drawn; }
+
   render(renderer: THREE.WebGLRenderer) {
-    if (this.rendered) return;
-    this.rendered = true;
+    if (this.drawn) return;
+    this.drawn = true;
     const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, glslVersion: THREE.GLSL3, side: THREE.DoubleSide, uniforms: { uLamp: { value: new THREE.Vector3() }, uClearance: { value: 0 } } });
     const scene = new THREE.Scene(), mesh = new THREE.Mesh(this.occluders, mat);
     mesh.frustumCulled = false;
