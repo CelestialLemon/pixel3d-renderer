@@ -17,19 +17,19 @@ export class PixelReadback {
 
   /** Start reading pixel (x, y) of the first `count` attachments of `target`; `done` gets 4 floats per attachment, or null if cancelled. */
   read(target: THREE.WebGLRenderTarget, x: number, y: number, count: number, done: Read['done']) {
-    const r = this.r, gl = r.getContext() as WebGL2RenderingContext;
-    const framebuffer = this.framebuffer(target);
+    const gl = this.r.getContext() as WebGL2RenderingContext;
     const buffer = gl.createBuffer()!;
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, buffer);
     gl.bufferData(gl.PIXEL_PACK_BUFFER, count * 16, gl.STREAM_READ);
-    r.state.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    // Only the read binding moves, and goes back as it was, so three's cached state (draw target, viewport) is untouched.
+    const previous = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.framebuffer(target));
     for (let i = 0; i < count; i++) {
       gl.readBuffer(gl.COLOR_ATTACHMENT0 + i);
       gl.readPixels(x, y, 1, 1, gl.RGBA, gl.FLOAT, i * 16);
     }
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    const current = r.getRenderTarget();
-    r.setRenderTarget(current, r.getActiveCubeFace(), r.getActiveMipmapLevel());   // three binds the framebuffer it uses for it
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, previous);
     const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0)!;
     gl.flush();
     this.reads.push({ count, sync, buffer, done });

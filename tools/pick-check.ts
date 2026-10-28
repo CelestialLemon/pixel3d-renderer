@@ -98,8 +98,10 @@ try {
           : a.x === b.x && a.y === b.y && a.object === b.object && (a.world === null ? b.world === null : a.world.equals(b.world))
             && (a.normal === null ? b.normal === null : a.normal.equals(b.normal));
         const compare = async (points: number[][], what: string) => {
+          const bound = [gl.DRAW_FRAMEBUFFER_BINDING, gl.READ_FRAMEBUFFER_BINDING].map((n) => gl.getParameter(n));
           const asks = points.map(([x, y]) => ({ x, y, sync: r.pickPixel(x, y), later: r.requestPickPixel(x, y) }));
           check(gl.getParameter(gl.PIXEL_PACK_BUFFER_BINDING) === null, `S=${S}: ${what}: pack buffer left bound`);
+          check([gl.DRAW_FRAMEBUFFER_BINDING, gl.READ_FRAMEBUFFER_BINDING].every((n, i) => gl.getParameter(n) === bound[i]), `S=${S}: ${what}: framebuffer bindings changed`);
           r.placeCamera(new THREE.Vector3(5, 3, 2), 0.3, 0.2, 7); r.renderGeometry(0);   // the answer must not follow the new frame
           let done = 0; asks.forEach((a) => a.later.then(() => done++));
           for (let i = 0; i < 120 && done < asks.length; i++) { r.renderStyle(0); await frame(); }
