@@ -7,6 +7,8 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ## Unreleased
 
+## 0.5.3 (2026-10-29)
+
 ### Added
 
 - **`collectPicks()` and an `onPicked` callback for `requestPick` / `requestPickPixel`**
