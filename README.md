@@ -69,6 +69,27 @@ canvas.onpointerdown = (e) => console.log(r.pick(e.clientX, e.clientY));   // wh
 canvas.onpointermove = async (e) => hover(await r.requestPick(e.clientX, e.clientY));   // the same without waiting for the GPU
 ```
 
+**Hover in the same frame.** A promise's `.then` runs after your frame callback returns, so an answer the GPU finished during
+this frame is first usable in the next one. To use it at once, pass a callback and call `r.collectPicks()` where you prepare the
+frame:
+
+```ts
+let hit: PickResult | null = null;
+function frame(t: number) {
+  r.collectPicks();                                // calls onPicked now for every request the GPU has finished, oldest first
+  useHover(hit);
+  r.renderGeometry(t); r.renderStyle(t);           // these collect too (a game may store the answer and use it next frame)
+  r.requestPick(pointer.x, pointer.y, (p) => { hit = p; });
+}
+```
+
+Each request's `onPicked` is called exactly once, always from `collectPicks` (or `renderGeometry` / `renderStyle`, which call
+it), never from inside `requestPick`; `dispose` and a lost WebGL context call it with null for the requests still pending. An
+answer known at once (null outside the canvas or before the first `renderGeometry`) still waits for the next `collectPicks`,
+in turn, while the promise settles at once as before. The request is detached and its GL resources released before the
+callback runs. A callback that throws is reported (`reportError`) and the other answers still go out. A callback may call
+`requestPick` (answered by a later `collectPicks`) or `collectPicks` itself (delivery goes on, once each, oldest first).
+
 **Profiling.** `r.setProfiling({ counters: true, gpu: true })` turns on per-frame diagnostics for a perf overlay or a
 benchmark; they are off by default and cost nothing then. `r.frameStats` holds the last frame's draws, triangles,
 `renderBufferDirect` visits, shadow-map redraws and picks. `r.takeGpuTimings()` returns the GPU time of each logical pass
@@ -213,7 +234,7 @@ A tool fails rather than quietly fall back to the CPU when a GPU backend is chos
 | `GL_BACKEND=swiftshader npm run golden -- --ci` | Ten fixed comparison, day/night, water and object views against `golden/ci-linux-x64-swiftshader/`. CI installs the pinned browser and uses this CPU-rendered set. Its references come from known-good main; existing GPU references stay unchanged. |
 | `npm run bake` / `npm run build:baked` | Generate compressed default scenes in `public/baked/`, then build the optimized production app. The baker starts and closes its own server. Dev always builds live; a regular build without a bake does too. A present but stale bake fails with a regeneration message. |
 | `node tools/startup-bench.ts [--baked]` | Three sequential runs per Cookie Co./village scene, reporting median asset load, renderer setup and first-frame time. `--baked` includes fetching and decompressing the generated asset. Reports go to `out/startup-bench/`. |
-| `npm run pick-check` | Picking (`PixelRenderer.pick`): the art pixel, world position and object under a point at supersample 1 and 3, for the sky, the baked and animated world and objects (instanced, mirrored, hidden, removed, through batch growth), plus the resolve keeping the id of the sample it draws. |
+| `npm run pick-check` | Picking (`PixelRenderer.pick`): the art pixel, world position and object under a point at supersample 1 and 3, for the sky, the baked and animated world and objects (instanced, mirrored, hidden, removed, through batch growth), plus the resolve keeping the id of the sample it draws; `requestPick` against `pick`, and `collectPicks` / `onPicked` delivering once on every path (result, null, failed wait, throwing callbacks, reentrancy, dispose, context loss). |
 | `npm run profiling-check` | Diagnostics (`setProfiling`): off by default and three left untouched; frame counters (draws, shadow-map redraws, picks) per frame; the same image with counters and GPU timing on; GPU timing without the timer-query extension reports unsupported; switching off restores three, also after a lost and restored context; where supported, per-pass GPU timings come back in frame order and sum to their total, at most 8 frames wait for results, and timing goes on after a disjoint report (which drops the frames waiting) and after a pass that throws. |
 | `npm test` | Unit tests (`test/`, Node's test runner) for the palette, geometry, day cycle and limits, run against the built package (`lib/`), imported by its name like a game does. No browser. |
 | `npm run example-check` | The example game (`examples/walker/`) against the built package: it starts, walks, stops at walls, and places and removes things by clicking. Serves the example itself; screenshots in `out/example/`. |

@@ -2,7 +2,7 @@
 // files directly (the check tools may reach into internals).
 
 // Drawing, objects the game moves, picking, and construction options.
-export { PixelRenderer, DEFAULT_SETTINGS, type PixelRendererOptions, type RenderSettings, type PickResult } from './renderer';
+export { PixelRenderer, DEFAULT_SETTINGS, type PixelRendererOptions, type RenderSettings, type PickResult, type PickCallback } from './renderer';
 export { MAX_HIGHLIGHTS, PixelObject } from './objects';
 export type { FrameStats, GpuTiming, ProfilingOptions, RenderPass } from './profiler';
 export { PixelFluid, type FluidCells } from './fluidLayer';
