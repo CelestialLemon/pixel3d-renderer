@@ -69,6 +69,15 @@ canvas.onpointerdown = (e) => console.log(r.pick(e.clientX, e.clientY));   // wh
 canvas.onpointermove = async (e) => hover(await r.requestPick(e.clientX, e.clientY));   // the same without waiting for the GPU
 ```
 
+**Profiling.** `r.setProfiling({ counters: true, gpu: true })` turns on per-frame diagnostics for a perf overlay or a
+benchmark; they are off by default and cost nothing then. `r.frameStats` holds the last frame's draws, triangles,
+`renderBufferDirect` visits, shadow-map redraws and picks. `r.takeGpuTimings()` returns the GPU time of each logical pass
+(`shadowMaps`, `gbuffer`, `shadowMask`, `resolve`, `fluid`, `glass`, `post0`, `post1`, `cleanup`, `pick`) for the frames whose
+timer queries have come back, a few frames late. They are never waited for, and frames the GPU reports disjoint are dropped.
+Without `EXT_disjoint_timer_query_webgl2` (Safari and Firefox, for instance), `r.gpuTiming` is false and nothing is timed. The
+timings are diagnostic: a timer around a draw-heavy pass also counts time the GPU spends waiting for the browser to submit, so
+`gbuffer` and `shadowMask` can read several times their own cost, and the passes don't add up to a frame time.
+
 The public API is everything [`src/renderer/index.ts`](src/renderer/index.ts) exports. A game can bring its own day cycle
 (`dayCycle`), shader limits and shadow map sizes (`PixelRendererOptions`), and can bake a built scene to a binary file
 (`encodeScene` / `decodeScene`) to skip building it at load.
@@ -205,6 +214,7 @@ A tool fails rather than quietly fall back to the CPU when a GPU backend is chos
 | `npm run bake` / `npm run build:baked` | Generate compressed default scenes in `public/baked/`, then build the optimized production app. The baker starts and closes its own server. Dev always builds live; a regular build without a bake does too. A present but stale bake fails with a regeneration message. |
 | `node tools/startup-bench.ts [--baked]` | Three sequential runs per Cookie Co./village scene, reporting median asset load, renderer setup and first-frame time. `--baked` includes fetching and decompressing the generated asset. Reports go to `out/startup-bench/`. |
 | `npm run pick-check` | Picking (`PixelRenderer.pick`): the art pixel, world position and object under a point at supersample 1 and 3, for the sky, the baked and animated world and objects (instanced, mirrored, hidden, removed, through batch growth), plus the resolve keeping the id of the sample it draws. |
+| `npm run profiling-check` | Diagnostics (`setProfiling`): off by default and three left untouched; frame counters (draws, shadow-map redraws, picks) per frame; the same image with counters and GPU timing on; GPU timing without the timer-query extension reports unsupported; switching off restores three, also after a lost and restored context; where supported, per-pass GPU timings come back in frame order and sum to their total, at most 8 frames wait for results, and timing goes on after a disjoint report (which drops the frames waiting) and after a pass that throws. |
 | `npm test` | Unit tests (`test/`, Node's test runner) for the palette, geometry, day cycle and limits, run against the built package (`lib/`), imported by its name like a game does. No browser. |
 | `npm run example-check` | The example game (`examples/walker/`) against the built package: it starts, walks, stops at walls, and places and removes things by clicking. Serves the example itself; screenshots in `out/example/`. |
 | `node tools/verify.ts` | Comparison page: Pass 0 matches its standalone page; modes; ordered wipe dividers; shared camera, sun and resolution; layouts; PNG export sizes; mobile; time of day; animation toggle; no browser or shader errors. |
