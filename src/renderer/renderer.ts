@@ -93,6 +93,8 @@ export type PickCallback = (result: PickResult | null) => void;
  * waits only to call `onPicked` in turn.
  */
 interface PendingPick {
+  /** Request order: a collection takes only the ones made before it started (see `collectPicks`). */
+  seq: number;
   x: number; y: number; frame: DrawnFrame;
   buffer: WebGLBuffer | null; sync: WebGLSync | null; resolve: (result: PickResult | null) => void; onPicked?: PickCallback;
 }
@@ -211,6 +213,9 @@ export class PixelRenderer {
   private pendingPicks: PendingPick[] = [];
   /** Picks taken off `pendingPicks` with their answer, GL work done, waiting for `deliverPicks` (oldest first). */
   private readyPicks: { pick: PendingPick; result: PickResult | null }[] = [];
+  /** The next request's `seq`, and while a `collectPicks` runs, the first `seq` it may not take (nested calls included). */
+  private pickSeq = 0;
+  private collectBefore: number | null = null;
   private freePackBuffers: WebGLBuffer[] = [];
   private pickData = new Float32Array(PICK_FLOATS);
   /** A lost context takes the G-buffer and the pack buffers with it; three restores its own resources, not these handles. */
@@ -1058,7 +1063,7 @@ ${POSE_OBJECT}`;
     const x = Math.floor(px), y = Math.floor(py);
     // Settled at once, as before; a callback waits for its turn in the queue.
     const failed = () => {
-      if (onPicked) this.pendingPicks.push({ x, y, frame: this.drawn, buffer: null, sync: null, resolve: () => {}, onPicked });
+      if (onPicked) this.pendingPicks.push({ seq: this.pickSeq++, x, y, frame: this.drawn, buffer: null, sync: null, resolve: () => {}, onPicked });
       return Promise.resolve(null);
     };
     if (!this.pickable(x, y)) return failed();
@@ -1082,7 +1087,7 @@ ${POSE_OBJECT}`;
     const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
     if (!sync) { gl.deleteBuffer(buffer); return failed(); }   // a lost context
     gl.flush();
-    return new Promise((resolve) => this.pendingPicks.push({ x, y, frame, buffer, sync, resolve, onPicked }));
+    return new Promise((resolve) => this.pendingPicks.push({ seq: this.pickSeq++, x, y, frame, buffer, sync, resolve, onPicked }));
   }
 
   /**
@@ -1101,10 +1106,13 @@ ${POSE_OBJECT}`;
    * `renderGeometry` or `renderStyle` whose collection disposed the renderer draws nothing.
    */
   collectPicks(): void {
-    if (this.pendingPicks.length) {
-      const gl = this.renderer.getContext() as WebGL2RenderingContext, data = this.pickData;
+    const outer = this.collectBefore === null;
+    if (outer) this.collectBefore = this.pickSeq;
+    try {
+      const gl = this.renderer.getContext() as WebGL2RenderingContext, data = this.pickData, before = this.collectBefore!;
       let done = 0;
       for (const p of this.pendingPicks) {
+        if (p.seq >= before) break;   // made by a callback of this collection: the next one answers it
         if (!p.sync || !p.buffer) { done++; this.readyPicks.push({ pick: p, result: null }); continue; }
         const status = gl.clientWaitSync(p.sync, 0, 0);
         if (status === gl.TIMEOUT_EXPIRED) break;   // the later ones were queued after it
@@ -1119,8 +1127,8 @@ ${POSE_OBJECT}`;
           () => [0, 1, 2].map((i) => data.subarray(12 + 4 * i, 16 + 4 * i))) });
       }
       this.pendingPicks.splice(0, done);
-    }
-    this.deliverPicks();
+      this.deliverPicks();
+    } finally { if (outer) this.collectBefore = null; }
   }
 
   /**

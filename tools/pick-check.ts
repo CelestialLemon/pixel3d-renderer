@@ -211,8 +211,8 @@ try {
         let inner: Promise<Pick> | undefined;
         r.requestPickPixel(40, 19, () => {
           seen.push('A');
-          inner = r.requestPickPixel(20, 19, () => seen.push('inner'));
-          r.collectPicks();   // goes on with B and C, but not with `inner`
+          inner = r.requestPickPixel(-1, 19, () => seen.push('inner'));   // known at once, still not this collection's
+          r.collectPicks(); r.renderStyle(0);   // go on with B and C, but not with `inner`
           seen.push('A done');
         });
         r.requestPickPixel(40, 19, () => seen.push('B'));
@@ -220,7 +220,16 @@ try {
         await collectUntil(() => seen.includes('A done'), 'reentrant');
         check(seen.join() === 'A,B,C,A done', `reentrant order ${seen}`);
         await collectUntil(() => seen.includes('inner'), 'request from onPicked');
-        check(seen.join() === 'A,B,C,A done,inner' && (await inner!)?.object === null, `request from onPicked ${seen}`);
+        check(seen.join() === 'A,B,C,A done,inner' && (await inner!) === null, `request from onPicked ${seen}`);
+        // A callback that asks again and renders, with the pointer outside the canvas, doesn't recurse: one answer per frame.
+        let repeats = 0;
+        const again = () => { if (++repeats < 3) { r.requestPickPixel(-1, 19, again); r.renderGeometry(0); } };
+        r.requestPickPixel(-1, 19, again);
+        r.collectPicks();
+        check(repeats === 1, `onPicked re-asking and rendering: ${repeats} calls in one collection`);
+        r.collectPicks();
+        check(repeats === 2, `onPicked re-asking: ${repeats} calls after the next collection`);
+        r.collectPicks();   // the last one, which asks no more
 
         // WAIT_FAILED: null, once, and the pack buffer is deleted rather than pooled.
         const waitSync = gl.clientWaitSync;
