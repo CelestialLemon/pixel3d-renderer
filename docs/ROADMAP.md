@@ -98,6 +98,10 @@ time. A game can't move, add or remove anything. This phase fixes that and turns
      are copied into a pixel-pack buffer behind one fence, and the next `renderGeometry` or `renderStyle` checks the fence
      without waiting. With objects drawn see-through, the scene behind the pixel is rendered at request time, since which texel
      matters is known only once the id is read. `pick-check` and `object-look-check` compare it with `pick` texel for texel.
+   - **Done (2026-10-29): delivery at a point the game chooses** ([#73](https://github.com/CelestialLemon/pixel3d-renderer/issues/73)).
+     The promise's `.then` runs after the game's frame callback, so an answer ready at frame N+1 was first used at N+2 (GPU
+     answer p95 67.8 ms at a GPU-bound 30 Hz in Soil-n-Silo). `requestPick(x, y, onPicked)` and `collectPicks()` deliver it
+     synchronously at the start of the game's frame instead (34.6 ms in a patched prototype).
 3. **Done (2026-10-06): game-supplied settings.** With none of them given, the renderer draws exactly as before (the one
    visible change is a fix: `nearestPreset` now measures around the clock, so 01:00 is "Night", not "Morning").
    - **Look.** `dayCycle(keys, presets)` (`src/renderer/look.ts`) turns a game's keyframes (`LookKey`: a `Look` at an hour, with

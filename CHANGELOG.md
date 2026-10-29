@@ -9,6 +9,18 @@ Design notes and measurements live in `docs/ROADMAP.md`.
 
 ### Added
 
+- **`collectPicks()` and an `onPicked` callback for `requestPick` / `requestPickPixel`**
+  ([#73](https://github.com/CelestialLemon/pixel3d-renderer/issues/73)). A promise's `.then` runs after the game's frame
+  callback, so an answer the GPU finished at frame N+1 was first usable at N+2. Now `requestPick(x, y, onPicked)` calls
+  `onPicked` synchronously from `collectPicks()`, which a game calls where it prepares its frame (`renderGeometry` and
+  `renderStyle` call it too, as they polled before). It settles every request whose fence has signalled, oldest first. Each
+  request gets exactly one call, after it is detached and its fence and pack buffer are released: its answer, or null when it
+  is not pickable, the wait fails, or the renderer is disposed or the context lost first. An answer known at once is still
+  delivered by the next `collectPicks`, never inside `requestPick`. A throwing callback is reported with `reportError` and
+  doesn't stop the other answers nor the promises. A callback may call `requestPick` (answered by a later `collectPicks`) or
+  `collectPicks` (delivery goes on in order). The promise API is unchanged. In Soil-n-Silo at a GPU-bound 30 Hz, a patched
+  prototype took the GPU answer's p95 latency from 67.8 ms to 34.6 ms.
+
 - **Per-pass GPU timing and frame counters: `setProfiling`, `frameStats`, `takeGpuTimings`, `gpuTiming`**
   ([#62](https://github.com/CelestialLemon/pixel3d-renderer/issues/62)). These are opt-in diagnostics for a game's perf overlay
   or benchmark. `setProfiling({ counters: true })` makes `frameStats` report each frame's draws, triangles,

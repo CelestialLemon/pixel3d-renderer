@@ -84,13 +84,17 @@ interface DrawnFrame {
   width: number; height: number; seeThrough: ReadonlySet<number>;
 }
 
+/** Called with a `requestPick`'s answer when `collectPicks` (or `renderGeometry` / `renderStyle`) delivers it. */
+export type PickCallback = (result: PickResult | null) => void;
+
 /**
  * A `requestPick` whose texels the GPU is copying into `buffer`: the resolved G-buffer's three, then, if `frame` drew an
- * object see-through, the three behind them.
+ * object see-through, the three behind them. Without `sync` and `buffer` it has already failed (its answer is null) and
+ * waits only to call `onPicked` in turn.
  */
 interface PendingPick {
   x: number; y: number; frame: DrawnFrame;
-  buffer: WebGLBuffer; sync: WebGLSync; resolve: (result: PickResult | null) => void;
+  buffer: WebGLBuffer | null; sync: WebGLSync | null; resolve: (result: PickResult | null) => void; onPicked?: PickCallback;
 }
 
 /** Floats in a pick's pixel-pack buffer: two sets (front, behind) of three RGBA float texels. */
@@ -203,8 +207,10 @@ export class PixelRenderer {
   private drawn: DrawnFrame = { position: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(), fwd: new THREE.Vector3(),
     texel: 1, width: 1, height: 1, seeThrough: new Set() };
   private pickBuf = new Float32Array(4);
-  /** `requestPick`s the GPU is still copying, oldest first (see `pollPicks`), and the pixel-pack buffers free for the next ones. */
+  /** `requestPick`s the GPU is still copying, oldest first (see `collectPicks`), and the pixel-pack buffers free for the next ones. */
   private pendingPicks: PendingPick[] = [];
+  /** Picks taken off `pendingPicks` with their answer, GL work done, waiting for `deliverPicks` (oldest first). */
+  private readyPicks: { pick: PendingPick; result: PickResult | null }[] = [];
   private freePackBuffers: WebGLBuffer[] = [];
   private pickData = new Float32Array(PICK_FLOATS);
   /** A lost context takes the G-buffer and the pack buffers with it; three restores its own resources, not these handles. */
@@ -804,7 +810,8 @@ ${POSE_OBJECT}`;
   /** Rasterise into the G-buffer (+ shadow mask) with the dynamic mesh posed at `time` seconds and the objects where the game put them. */
   renderGeometry(time: number) {
     const r = this.renderer;
-    this.pollPicks();
+    this.collectPicks();
+    if (this.disposed) return;   // by an onPicked
     for (const m of this.retired) { this.scene.remove(m); this.glassScene.remove(m); m.dispose(); }
     this.retired = [];
     for (const g of this.retiredGeometries) g.dispose();
@@ -924,7 +931,8 @@ ${POSE_OBJECT}`;
   renderStyle(time?: number): void;
   renderStyle(settings: RenderSettings | undefined, time?: number): void;
   renderStyle(settings: RenderSettings | number = DEFAULT_SETTINGS, time = 0) {
-    this.pollPicks();
+    this.collectPicks();
+    if (this.disposed) return;   // by an onPicked
     const prof = this.profiler;
     prof?.poll();
     const s = typeof settings === 'number' ? DEFAULT_SETTINGS : settings;
@@ -1033,23 +1041,34 @@ ${POSE_OBJECT}`;
    * timer), so the promise settles a frame or two later. Its `object` is null if the object was removed in the meantime.
    * Null where `pick` is null, and when the renderer is disposed or the WebGL context is lost first. With an object drawn see-through anywhere, it also
    * renders the scene behind it into a 4 x 4 block of art pixels, as `pick` does over one.
+   *
+   * `onPicked`, if given, is called once with the same answer, synchronously from inside `collectPicks` (which
+   * `renderGeometry` and `renderStyle` call first), or from `dispose` or the context-loss event with null. It is never called
+   * from inside `requestPick`, even when the answer is known at once (null): that one is delivered by the next
+   * `collectPicks`, in turn. See `collectPicks` for the order, errors and reentrancy.
    */
-  requestPick(clientX: number, clientY: number): Promise<PickResult | null> {
+  requestPick(clientX: number, clientY: number, onPicked?: PickCallback): Promise<PickResult | null> {
     const rect = this.canvas.getBoundingClientRect();
-    return this.requestPickPixel((clientX - rect.left) / rect.width * this.width, (clientY - rect.top) / rect.height * this.height);
+    return this.requestPickPixel((clientX - rect.left) / rect.width * this.width, (clientY - rect.top) / rect.height * this.height, onPicked);
   }
 
   /** `requestPick` for an art pixel (from the top left of the canvas; fractions are dropped). */
-  requestPickPixel(px: number, py: number): Promise<PickResult | null> {
+  requestPickPixel(px: number, py: number, onPicked?: PickCallback): Promise<PickResult | null> {
     this.profiler?.countPick();
     const x = Math.floor(px), y = Math.floor(py);
-    if (!this.pickable(x, y)) return Promise.resolve(null);
+    // Settled at once, as before; a callback waits for its turn in the queue.
+    const failed = () => {
+      if (onPicked) this.pendingPicks.push({ x, y, frame: this.drawn, buffer: null, sync: null, resolve: () => {}, onPicked });
+      return Promise.resolve(null);
+    };
+    if (!this.pickable(x, y)) return failed();
     const gl = this.renderer.getContext() as WebGL2RenderingContext, gy = this.height - 1 - y, frame = this.drawn;
     // Which texel matters is known only once the id is read, so the scene behind is rendered whenever it might be needed.
     const behind = frame.seeThrough.size > 0 ? this.renderBehind(x, gy) : null;
     let buffer = this.freePackBuffers.pop();
     if (!buffer) {
       buffer = gl.createBuffer();
+      if (!buffer) return failed();   // a lost context
       gl.bindBuffer(gl.PIXEL_PACK_BUFFER, buffer);
       gl.bufferData(gl.PIXEL_PACK_BUFFER, PICK_FLOATS * 4, gl.STREAM_READ);
     } else gl.bindBuffer(gl.PIXEL_PACK_BUFFER, buffer);
@@ -1061,17 +1080,76 @@ ${POSE_OBJECT}`;
       gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     }
     const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-    if (!sync) { gl.deleteBuffer(buffer); return Promise.resolve(null); }   // a lost context
+    if (!sync) { gl.deleteBuffer(buffer); return failed(); }   // a lost context
     gl.flush();
-    return new Promise((resolve) => this.pendingPicks.push({ x, y, frame, buffer, sync, resolve }));
+    return new Promise((resolve) => this.pendingPicks.push({ x, y, frame, buffer, sync, resolve, onPicked }));
+  }
+
+  /**
+   * Settle now every `requestPick` the GPU has finished copying, oldest first, without waiting for the ones it hasn't (they
+   * stay pending, and so do the ones after them). Each promise is resolved and its `onPicked` called synchronously, from
+   * inside this call, so a game can call it where it prepares its frame and use the answers in the same frame.
+   * `renderGeometry` and `renderStyle` call it first.
+   *
+   * Each request is taken off the queue and its GL work finished (the fence deleted, the pixel-pack buffer back in the pool)
+   * before its `onPicked` runs. Every request gets exactly one answer: its pick, or null where `pick` is null, the GPU
+   * reports a failed wait, or the renderer is disposed or the context lost first.
+   *
+   * A callback that throws doesn't stop the others nor the promises: the error is reported (`reportError`) and delivery goes
+   * on. A callback may call `requestPick`: the new request is answered by a later `collectPicks`, never by the one running.
+   * It may call `collectPicks`, `renderGeometry` or `dispose`: the answers still go out once each, oldest first, and a
+   * `renderGeometry` or `renderStyle` whose collection disposed the renderer draws nothing.
+   */
+  collectPicks(): void {
+    if (this.pendingPicks.length) {
+      const gl = this.renderer.getContext() as WebGL2RenderingContext, data = this.pickData;
+      let done = 0;
+      for (const p of this.pendingPicks) {
+        if (!p.sync || !p.buffer) { done++; this.readyPicks.push({ pick: p, result: null }); continue; }
+        const status = gl.clientWaitSync(p.sync, 0, 0);
+        if (status === gl.TIMEOUT_EXPIRED) break;   // the later ones were queued after it
+        done++;
+        gl.deleteSync(p.sync);
+        if (status === gl.WAIT_FAILED) { gl.deleteBuffer(p.buffer); this.readyPicks.push({ pick: p, result: null }); continue; }
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, p.buffer);
+        gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, data);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+        this.freePackBuffers.push(p.buffer);
+        this.readyPicks.push({ pick: p, result: this.pickFrom(p.x, p.y, p.frame, (i) => data.subarray(4 * i, 4 * i + 4),
+          () => [0, 1, 2].map((i) => data.subarray(12 + 4 * i, 16 + 4 * i))) });
+      }
+      this.pendingPicks.splice(0, done);
+    }
+    this.deliverPicks();
+  }
+
+  /**
+   * Settle the picks in `readyPicks`, oldest first. A nested call (from a callback) goes on with the same queue, so each is
+   * delivered once and in order.
+   */
+  private deliverPicks() {
+    let next;
+    while ((next = this.readyPicks.shift())) {
+      const { pick, result } = next;
+      pick.resolve(result);
+      if (!pick.onPicked) continue;
+      try { pick.onPicked(result); } catch (error) {
+        if (typeof reportError === 'function') reportError(error); else queueMicrotask(() => { throw error; });
+      }
+    }
   }
 
   /** Settle every pending `requestPick` with null and free the pixel-pack buffers (no-ops in a lost context). */
   private dropPicks() {
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
-    for (const p of this.pendingPicks) { gl.deleteSync(p.sync); gl.deleteBuffer(p.buffer); p.resolve(null); }
+    for (const p of this.pendingPicks) {
+      if (p.sync) gl.deleteSync(p.sync);
+      if (p.buffer) gl.deleteBuffer(p.buffer);
+      this.readyPicks.push({ pick: p, result: null });
+    }
     for (const b of this.freePackBuffers) gl.deleteBuffer(b);
     this.pendingPicks = []; this.freePackBuffers = [];
+    this.deliverPicks();
   }
 
   /** Whether art pixel (x, y) (integers) can be picked: inside the canvas, with a G-buffer drawn at this size. */
@@ -1090,27 +1168,6 @@ ${POSE_OBJECT}`;
       }
       gl.readBuffer(gl.COLOR_ATTACHMENT0);
     } finally { r.setRenderTarget(previous); }
-  }
-
-  /** Deliver the `requestPick`s the GPU has finished copying, oldest first. */
-  private pollPicks() {
-    if (!this.pendingPicks.length) return;
-    const gl = this.renderer.getContext() as WebGL2RenderingContext, data = this.pickData;
-    let done = 0;
-    for (const p of this.pendingPicks) {
-      const status = gl.clientWaitSync(p.sync, 0, 0);
-      if (status === gl.TIMEOUT_EXPIRED) break;   // the later ones were queued after it
-      done++;
-      gl.deleteSync(p.sync);
-      if (status === gl.WAIT_FAILED) { gl.deleteBuffer(p.buffer); p.resolve(null); continue; }
-      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, p.buffer);
-      gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, data);
-      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-      this.freePackBuffers.push(p.buffer);
-      p.resolve(this.pickFrom(p.x, p.y, p.frame, (i) => data.subarray(4 * i, 4 * i + 4),
-        () => [0, 1, 2].map((i) => data.subarray(12 + 4 * i, 16 + 4 * i))));
-    }
-    this.pendingPicks.splice(0, done);
   }
 
   /**

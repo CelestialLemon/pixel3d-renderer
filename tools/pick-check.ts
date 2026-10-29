@@ -140,11 +140,127 @@ try {
         check(r.pickPixel(40, 19) === null, `S=${S}: pick after resize before rendering`);
         check(await r.requestPickPixel(40, 19) === null, `S=${S}: requestPick after resize before rendering`);
         r.renderGeometry(0);
-        const orphan = r.requestPickPixel(40, 19);
+        const orphanCalls: Pick[] = [];
+        const orphan = r.requestPickPixel(40, 19, (p) => orphanCalls.push(p));
         r.dispose();
+        check(orphanCalls.length === 1 && orphanCalls[0] === null, `S=${S}: onPicked pending at dispose (${orphanCalls.length})`);
         check(await orphan === null, `S=${S}: requestPick pending at dispose`);
         out.push(`S=${S}: position, transformed normal, sky, baked/animated world, CSS mapping, growth, mirroring, compaction, removal, camera snapshot, guards, requestPick`);
       } finally { r.dispose(); canvas.remove(); }
+    }
+    // collectPicks and onPicked: synchronous delivery, once per request on every path, oldest first, errors and reentrancy.
+    {
+      const canvas = document.createElement('canvas');
+      const r = new PixelRenderer(canvas, scene());
+      r.resize(W, H); r.setLook(lookAt(12)); r.placeCamera(new THREE.Vector3(), 0, 0, HEIGHT);
+      const gl = r.renderer.getContext() as WebGL2RenderingContext;
+      const internals = r as unknown as { freePackBuffers: unknown[]; pendingPicks: { onPicked?: unknown }[] };
+      // Fences signal only in a later task, so let the GPU finish and yield until `ready()` (collecting each time).
+      const collectUntil = async (ready: () => boolean, name: string) => {
+        for (let k = 0; k < 60 && !ready(); k++) { gl.finish(); await new Promise((res) => setTimeout(res, 16)); r.collectPicks(); }
+        check(ready(), `${name}: never delivered`);
+      };
+      const reported: string[] = [];
+      const onError = (e: ErrorEvent) => { reported.push(e.message); e.preventDefault(); };
+      window.addEventListener('error', onError);
+      try {
+        const a = r.addObject(geometry); a.snap = false; a.position.set(0, 1, 0);
+        r.renderGeometry(0);
+        const points = [[40, 19], [20, 19], [40, 0], [60, 19]], expected = points.map(([x, y]) => r.pickPixel(x, y));
+        // Delivered inside collectPicks, with the promise's answer, oldest first, and detached with its GL work done.
+        let deletes = 0;
+        const deleteSync = gl.deleteSync;
+        gl.deleteSync = ((s: WebGLSync | null) => { deletes++; deleteSync.call(gl, s); }) as typeof gl.deleteSync;
+        const got: [number, Pick, number, number, boolean][] = [];   // index, answer, deletes, pooled buffers, still pending
+        const callbacks = points.map((_, k) => (p: Pick) => {
+          const queued = internals.pendingPicks.some((e) => e.onPicked === callbacks[k]);
+          got.push([k, p, deletes, internals.freePackBuffers.length, queued]);
+          check(gl.getParameter(gl.PIXEL_PACK_BUFFER_BINDING) === null, 'onPicked: a pack buffer is bound');
+        });
+        const promises = points.map(([x, y], k) => r.requestPickPixel(x, y, callbacks[k]));
+        check(got.length === 0, 'onPicked called inside requestPick');
+        try { await collectUntil(() => got.length === points.length, 'onPicked'); } finally { gl.deleteSync = deleteSync; }
+        check(got.map(([k]) => k).join() === '0,1,2,3', `onPicked order ${got.map(([k]) => k)}`);
+        got.forEach(([k, p]) => check(samePick(p, expected[k]), `onPicked at ${points[k]} differs from pick`));
+        check(got.every(([k, , d, pooled, pending]) => d >= k + 1 && pooled >= 1 && !pending), `onPicked before GL cleanup / detach ${JSON.stringify(got.map(([k, , d, f, p]) => [k, d, f, p]))}`);
+        const viaPromise = await Promise.all(promises);
+        viaPromise.forEach((p, k) => check(p === got[k][1], `promise and onPicked answers differ at ${k}`));
+        r.collectPicks();
+        check(got.length === points.length, 'onPicked called twice');
+
+        // An answer known at once (not pickable): the promise settles now, onPicked at the next collectPicks, in turn.
+        const order: string[] = [];
+        r.requestPickPixel(40, 19, () => order.push('ok'));
+        let early: Pick | undefined = undefined;
+        const outside = r.requestPickPixel(-1, 19, (p) => { order.push('outside'); early = p; });
+        check(await outside === null && order.length === 0, 'immediate null: promise or onPicked');
+        await collectUntil(() => order.length === 2, 'immediate null');
+        check(order.join() === 'ok,outside' && early === null, `immediate null order ${order}`);
+
+        // A throwing callback: reported, and every other delivery and promise still happens.
+        reported.length = 0;
+        const calls: number[] = [];
+        const thrown = [0, 1, 2].map((k) => r.requestPickPixel(40, 19, () => { calls.push(k); if (k !== 2) throw new Error(`boom ${k}`); }));
+        await collectUntil(() => calls.length === 3, 'throwing onPicked');
+        const settled = await Promise.all(thrown);
+        check(calls.join() === '0,1,2' && settled.every((p) => p?.object === a), `throwing onPicked: ${calls}`);
+        check(reported.length === 2, `throwing onPicked reported: ${reported}`);   // muted ("Script error."): evaluated code
+
+        // Reentrancy: a callback's own request waits for a later collectPicks; a nested collectPicks keeps the order.
+        const seen: string[] = [];
+        let inner: Promise<Pick> | undefined;
+        r.requestPickPixel(40, 19, () => {
+          seen.push('A');
+          inner = r.requestPickPixel(20, 19, () => seen.push('inner'));
+          r.collectPicks();   // goes on with B and C, but not with `inner`
+          seen.push('A done');
+        });
+        r.requestPickPixel(40, 19, () => seen.push('B'));
+        r.requestPickPixel(-1, 19, () => seen.push('C'));
+        await collectUntil(() => seen.includes('A done'), 'reentrant');
+        check(seen.join() === 'A,B,C,A done', `reentrant order ${seen}`);
+        await collectUntil(() => seen.includes('inner'), 'request from onPicked');
+        check(seen.join() === 'A,B,C,A done,inner' && (await inner!)?.object === null, `request from onPicked ${seen}`);
+
+        // WAIT_FAILED: null, once, and the pack buffer is deleted rather than pooled.
+        const waitSync = gl.clientWaitSync;
+        let failedAnswer: Pick | undefined, failedCalls = 0;
+        const failing = r.requestPickPixel(40, 19, (p) => { failedCalls++; failedAnswer = p; });
+        gl.clientWaitSync = (() => gl.WAIT_FAILED) as typeof gl.clientWaitSync;
+        try { r.collectPicks(); } finally { gl.clientWaitSync = waitSync; }
+        r.collectPicks();
+        check(failedCalls === 1 && failedAnswer === null && await failing === null, `WAIT_FAILED: ${failedCalls} calls, ${failedAnswer}`);
+
+        // Dispose, also from inside a callback: pending ones get null once, in order; later requests at the next collectPicks.
+        const last: string[] = [];
+        r.requestPickPixel(40, 19, (p) => { last.push(`first ${p?.object === a}`); r.dispose(); });
+        r.requestPickPixel(40, 19, (p) => last.push(`second ${p?.object === a}`));   // already collected with A, or dropped
+        r.requestPickPixel(-1, 19, (p) => last.push(`third ${p}`));
+        await collectUntil(() => last.length === 3, 'dispose from onPicked');
+        check(/^first true,second (true|false),third null$/.test(last.join()), `dispose from onPicked: ${last}`);
+        r.collectPicks();
+        check(last.length === 3, `dispose from onPicked: delivered again ${last}`);
+        let afterDispose = 0;
+        const late = r.requestPickPixel(40, 19, () => afterDispose++);
+        check(await late === null && afterDispose === 0, 'request after dispose: called inside requestPick');
+        r.collectPicks(); r.collectPicks();
+        check(afterDispose === 1, `request after dispose: ${afterDispose} calls`);
+        out.push('collectPicks / onPicked: synchronous, once, oldest first, after GL cleanup; immediate null, throwing callbacks, reentrancy, WAIT_FAILED, dispose');
+      } finally { window.removeEventListener('error', onError); r.dispose(); }
+      // Disposed by an onPicked that renderGeometry / renderStyle delivers: that call draws nothing and picks stay null.
+      for (const entry of ['renderGeometry', 'renderStyle'] as const) {
+        const r = new PixelRenderer(document.createElement('canvas'), scene());
+        r.resize(W, H); r.setLook(lookAt(12)); r.placeCamera(new THREE.Vector3(), 0, 0, HEIGHT);
+        try {
+          r.renderGeometry(0);
+          let calls = 0;
+          r.requestPickPixel(-1, 19, () => { calls++; r.dispose(); });   // known at once: the next collection delivers it
+          r[entry](0);
+          check(calls === 1 && r.pickPixel(40, 19) === null, `${entry}: disposed by onPicked (${calls} calls)`);
+          r.renderGeometry(0); r.renderStyle(0);
+          check(calls === 1 && r.pickPixel(40, 19) === null, `${entry}: render after dispose by onPicked`);
+        } finally { r.dispose(); }
+      }
     }
     // A lost context settles pending requestPicks with null and drops the pack buffers, which the restored context can't use.
     {
@@ -158,16 +274,23 @@ try {
         check(first?.object === a, `requestPick before context loss (${first?.object?.id})`);
         const lose = r.renderer.getContext().getExtension('WEBGL_lose_context')!;
         const pending = r.requestPickPixel(40, 19);
+        const lostCalls: Pick[] = [];
+        r.requestPickPixel(40, 19, (p) => lostCalls.push(p));
         const restored = new Promise((res) => canvas.addEventListener('webglcontextrestored', res, { once: true }));
         lose.loseContext();
         await new Promise((res) => setTimeout(res, 50));
         check(await Promise.race([pending, new Promise((res) => setTimeout(() => res('pending'), 1000))]) === null, 'requestPick pending at context loss');
+        check(lostCalls.length === 1 && lostCalls[0] === null, `onPicked pending at context loss: ${lostCalls}`);
         check(r.pickPixel(40, 19) === null && await r.requestPickPixel(40, 19) === null, 'pick after context loss');
+        r.requestPickPixel(40, 19, (p) => lostCalls.push(p));
+        check(lostCalls.length === 1, 'onPicked in a lost context: called inside requestPick');
+        r.collectPicks();
+        check(lostCalls.length === 2 && lostCalls[1] === null, `onPicked in a lost context: ${lostCalls}`);
         lose.restoreContext(); await restored;
         r.renderGeometry(0);
         const sync = r.pickPixel(40, 19), after = await settle(r, r.requestPickPixel(40, 19), 'after restore');
         check(sync?.object === a && samePick(after, sync), `requestPick after context restore (${after?.object?.id}, ${sync?.object?.id})`);
-        out.push('context loss: pending requests settle with null, picks work again after restore');
+        out.push('context loss: pending requests settle with null (onPicked too), picks work again after restore');
       } finally { r.dispose(); }
     }
     geometry.dispose(); box.dispose();
